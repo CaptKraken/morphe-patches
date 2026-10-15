@@ -50,8 +50,8 @@ repository's branding rules do not require renaming an upstream feature submissi
 
 ## Validation
 
-- Patch test task: 48 passed, 5 unrelated Jam APK tests skipped; no failures.
-  All 45 native-queue tests ran and passed.
+- Patch test task: 52 passed, 5 unrelated Jam APK tests skipped; no failures.
+  All 49 native-queue tests ran and passed, including the schema-reader tests.
 - String-resource checker: 90,681 strings passed.
 - Actual patch/dependency application to stock YouTube 21.20.405 passed, including
   account-hook assertions, DEX verification, cross-DEX class hierarchy verification
@@ -74,3 +74,40 @@ rotation, network-error rollback, normal-account-playlist isolation and interact
 with the full selected patch set remain targeted device checks. The patch is still
 experimental and pinned to one APK version; build verification does not establish
 behavior on other versions. See the [current usage and device checklist](youtube-native-queue.md).
+
+## Contribution-style refactor
+
+The repository has no separate patch contribution style guide. Its linked
+[patcher conventions](https://github.com/MorpheApp/morphe-patcher/blob/main/docs/3_structure_and_conventions.md),
+[patch anatomy](https://github.com/MorpheApp/morphe-patcher/blob/main/docs/2_2_patch_anatomy.md)
+and [fingerprinting guidance](https://github.com/MorpheApp/morphe-patcher/blob/main/docs/2_2_1_fingerprinting.md)
+provide the relevant coding guidance. Fingerprinting explicitly states:
+“Obfuscated class and method names should never be used.” The patcher repository's
+own CONTRIBUTING file governs contributions to that repository; it is not an
+additional contribution policy for this patch repository.
+
+The prototype's fixed host-class/member lookups have been replaced with named
+fingerprints and references derived from stable resources, strings, signatures,
+initializers and native type relationships. Protocol field/extension numbers are
+schema identifiers. The protobuf Lite metadata reader resolves their actual DEX
+fields from the APK, including repeated-element types, presence, oneofs and enum
+verifiers. All references are resolved before installing native queue hooks;
+missing or ambiguous matches fail patching rather than selecting a fallback.
+
+The patch declaration is separate from fingerprints, reference discovery, schema
+inspection and feature hook installation. Existing shared fingerprints for player
+metadata, flyout renderers, account identity and navigation intents are reused.
+The installer uses shared mutable-method and reverse-instruction helpers. Runtime
+queue logic remains in the Java extension and uses typed native bridges. The
+source branch preserves upstream project metadata, README and notices.
+
+The stock-APK regression retains known 21.20.405 host names as an independent test
+oracle for the previously working bindings. These names are not used in production
+discovery. Additional synthetic-schema tests cover renamed fields/types, repeated
+messages, multi-character field numbers, closed enum metadata, oneofs and control
+flow through the generated message-info branch. The advertised target remains
+21.20.405; dynamic discovery alone does not establish support for other versions.
+
+This is preparation for a contribution, not a guarantee of acceptance. Maintainers
+still decide feature scope and design, and the refactored build needs device
+regression testing before submission.

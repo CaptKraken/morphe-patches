@@ -2,8 +2,8 @@
 
 This patch adds **Native temporary queue (experimental)** for YouTube **21.20.405**.
 It is opt-in and depends on the existing Add to queue patch. Other YouTube versions
-are deliberately unsupported: the native methods and protobuf fields are pinned
-to the supplied APK.
+are deliberately unsupported until their resolved native paths pass APK verification
+and device testing.
 
 ## Install and use
 
@@ -86,11 +86,17 @@ charge of live state; no account identity or token is logged by the queue.
 
 Local state supplies playlist-panel protobuf data to the native panel and watch
 navigator. The host's parser and extension registry decode it. Typed DEX bridges
-check every referenced member; runtime reflection is not used.
+are generated from resolved members; runtime reflection is not used. The Kotlin
+patch separates its declaration, fingerprints, reference discovery, protobuf schema
+reader and feature hook installation. Discovery uses stable strings/resources,
+shared player/flyout fingerprints and native type/member relationships. Protobuf
+fields are resolved by wire number through Lite schema metadata, including the
+actual field names supplied by that APK. Production discovery does not pin
+obfuscated class, method or field names.
 
 An isolated native playlist store prevents autoplay recommendations from entering
-the queue. The native `nig` navigator supplies random successor/predecessor arrays
-and repeat behavior through `aokc`. Shuffle mappings rebuild only after structural
+the queue. The native shuffle navigator supplies random successor/predecessor
+arrays and repeat behavior through the native playback backend. Shuffle mappings rebuild only after structural
 edits or enabling shuffle. Modes and metadata updates do not reload playback.
 
 Queue edits populate the detached store before attaching it and preserve the
