@@ -71,18 +71,30 @@ normal account check, sign-in flow, authenticated request, error handling and
 rollback. They do not create or edit an account playlist. Native entity and event
 subscriptions update the row icons, including changes made from the main player.
 A bounded cache of observed native ratings initializes refreshed rows. The native
-presenter still owns clicks, selected icons, accessibility and recycling. This
-rating update needs a device retest; build verification cannot exercise a live
-account or prove state synchronization on the phone.
+presenter still owns clicks, selected icons, accessibility and recycling. The
+preview 11 device retest confirmed working rating actions.
 
-Import the replacement bundle as **Morphe Patches (queue preview 11)** and disable
+Preview 12 adds the existing three-dot button at the right of the repeat/shuffle
+row. Its native bottom sheet contains only **Save playlist**, with the native
+bookmark icon. That action opens YouTube's native creation dialog with name and
+privacy controls. Confirming creates a new playlist in the signed-in account from
+all queue videos in visible list order, including the playing and preceding entries.
+Shuffle does not change the saved order. The native sign-in, name validation,
+creation request and success/error handling remain in charge. No account playlist
+is created by opening or cancelling the dialog. Each dialog retains the queue
+snapshot it was opened with; later queue edits do not change that pending save.
+Saving makes a separate copy: the temporary queue keeps its local identity, and
+later queue edits or clearing do not update or delete the saved playlist. Repeating
+Save creates another playlist. This save flow still needs an Android device retest.
+
+Import the replacement bundle as **Morphe Patches (queue preview 12)** and disable
 the preceding preview source. Select all desired YouTube patches from the new
 source alone. Starting from an untouched APK avoids applying shared setup twice.
 
 The queue lives in memory for the app process. It uses YouTube's native playlist
 panel, collapsed playlist bar, selected-row indicator, and playback navigator.
 Adding and rearranging videos does not create or edit a playlist in your account.
-There is no save-to-account operation in this prototype.
+Only confirming the explicit **Save playlist** creation flow saves an account copy.
 
 ## Using it
 
@@ -98,7 +110,10 @@ There is no save-to-account operation in this prototype.
    row to follow shuffled playback; switching modes should not restart the video.
 5. Use the selected row's thumbs to like or dislike its video. Tap the selected
    thumb again to remove that rating; switching thumbs replaces the prior rating.
-6. Use **Clear temporary queue** in a video menu to return to normal playback.
+6. To keep a copy, open the three-dot menu beside repeat/shuffle and choose
+   **Save playlist**. Enter a name, choose privacy, and confirm in YouTube's dialog.
+   Cancel to leave without creating a playlist. The queue remains temporary.
+7. Use **Clear temporary queue** in a video menu to return to normal playback.
    Opening an account playlist or a video outside the queue also ends the queue.
 
 If the queue actions are missing, enable **Override feed flyout queue button**
@@ -143,8 +158,8 @@ entries are discarded before updating the cache or row. No account playlist is
 created or edited by this lookup.
 
 Starting the queue while already playing an account playlist is currently rejected
-with a toast. Shorts, Cast/TV queues, persistence across process death, and saving
-the queue to a real playlist are outside the current implementation.
+with a toast. Shorts, Cast/TV queues, persistence across process death, and linking
+ongoing queue edits to a saved account playlist are outside the current implementation.
 
 ## Validation
 
@@ -207,12 +222,31 @@ preservation of the live playback endpoint. APK checks require model initializat
 before subscribing, native click dispatch, entity subscriptions and recycling,
 cache hooks surviving shrinking, and the native account/sign-in and rollback paths.
 No real account rating is submitted during these automated checks.
+Save regressions cover the single-item native menu, localized label/bookmark icon,
+ordered unique video IDs, edits while a dialog is pending, empty/single-item queues,
+and preservation of playback endpoints, local identity, selection and modes. APK
+checks require the original header menu listener and bottom-sheet presenter, the
+explicit-video creation endpoint, native authentication and name/privacy dialog,
+and the native confirmation-to-request path. Menu and command field numbers were
+resolved from the supplied APK's protobuf message information. An optional attempt
+to execute those Android data classes directly on the JVM stopped at an optimized
+abstract protobuf class (`axaj`); it is not counted as passing validation. The
+Android dialog and actual account save still require the device checks below.
+Automated checks do not submit a playlist creation request.
 APK verification establishes that the patched DEX and
 resources can be built; it does not establish that YouTube renders the UI or plays
 the queue correctly on an Android device.
 
 ## Device checks still required
 
+- Open the queue header's three-dot menu. Confirm it contains only **Save playlist**,
+  then verify that it opens YouTube's name/privacy dialog. Cancel and confirm that
+  nothing was created. Save a named private playlist and check the Library for the
+  exact queue videos in visible order, including the current/earlier entries.
+  Repeat after reordering, removal and shuffle; playback and the temporary queue
+  should remain usable. Clear/edit the queue afterward and confirm the saved copy
+  stays intact. Test a single-entry queue, signed-out sign-in, interrupted network,
+  account switching and a normal account playlist's existing menu.
 - On a signed-in account, like, undo like, dislike, undo dislike, and switch
   directly between thumbs. Check the main player's rating agrees, then change it
   from the main player and reopen the queue. Repeat after metadata updates,

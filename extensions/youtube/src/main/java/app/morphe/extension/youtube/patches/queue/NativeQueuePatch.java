@@ -166,7 +166,8 @@ public final class NativeQueuePatch {
         Object panel = parsePanel(PlaylistPanel.encode(snapshot, str("morphe_local_queue_title"),
                 endpoint, str("morphe_local_queue_remove"), states, new QueueRatings.Labels(
                         str("morphe_local_queue_like"), str("morphe_local_queue_unlike"),
-                        str("morphe_local_queue_dislike"), str("morphe_local_queue_undo_dislike"))));
+                        str("morphe_local_queue_dislike"), str("morphe_local_queue_undo_dislike")),
+                str("morphe_local_queue_save")));
         if (panel == null) throw new IllegalStateException("Native playlist parser unavailable");
         ownedPanels.add(panel);
         ownedRatingButtons.addAll(panelRatingButtons(panel));

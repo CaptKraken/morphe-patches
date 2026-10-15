@@ -172,6 +172,40 @@ fun main(arguments: Array<String>) {
             }
             val headerBind = mutableClassDefBy("Lppo;").methods.single { it.name == "d" }
                 .implementation!!.instructions.toList()
+            val headerMenu = references("Lppo;", "d")
+            check("Lbfzu;->x:Lbeox;" in headerMenu &&
+                "Lppo;->t:Landroid/widget/ImageView;" in headerMenu &&
+                "Loyn;-><init>(Ljava/lang/Object;I)V" in headerMenu) {
+                "Save must use the native header's three-dot menu and click listener"
+            }
+            check(references("Loyn;", "onClick").any { it.startsWith("Laqxt;->b(Lcb;Lbeou;") }) {
+                "The header menu must retain YouTube's native bottom-sheet presenter"
+            }
+            check("Lazut;->f:Laxcf;" in references("Ljtu;", "b")) {
+                "The native create-playlist command must accept explicit snapshot video IDs"
+            }
+            val createAccount = references("Ljtu;", "e")
+            check("Lamqr;->z()Z" in createAccount &&
+                "Lamrn;->c(Landroid/app/Activity;[BLamrl;)V" in createAccount) {
+                "Saving must retain native authentication and sign-in"
+            }
+            val createDialog = references("Ljtu;", "d")
+            check("Ljph;-><init>(Lnmg;Landroid/widget/EditText;Lcom/google/android/apps/youtube/app/common/ui/playlist/PrivacySpinner;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Launw;)V" in createDialog &&
+                createDialog.any { it.startsWith("Landroid/app/AlertDialog\$Builder;->setPositiveButton(") } &&
+                createDialog.none { it.startsWith("Lailt;->j(") }) {
+                "Opening Save must show the host's name/privacy dialog before creating anything"
+            }
+            val createClick = references("Ljph;", "onClick")
+            check("Lailn;->J(Ljava/lang/String;)V" in createClick &&
+                "Lcom/google/android/apps/youtube/app/common/ui/playlist/PrivacySpinner;->d()I" in createClick &&
+                "Lailn;->e(Ljava/lang/String;)V" in createClick &&
+                "Lailt;->j(Lailn;Lamtt;)V" in createClick) {
+                "Creation must use the native confirmed name, privacy and snapshot videos"
+            }
+            check(mutableClassDefBy("Lazut;").methods.single { it.name == "<clinit>" }
+                .implementation!!.instructions.any { (it as? WideLiteralInstruction)?.wideLiteral == 85650004L }) {
+                "The native create-playlist-dialog extension changed"
+            }
             for (index in headerBind.indices.filter { headerBind[it].opcode == Opcode.RETURN_VOID }) {
                 check((headerBind[index - 1] as ReferenceInstruction).reference.toString().contains(
                     "NativeQueuePatch;->onQueueHeader("))
@@ -257,7 +291,7 @@ fun main(arguments: Array<String>) {
             check("Lahmg;-><init>(Ljava/lang/Object;)V" in hideCalls) {
                 "The native hide command must emit the tagged-row event intercepted by the queue"
             }
-            println("Verified playback/navigation, shuffle/repeat, swipe removal and native rating dispatch/state lifecycle")
+            println("Verified navigation, shuffle/repeat, swipe removal, ratings and native Save playlist menu/dialog")
         }
     }
     Patcher(PatcherConfig(input, workspace, verifier = SdkDexVerifier(File(sdk)))).use { patcher ->

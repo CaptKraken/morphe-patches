@@ -33,6 +33,12 @@ public final class PlaylistPanel {
     public static byte[] encode(LocalQueue.Snapshot queue, String title, byte[] playingEndpoint,
                                 String removeLabel, Map<String, QueueRatings.State> ratings,
                                 QueueRatings.Labels labels) {
+        return encode(queue, title, playingEndpoint, removeLabel, ratings, labels, "Save playlist");
+    }
+
+    public static byte[] encode(LocalQueue.Snapshot queue, String title, byte[] playingEndpoint,
+                                String removeLabel, Map<String, QueueRatings.State> ratings,
+                                QueueRatings.Labels labels, String saveLabel) {
         Wire panel = new Wire().text(1, title).number(3, queue.selected())
                 .text(5, "").number(6, queue.entries().size()).number(8, 1);
         for (int i = 0; i < queue.entries().size(); i++) {
@@ -72,6 +78,19 @@ public final class PlaylistPanel {
                     .message(10, new Wire().text(2, removeLabel)); // Native accessibility label.
             row.message(22, new Wire().message(65153809, remove));
             panel.message(2, new Wire().message(51779701, row));
+        }
+        if (!queue.entries().isEmpty()) {
+            // The header's existing three-dot listener opens this native menu. The native
+            // creation dialog owns title/privacy, sign-in, confirmation and the request.
+            // Snapshot video IDs avoid a synthetic source playlist and remain stable while
+            // the dialog is open. Saving does not turn the local queue into that playlist.
+            Wire createDialog = new Wire();
+            for (LocalQueue.Entry entry : queue.entries()) createDialog.text(1, entry.videoId());
+            Wire save = new Wire().message(1, new Wire().text(4, saveLabel))
+                    .message(2, new Wire().number(1, 58)) // Native SAVE_PLAYLIST bookmark icon.
+                    .message(3, new Wire().message(85650004, createDialog));
+            Wire menu = new Wire().message(1, new Wire().message(66441108, save));
+            panel.message(26, new Wire().message(66439850, menu));
         }
         return panel.bytes();
     }
