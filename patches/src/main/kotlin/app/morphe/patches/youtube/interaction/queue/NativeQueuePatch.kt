@@ -11,6 +11,7 @@ import app.morphe.patcher.patch.Compatibility
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.youtube.layout.flyout.addToQueuePatch
+import app.morphe.patches.youtube.misc.playertype.playerTypeHookPatch
 import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
 import app.morphe.util.setExtensionIsPatchIncluded
 
@@ -27,7 +28,7 @@ val nativeQueuePatch = bytecodePatch(
     description = "Uses the native playlist panel for a temporary local queue. YouTube 21.20.405 only.",
     default = false,
 ) {
-    dependsOn(addToQueuePatch)
+    dependsOn(addToQueuePatch, playerTypeHookPatch)
     compatibleWith(Compatibility(
         name = requireNotNull(COMPATIBILITY_YOUTUBE.name),
         packageName = requireNotNull(COMPATIBILITY_YOUTUBE.packageName),

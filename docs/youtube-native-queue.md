@@ -35,12 +35,22 @@ and device testing.
    the current and preceding entries. Shuffle does not change the saved order.
    Opening or cancelling the dialog does not create a playlist.
 9. Use **Clear temporary queue** in a video menu to return to normal playback.
-   Opening an account playlist or a video outside the queue also ends the queue.
+   Closing/dismissing the player resets the queue. Closing only the Queue panel,
+   minimizing, PiP, pausing and screen-off playback retain it. Opening an account
+   playlist also ends the temporary queue.
 
 Each video appears at most once. Adding a duplicate shows **Already in queue**
 without moving it or changing playback. A removed video can be added again.
-Removing the current entry chooses its successor, or the preceding entry if it was
-last. Removing the final entry clears the queue. Modes reset when the queue ends.
+The playing entry cannot be removed: it has no swipe action or Remove menu, and
+stale actions are rejected after selection changes. Other entries can still be
+removed and reordered. Clear temporary queue ends even a single-entry queue.
+Modes reset when the queue ends.
+
+Opening another regular video while the local queue is active plays it and appends
+it at the end. Opening an existing entry selects it without moving or duplicating
+it. Earlier entries, metadata and playback modes remain in the queue. Prefetched
+metadata does not add videos, and late playback callbacks cannot start an empty
+queue. A dismissed player's cached response is not reused to seed a new queue.
 
 Saving creates a separate copy. Later queue edits or clearing do not update or
 delete the saved playlist. Each open creation dialog retains its original queue
@@ -165,6 +175,12 @@ interaction with other selected patches. Remaining targeted checks include:
 - Cancel Save, save a named private playlist, and verify Library contents/order.
   Repeat after reordering, shuffle and removal; later queue edits must leave the
   saved copy intact. Test sign-in and interrupted-network errors.
+- Verify the playing row has no removal action, including a swipe/menu opened
+  before selection changes. Other rows must remain removable and reorderable.
+- Open a new video from Home/search while queued: it plays as the last entry;
+  reopening an existing entry must not duplicate or move it.
+- Close the miniplayer by X and swipe-dismiss, then start a fresh queue from the
+  feed. Check PiP dismissal too. Closing only the panel must retain the queue.
 - Exercise pause/resume, screen-off completion, rotation, single-entry queues,
   queue boundaries and clearing during pending metadata/gesture callbacks.
 - Open a normal account playlist afterward and check its editing, modes, ratings

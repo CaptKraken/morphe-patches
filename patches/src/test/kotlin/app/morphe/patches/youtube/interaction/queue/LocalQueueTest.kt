@@ -41,22 +41,26 @@ class LocalQueueTest {
         assertEquals(2, queue.snapshot().repeatMode())
     }
 
-    @Test fun `ending the queue resets modes including after removing its final entry`() {
+    @Test fun `closing or clearing the queue resets modes and cannot be undone by a late response`() {
         val queue = LocalQueue()
-        for (clear in listOf(false, true)) {
-            queue.add("a", "a", false)
-            queue.setRepeatMode(1)
-            queue.setShuffled(true)
-            if (clear) queue.clear() else queue.remove(queue.snapshot().current().id())
-            assertEquals(0, queue.snapshot().repeatMode())
-            assertFalse(queue.snapshot().shuffled())
-            queue.setRepeatMode(2)
-            queue.setShuffled(true)
-            queue.add("b", "b", false)
-            assertEquals(0, queue.snapshot().repeatMode())
-            assertFalse(queue.snapshot().shuffled())
-            queue.clear()
-        }
+        queue.add("a", "a", false)
+        queue.setRepeatMode(1)
+        queue.setShuffled(true)
+        val closedEntry = queue.snapshot().current()
+        assertFalse(queue.remove(closedEntry.id()))
+        assertTrue(queue.snapshot().shuffled())
+        queue.clear()
+        assertEquals(0, queue.snapshot().repeatMode())
+        assertFalse(queue.snapshot().shuffled())
+        assertFalse(queue.followPlayback("a", null))
+        assertTrue(queue.isEmpty())
+        queue.setRepeatMode(2)
+        queue.setShuffled(true)
+        queue.add("a", "New session", false)
+        assertEquals(0, queue.snapshot().repeatMode())
+        assertFalse(queue.snapshot().shuffled())
+        assertNotEquals(closedEntry.id(), queue.snapshot().current().id())
+        assertFalse(queue.remove(closedEntry.id()))
     }
 
     @Test fun `only structural edits invalidate native shuffle mapping`() {
@@ -113,20 +117,51 @@ class LocalQueueTest {
         assertFalse(queue.select("other-video", selected.id()))
     }
 
-    @Test fun `removing entries preserves current identity and chooses a successor when needed`() {
+    @Test fun `removal protects the playing entry before and after reordering and selection changes`() {
         val queue = LocalQueue()
         listOf("a", "b", "c", "d").forEach { queue.add(it, it, false) }
         assertTrue(queue.select("b", null))
         val initial = queue.snapshot()
-        queue.remove(initial.entries()[0].id())
-        assertEquals("b", queue.snapshot().current().videoId())
-        queue.remove(initial.entries()[1].id())
-        assertEquals("c", queue.snapshot().current().videoId())
-        assertEquals(0, queue.snapshot().selected())
-        queue.remove(initial.entries()[3].id())
-        queue.remove(initial.entries()[2].id())
-        assertEquals(-1, queue.snapshot().selected())
-        assertEquals(null, queue.snapshot().current())
+        val playing = initial.current()
+        assertFalse(queue.canRemove(playing.id()))
+        assertFalse(queue.remove(playing.id()))
+        assertEquals(initial, queue.snapshot())
+        assertTrue(queue.remove(initial.entries()[0].id()))
+        assertEquals(playing, queue.snapshot().current())
+        assertTrue(queue.move(0, 2))
+        val reordered = queue.snapshot()
+        assertFalse(queue.remove(playing.id()))
+        assertEquals(reordered, queue.snapshot())
+        // A swipe opened while this row was queued must be rejected after it starts playing.
+        val next = queue.snapshot().entries().first()
+        assertTrue(queue.canRemove(next.id()))
+        queue.select(next.videoId(), next.id())
+        assertFalse(queue.remove(next.id()))
+        assertTrue(queue.remove(playing.id()))
+        assertEquals(next, queue.snapshot().current())
+    }
+
+    @Test fun `committed outside playback appends uniquely while retaining modes and earlier entries`() {
+        val queue = LocalQueue()
+        listOf("a", "b", "c").forEach { queue.add(it, it, false) }
+        queue.select("b", null)
+        queue.setRepeatMode(2)
+        queue.setShuffled(true)
+        val before = queue.snapshot()
+        assertTrue(queue.followPlayback("d", null))
+        val appended = queue.snapshot()
+        assertEquals(listOf("a", "b", "c", "d"), appended.entries().map { it.videoId() })
+        assertEquals(before.entries(), appended.entries().take(3))
+        assertEquals("d", appended.current().videoId())
+        assertEquals(before.orderRevision() + 1, appended.orderRevision())
+        assertEquals(2, appended.repeatMode())
+        assertTrue(appended.shuffled())
+        assertTrue(queue.followPlayback("b", null))
+        assertEquals(before.current(), queue.snapshot().current())
+        assertEquals(appended.entries(), queue.snapshot().entries())
+        assertEquals(appended.orderRevision(), queue.snapshot().orderRevision())
+        assertFalse(queue.followPlayback(null, null))
+        assertFalse(queue.followPlayback("", null))
     }
 
     @Test fun `snapshots remain stable and clearing does not reuse entry identities`() {
@@ -223,9 +258,10 @@ class LocalQueueTest {
     @Test fun `native swipe hide action is icon-only with a localized accessibility label`() {
         val queue = LocalQueue()
         queue.add("abcdefghijk", "Title", false)
+        queue.add("lmnopqrstuv", "Queued", false)
         val label = "Retirer de la file"
         val panel = fields(PlaylistPanel.encode(queue.snapshot(), "Queue", null, label))
-        val row = fields(fields(panel.getValue(2).single() as ByteArray)
+        val row = fields(fields(panel.getValue(2).last() as ByteArray)
             .getValue(51779701).single() as ByteArray)
         val button = fields(fields(row.getValue(22).single() as ByteArray)
             .getValue(65153809).single() as ByteArray)
@@ -237,6 +273,22 @@ class LocalQueueTest {
         val command = fields(button.getValue(9).single() as ByteArray)
         assertEquals(setOf(77297742), command.keys)
         assertTrue((command.getValue(77297742).single() as ByteArray).isEmpty())
+    }
+
+    @Test fun `only nonplaying native rows expose swipe removal as playback moves`() {
+        val queue = LocalQueue()
+        listOf("a", "b", "c").forEach { queue.add(it, it, false) }
+        for (video in listOf("a", "b", "c")) {
+            queue.select(video, null)
+            val panel = fields(PlaylistPanel.encode(queue.snapshot(), "Queue"))
+            val rows = panel.getValue(2).map {
+                fields(fields(it as ByteArray).getValue(51779701).single() as ByteArray)
+            }
+            assertEquals(1, rows.count { !it.containsKey(22) })
+            rows.forEachIndexed { index, row ->
+                assertEquals(index != queue.snapshot().selected(), row.containsKey(22))
+            }
+        }
     }
 
     private fun fields(bytes: ByteArray): Map<Int, List<Any>> {

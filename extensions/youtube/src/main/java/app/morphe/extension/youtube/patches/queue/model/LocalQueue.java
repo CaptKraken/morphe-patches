@@ -93,6 +93,20 @@ public final class LocalQueue {
         return false;
     }
 
+    /** Follow committed playback without creating a queue or moving an existing entry. */
+    public synchronized boolean followPlayback(String videoId, QueueTitles.Title title) {
+        if (entries.isEmpty() || videoId == null || videoId.isEmpty()) return false;
+        if (select(videoId, null)) return true;
+        add(videoId, title, false);
+        return select(videoId, null);
+    }
+
+    public synchronized boolean canRemove(String entryId) {
+        if (entryId == null || selected < 0 || entries.get(selected).id().equals(entryId)) return false;
+        for (Entry entry : entries) if (entry.id().equals(entryId)) return true;
+        return false;
+    }
+
     public synchronized boolean updateTitle(String videoId, String title) {
         return updateTitle(videoId, new QueueTitles.Title(title == null ? "" : title,
                 QueueTitles.Source.CARD));
@@ -155,6 +169,7 @@ public final class LocalQueue {
     }
 
     public synchronized boolean remove(String entryId) {
+        if (!canRemove(entryId)) return false;
         for (int i = 0; i < entries.size(); i++) {
             if (!entries.get(i).id().equals(entryId)) continue;
             entries.remove(i);

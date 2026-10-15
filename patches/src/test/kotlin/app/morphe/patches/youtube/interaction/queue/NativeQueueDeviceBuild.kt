@@ -33,6 +33,33 @@ fun main(arguments: Array<String>) {
     val regression = bytecodePatch(name = "Verify local queue playback and manual controls", default = false) {
         dependsOn(nativeQueuePatch)
         execute {
+            val runtimeType = "Lapp/morphe/extension/youtube/patches/queue/NativeQueuePatch;"
+            val runtime = mutableClassDefBy(runtimeType)
+            val playerTypeHook = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/PlayerTypeHookPatch;")
+                .methods.single { it.name == "setPlayerType" }.implementation!!.instructions.toList()
+            check((playerTypeHook.first() as ReferenceInstruction).reference.toString() ==
+                "$runtimeType->onPlayerType(Ljava/lang/Enum;)V") {
+                "Queue cleanup must observe the previous player type before the shared helper updates it"
+            }
+            check(playerTypeHook.filterIsInstance<ReferenceInstruction>().any {
+                it.reference.toString().endsWith("PlayerType;->setFromString(Ljava/lang/String;)V")
+            }) { "The shared player-type hook must retain its normal update" }
+            fun runtimeReferences(name: String) = runtime.methods.single { it.name == name }
+                .implementation!!.instructions.filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
+            check(runtimeReferences("onResponse").any { it.contains("LocalQueue;->followPlayback(") } &&
+                runtimeReferences("onPlayerMetadata").none { it.contains("LocalQueue;->followPlayback(") }) {
+                "Only committed watch navigation may append videos; prefetched metadata cannot grow the queue"
+            }
+            val reset = runtimeReferences("resetPlayerSession")
+            check(reset.any { it.endsWith("LocalQueue;->clear()V") } &&
+                listOf("response", "playbackDescriptor", "controller", "navigator").all { field ->
+                    reset.any { it.startsWith("$runtimeType->$field:") }
+                } && reset.none { it.contains("->publish(") || it.contains("->refreshPanel(") || it.contains("->openVideoIntent") }) {
+                "Player close must clear the queue and stale native references without refreshing or reopening a closed player"
+            }
+            check(runtimeReferences("onRowBound").any { it.contains("LocalQueue;->canRemove(") }) {
+                "Playing rows must not offer the custom Remove menu"
+            }
             val playerMetadata = mutableClassDefBy("Lapgd;").methods.single { it.name == "setChannelInformation" }
             check((playerMetadata.implementation!!.instructions.first() as ReferenceInstruction)
                 .reference.toString().endsWith("NativeQueuePatch;->onPlayerMetadata(Ljava/lang/Object;)V")) {

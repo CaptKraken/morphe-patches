@@ -32,6 +32,11 @@ internal class NativeQueueHooks(
     private val native: NativeQueueReferences,
 ) {
     fun install() {
+        // Observe the shared helper before it updates PlayerType.current. This preserves the
+        // distinction between an actual close and an already closed/startup player state.
+        context.mutableClassDefBy("Lapp/morphe/extension/youtube/patches/PlayerTypeHookPatch;")
+            .methods.single { it.name == "setPlayerType" }.addInstructions(0,
+                "invoke-static {p0}, $NATIVE_QUEUE_EXTENSION->onPlayerType(Ljava/lang/Enum;)V")
         installRatings()
         installMetadata()
         installResponseAccess()

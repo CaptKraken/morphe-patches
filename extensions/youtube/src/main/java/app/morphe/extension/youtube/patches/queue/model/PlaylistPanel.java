@@ -67,16 +67,19 @@ public final class PlaylistPanel {
                 row.message(32, ratingButton(entry.videoId(), rating, true, labels));
                 row.message(32, ratingButton(entry.videoId(), rating, false, labels));
             }
-            // Native swipe-button renderer. HideEnclosingCommand emits the tagged bfzy row
-            // as ahmg; our owned-panel gesture hook removes that exact local entry.
-            // No playlist-edit or network endpoint is included in this action.
-            Wire remove = new Wire().number(1, 1) // Host STYLE_DEFAULT.
-                    // Omit visible text: the host's swipe presenter selects its compact
-                    // icon-only layout when buttonRenderer.text is absent.
-                    .message(8, new Wire().number(1, 426)) // Host VISIBILITY_OFF (crossed-out eye).
-                    .message(9, new Wire().message(77297742, new Wire()))
-                    .message(10, new Wire().text(2, removeLabel)); // Native accessibility label.
-            row.message(22, new Wire().message(65153809, remove));
+            // The playing row has no native swipe removal action.
+            if (i != queue.selected()) {
+                // Native swipe-button renderer. HideEnclosingCommand emits the tagged bfzy row
+                // as ahmg; our owned-panel gesture hook removes that exact local entry.
+                // No playlist-edit or network endpoint is included in this action.
+                Wire remove = new Wire().number(1, 1) // Host STYLE_DEFAULT.
+                        // Omit visible text: the host's swipe presenter selects its compact
+                        // icon-only layout when buttonRenderer.text is absent.
+                        .message(8, new Wire().number(1, 426)) // Host VISIBILITY_OFF (crossed-out eye).
+                        .message(9, new Wire().message(77297742, new Wire()))
+                        .message(10, new Wire().text(2, removeLabel)); // Native accessibility label.
+                row.message(22, new Wire().message(65153809, remove));
+            }
             panel.message(2, new Wire().message(51779701, row));
         }
         if (!queue.entries().isEmpty()) {

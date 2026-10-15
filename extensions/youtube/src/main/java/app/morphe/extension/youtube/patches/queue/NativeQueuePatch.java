@@ -39,6 +39,7 @@ import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.ProtoNode;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
 import app.morphe.extension.youtube.settings.Settings;
+import app.morphe.extension.youtube.shared.PlayerType;
 
 /** Experimental session queue, rendered and navigated by YouTube's playlist implementation. */
 @SuppressWarnings("unused")
@@ -236,12 +237,16 @@ public final class NativeQueuePatch {
             if (!active() || publishing) return;
             String playlist = responsePlaylist(watchResponse);
             String video = responseVideo(watchResponse);
-            if ((playlist != null && !playlist.isEmpty()) || !queue.select(video, null)) {
-                // Explicit navigation out of the queue returns ownership to YouTube.
+            if (playlist != null && !playlist.isEmpty()) {
+                // An explicitly opened account playlist retains its native ownership.
                 queue.clear();
                 restoreNavigation();
                 return;
             }
+            if (video == null || !video.matches("[A-Za-z0-9_-]{11}")) return;
+            if (!queue.followPlayback(video, titleFor(video))) return;
+            queue.updateDetails(video, details.get(video));
+            QueueMetadata.fetch(video);
             setResponsePanel(watchResponse, renderer());
             setResponseNavigation(watchResponse, null);
             prepareNavigation(source);
@@ -347,6 +352,7 @@ public final class NativeQueuePatch {
     }
 
     private static synchronized void refreshQueuePlayback() {
+        if (!active() || isClosedPlayer(PlayerType.getCurrent().name())) return;
         try {
             QueueEditScope.run(NativeQueuePatch::applyPlaybackModes);
             Object[] headers;
@@ -424,8 +430,14 @@ public final class NativeQueuePatch {
         int id = ResourceUtils.getIdentifier(ResourceType.ID, "three_dots_menu");
         View button = root.findViewById(id);
         if (button == null) return;
+        if (!queue.canRemove(entryId)) {
+            button.setOnClickListener(null);
+            button.setVisibility(View.GONE);
+            return;
+        }
         button.setVisibility(View.VISIBLE);
         button.setOnClickListener(view -> {
+            if (!queue.canRemove(entryId)) return;
             PopupMenu popup = new PopupMenu(view.getContext(), view);
             popup.getMenu().add(str("morphe_local_queue_remove")).setOnMenuItemClickListener(item -> {
                 remove(entryId);
@@ -436,13 +448,8 @@ public final class NativeQueuePatch {
     }
 
     private static synchronized void remove(String entryId) {
-        LocalQueue.Entry current = queue.snapshot().current();
+        // Recheck after a delayed swipe/menu event: this row may now be playing.
         if (!queue.remove(entryId)) return;
-        if (!active()) {
-            restoreNavigation();
-        } else if (current != null && current.id().equals(entryId)) {
-            LoadVideoPatch.openVideoIntentWithInternalContext(queue.snapshot().current().videoId());
-        }
         publish();
     }
 
@@ -489,7 +496,8 @@ public final class NativeQueuePatch {
         Utils.runOnMainThread(() -> {
             try {
                 synchronized (NativeQueuePatch.class) {
-                    Object currentResponse = response;
+                    // A dismissed player's late cached response is not a live watch session.
+                    Object currentResponse = isClosedPlayer(PlayerType.getCurrent().name()) ? null : response;
                     if (currentResponse != null) {
                         String playlist = responsePlaylist(currentResponse);
                         if (playlist != null && !playlist.isEmpty()) {
@@ -538,6 +546,51 @@ public final class NativeQueuePatch {
         return true;
     }
 
+    private static boolean isClosedPlayer(String type) {
+        return "NONE".equals(type) || "HIDDEN".equals(type) || "INLINE_MINIMAL".equals(type);
+    }
+
+    /** Shared player-type hook, before its current state changes. Minimize/PiP keep the queue. */
+    public static void onPlayerType(Enum<?> type) {
+        if (type == null) return;
+        boolean wasClosed = isClosedPlayer(PlayerType.getCurrent().name());
+        if (isClosedPlayer(type.name())) {
+            if (!wasClosed) resetPlayerSession();
+        } else if (wasClosed && active()) {
+            // A queue may have been started from the feed before the player was visible.
+            Utils.runOnMainThreadDelayed(NativeQueuePatch::publish, 0);
+        }
+    }
+
+    private static synchronized void resetPlayerSession() {
+        queue.clear();
+        try {
+            restoreNavigation();
+            if (response != null && owns(responsePanel(response))) {
+                setResponsePanel(response, originalPanel);
+                setResponseNavigation(response, originalNavigation);
+            }
+        } catch (Exception ex) {
+            // Host teardown may already have disposed its stores. Never refresh a closed UI.
+            Logger.printDebug(() -> "Local queue player cleanup unavailable", ex);
+        } finally {
+            response = null;
+            playbackDescriptor = null;
+            originalPanel = null;
+            originalNavigation = null;
+            controller = new WeakReference<>(null);
+            navigator = new WeakReference<>(null);
+            originalBackend = null;
+            originalStorage = null;
+            backendOwner = new WeakReference<>(null);
+            navigationRevision = -1;
+            navigationShuffled = false;
+            overlayTransports.clear();
+            queueHeaders.clear();
+            ownedRatingButtons.clear();
+        }
+    }
+
     public static synchronized void clear() {
         queue.clear();
         restoreNavigation();
@@ -573,7 +626,7 @@ public final class NativeQueuePatch {
     }
 
     private static synchronized boolean publish() {
-        if (publishing || response == null) return false;
+        if (publishing || response == null || isClosedPlayer(PlayerType.getCurrent().name())) return false;
         Object navigation = navigator.get();
         Object panelController = controller.get();
         if (navigation == null || panelController == null) {

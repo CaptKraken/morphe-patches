@@ -50,8 +50,8 @@ repository's branding rules do not require renaming an upstream feature submissi
 
 ## Validation
 
-- Patch test task: 52 passed, 5 unrelated Jam APK tests skipped; no failures.
-  All 49 native-queue tests ran and passed, including the schema-reader tests.
+- Patch test task: 54 passed, 5 unrelated Jam APK tests skipped; no failures.
+  All 51 native-queue tests ran and passed, including the schema-reader tests.
 - String-resource checker: 90,681 strings passed.
 - Actual patch/dependency application to stock YouTube 21.20.405 passed, including
   account-hook assertions, DEX verification, cross-DEX class hierarchy verification
@@ -111,3 +111,30 @@ flow through the generated message-info branch. The advertised target remains
 This is preparation for a contribution, not a guarantee of acceptance. Maintainers
 still decide feature scope and design, and the refactored build needs device
 regression testing before submission.
+
+## Queue session behavior fixes
+
+The playing entry is protected in the queue model, including delayed removal
+commands after selection changes. Its renderer omits the native swipe action,
+which makes the host swipe presenter disable that gesture. The custom row menu
+also omits Remove for that entry. Other rows remain editable and reorderable.
+
+The patch observes the existing shared player-type helper before its state update.
+A transition out of a regular player into NONE/HIDDEN/feed-preview state clears
+the local queue and modes, restores the native backend when available and releases
+cached watch/controller/navigation references. Cleanup does not publish to the
+closed UI. Minimize, PiP, pause, screen-off playback and closing only the Queue
+panel retain the queue. A stale closed-player response is not used to seed a new
+queue, and queued refresh work skips a closed player.
+
+Committed regular-video responses append and select a newly opened video when a
+queue is active. Existing entries are selected without moving or duplicating them;
+earlier entries and playback modes remain intact. Prefetched metadata does not
+append videos, late responses cannot start an empty queue, and explicit account
+playlists retain native ownership.
+
+Model tests cover removal protection across reordering/selection, native action
+availability, append/selection identity and empty-session handling. APK checks
+verify shared close-hook ordering, reference cleanup without UI reopening and
+committed-response versus metadata hooks. The updated behavior still needs device
+testing, particularly X/swipe/PiP dismissal and reopening from the feed.
