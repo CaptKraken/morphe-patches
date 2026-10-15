@@ -27,6 +27,7 @@ import app.morphe.extension.youtube.patches.LoadVideoPatch;
 import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.queue.model.LocalQueue;
 import app.morphe.extension.youtube.patches.queue.model.PlaylistPanel;
+import app.morphe.extension.youtube.patches.queue.model.QueueEditScope;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.settings.Settings;
 
@@ -40,6 +41,7 @@ public final class NativeQueuePatch {
     private static volatile WeakReference<Object> controller = new WeakReference<>(null);
     private static volatile WeakReference<Object> navigator = new WeakReference<>(null);
     private static volatile Object response;
+    private static volatile Object playbackDescriptor;
     private static Object originalPanel;
     private static Object originalNavigation;
     private static Object originalBackend;
@@ -56,7 +58,19 @@ public final class NativeQueuePatch {
     private static boolean active() { return !queue.isEmpty(); }
 
     private static Object renderer() {
-        Object panel = parsePanel(PlaylistPanel.encode(queue.snapshot(), str("morphe_local_queue_title")));
+        LocalQueue.Snapshot snapshot = queue.snapshot();
+        byte[] endpoint = null;
+        if (snapshot.current() != null) {
+            String video = snapshot.current().videoId();
+            Object descriptor = playbackDescriptor;
+            if (descriptor != null && video.equals(descriptorVideo(descriptor))) {
+                endpoint = descriptorEndpoint(descriptor);
+            }
+            if (endpoint == null && response != null && video.equals(responseVideo(response))) {
+                endpoint = responseEndpoint(response);
+            }
+        }
+        Object panel = parsePanel(PlaylistPanel.encode(snapshot, str("morphe_local_queue_title"), endpoint));
         if (panel == null) throw new IllegalStateException("Native playlist parser unavailable");
         ownedPanels.add(panel);
         return panel;
@@ -86,9 +100,9 @@ public final class NativeQueuePatch {
                 restoreNavigation();
                 return;
             }
-            if (!prepareNavigation(source)) return;
             setResponsePanel(watchResponse, renderer());
             setResponseNavigation(watchResponse, null);
+            prepareNavigation(source);
         } catch (Exception ex) {
             Logger.printException(() -> "Local queue watch response failed", ex);
         }
@@ -117,6 +131,17 @@ public final class NativeQueuePatch {
 
     public static boolean allowNavigator(boolean original, Object watchResponse) {
         return original || (watchResponse != null && owns(responsePanel(watchResponse)));
+    }
+
+    /** Injection point at the native playback dispatcher, scoped to this thread's queue edit. */
+    public static boolean preservePlayback() {
+        boolean preserve = QueueEditScope.active();
+        if (preserve) Logger.printDebug(() -> "Preserving playback during local queue update");
+        return preserve;
+    }
+
+    public static void onPlaybackDescriptor(Object descriptor) {
+        playbackDescriptor = descriptor;
     }
 
     public static boolean isLocalEntry(String entryId) {
@@ -161,7 +186,9 @@ public final class NativeQueuePatch {
         if (!owns(controllerPanel(source))) return false;
         if (!active()) return true;
         if (playlist != null && !playlist.isEmpty()) return false;
-        if (queue.select(video, entryId)) {
+        // The retained playing endpoint may contain YouTube's original setVideoId.
+        // Only our namespaced IDs refer to local entries; preserve selection otherwise.
+        if (queue.select(video, isLocalEntry(entryId) ? entryId : null)) {
             Utils.runOnMainThread(NativeQueuePatch::publish);
             return true;
         }
@@ -207,10 +234,13 @@ public final class NativeQueuePatch {
                         if (current != null && !current.isEmpty()) {
                             queue.add(current, current.equals(VideoInformation.getVideoId())
                                     ? VideoInformation.getVideoTitle() : current, false);
+                            // This target has no VideoInformation title hook. Resolve the seed too.
+                            QueueMetadata.fetch(current);
                         }
                     }
                     queue.add(video, video.equals(VideoInformation.getVideoId())
                             ? VideoInformation.getVideoTitle() : video, playNext);
+                    Logger.printInfo(() -> "Local queue add " + (playNext ? "next: " : "last: ") + video);
                     if (currentResponse == null) {
                         LoadVideoPatch.openVideoIntentWithInternalContext(video);
                     } else {
@@ -237,8 +267,10 @@ public final class NativeQueuePatch {
     private static void restoreNavigation() {
         Object navigation = backendOwner.get();
         if (navigation != null && originalBackend != null) {
-            restoreStorage(navigation, originalStorage);
-            restoreBackend(navigation, originalBackend);
+            QueueEditScope.run(() -> {
+                restoreStorage(navigation, originalStorage);
+                restoreBackend(navigation, originalBackend);
+            });
         }
         originalBackend = null;
         originalStorage = null;
@@ -249,10 +281,12 @@ public final class NativeQueuePatch {
         if (backendOwner.get() == navigation) return true;
         Object panelController = controller.get();
         if (panelController == null) return false;
-        restoreNavigation();
-        originalBackend = captureBackend(navigation);
-        originalStorage = installStorage(navigation, panelController);
-        backendOwner = new WeakReference<>(navigation);
+        QueueEditScope.run(() -> {
+            restoreNavigation();
+            originalBackend = captureBackend(navigation);
+            originalStorage = installStorage(navigation, panelController, response);
+            backendOwner = new WeakReference<>(navigation);
+        });
         return true;
     }
 
@@ -266,13 +300,16 @@ public final class NativeQueuePatch {
         }
         publishing = true;
         try {
-            if (active() && !prepareNavigation(navigation)) return false;
-            queue.updateTitle(VideoInformation.getVideoId(), VideoInformation.getVideoTitle());
-            setResponsePanel(response, active() ? renderer() : originalPanel);
-            setResponseNavigation(response, active() ? null : originalNavigation);
-            // Updating only the engagement panel leaves the native next/previous order stale.
-            refreshNavigator(navigation, response);
-            refreshPanel(panelController, response);
+            QueueEditScope.run(() -> {
+                queue.updateTitle(VideoInformation.getVideoId(), VideoInformation.getVideoTitle());
+                setResponsePanel(response, active() ? renderer() : originalPanel);
+                setResponseNavigation(response, active() ? null : originalNavigation);
+                if (active()) prepareNavigation(navigation);
+                // Updating only the engagement panel leaves next/previous stale. Native queue
+                // notifications must update controls here without stopping/reopening playback.
+                refreshNavigator(navigation, response);
+                refreshPanel(panelController, response);
+            });
             return true;
         } catch (Exception ex) {
             Logger.printException(() -> "Could not publish local queue", ex);

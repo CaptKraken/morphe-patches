@@ -14,6 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertContentEquals
 import kotlin.test.assertTrue
 
 class LocalQueueTest {
@@ -104,6 +105,28 @@ class LocalQueueTest {
             assertFalse(watch.containsKey(2), "Local endpoints must not carry playlistId")
             assertEquals(index.toLong(), watch.getValue(3).single())
             assertEquals(entries[index].id(), (watch.getValue(13).single() as ByteArray).decodeToString())
+        }
+    }
+
+    @Test fun `playing endpoint survives insertion and reordering without changing duplicate identities`() {
+        val queue = LocalQueue()
+        repeat(3) { queue.add("abcdefghijk", "Title", false) }
+        val current = queue.snapshot().entries()[1]
+        queue.select(current.videoId(), current.id())
+        queue.move(1, 2)
+        // Opaque bytes from the running native playback descriptor must survive unchanged.
+        val liveEndpoint = byteArrayOf(0x12, 0x03, 0x6f, 0x6c, 0x64)
+        val panel = fields(PlaylistPanel.encode(queue.snapshot(), "Queue", liveEndpoint))
+        val rows = panel.getValue(2).map {
+            fields(fields(it as ByteArray).getValue(51779701).single() as ByteArray)
+        }
+        assertContentEquals(liveEndpoint, rows[2].getValue(7).single() as ByteArray)
+        assertEquals(current.id(), (rows[2].getValue(26).single() as ByteArray).decodeToString())
+        for (index in 0..1) {
+            val watch = fields(fields(rows[index].getValue(7).single() as ByteArray)
+                .getValue(48687757).single() as ByteArray)
+            assertEquals(queue.snapshot().entries()[index].id(),
+                (watch.getValue(13).single() as ByteArray).decodeToString())
         }
     }
 

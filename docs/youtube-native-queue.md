@@ -4,6 +4,19 @@ Select **Native temporary queue (experimental)** when patching YouTube **21.20.4
 The patch is off by default and includes the existing Add to queue dependencies.
 This is a prototype awaiting Android device testing, not a verified release feature.
 
+Preview 2 addresses the first device report: adopting the queue stopped the playing
+video, left its row labeled with an ID, and was followed by a crash on resume. The
+native store switch explicitly invokes a forced stop/reopen, so this build suppresses
+that playback dispatcher only inside the current thread's local queue edits. It
+populates the detached store before attaching it and preserves the playing video's
+existing endpoint. Normal user navigation and autoplay run outside that scope.
+The reported crash itself was not present in the exported logs; the device retest
+must verify both uninterrupted playback and successful pause/resume.
+
+Import the replacement bundle as **Morphe Patches (queue preview 2)** and disable
+the preceding preview source. Select all desired YouTube patches from the new
+source alone. Starting from an untouched APK avoids applying shared setup twice.
+
 The queue lives in memory for the app process. It uses YouTube's native playlist
 panel, collapsed playlist bar, selected-row indicator, and playback navigator.
 Adding and rearranging videos does not create or edit a playlist in your account.
@@ -25,7 +38,8 @@ meaning. The old account-backed queue dialog and automatic queue synchronization
 are bypassed when this experimental patch is selected.
 
 Duplicates have distinct entry IDs and can be reordered or removed individually.
-Titles load asynchronously from YouTube's public oEmbed endpoint without account
+Titles for both the initial playing video and added videos load asynchronously
+from YouTube's public oEmbed endpoint without account
 credentials. A video ID remains as the label if metadata is unavailable. Thumbnail
 images use YouTube's image host.
 
@@ -61,7 +75,11 @@ usual YouTube/GmsCore patches in Morphe Manager.
 
 Automated JVM tests cover insertion order, stable identities for duplicates,
 selection through moves/removals, immutable snapshots, late metadata, and native
-panel/endpoint wire data. APK verification establishes that the patched DEX and
+panel/endpoint wire data, including preservation of the playing endpoint. Additional
+tests cover nested edit scopes, exception cleanup, and isolation from playback on
+other threads. APK regression checks verify that the playback-dispatch guard runs
+before native side effects and that a new store is populated before attachment.
+APK verification establishes that the patched DEX and
 resources can be built; it does not establish that YouTube renders the UI or plays
 the queue correctly on an Android device.
 

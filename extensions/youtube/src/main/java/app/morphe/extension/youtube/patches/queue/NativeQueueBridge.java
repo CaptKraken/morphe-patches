@@ -14,12 +14,15 @@ public final class NativeQueueBridge {
     public static String responseVideo(Object response) { return ""; }
     public static String responsePlaylist(Object response) { return ""; }
     public static Object responsePanel(Object response) { return null; }
+    public static byte[] responseEndpoint(Object response) { return null; }
+    public static String descriptorVideo(Object descriptor) { return ""; }
+    public static byte[] descriptorEndpoint(Object descriptor) { return null; }
     public static Object responseNavigation(Object response) { return null; }
     public static void setResponseNavigation(Object response, Object navigation) {}
     public static void setResponsePanel(Object response, Object panel) {}
     public static void refreshNavigator(Object navigator, Object response) {}
     public static Object captureBackend(Object navigator) { return null; }
-    public static Object installStorage(Object navigator, Object controller) { return null; }
+    public static Object installStorage(Object navigator, Object controller, Object response) { return null; }
     public static void restoreStorage(Object navigator, Object storage) {}
     public static void restoreBackend(Object navigator, Object backend) {}
     public static void refreshPanel(Object controller, Object response) {}

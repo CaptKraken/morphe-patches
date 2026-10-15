@@ -15,6 +15,11 @@ public final class PlaylistPanel {
     private PlaylistPanel() {}
 
     public static byte[] encode(LocalQueue.Snapshot queue, String title) {
+        return encode(queue, title, null);
+    }
+
+    /** Keep the actual playing video's endpoint, including its existing playback context. */
+    public static byte[] encode(LocalQueue.Snapshot queue, String title, byte[] playingEndpoint) {
         Wire panel = new Wire().text(1, title).number(3, queue.selected())
                 .text(5, "").number(6, queue.entries().size()).number(8, 1);
         for (int i = 0; i < queue.entries().size(); i++) {
@@ -27,7 +32,9 @@ public final class PlaylistPanel {
                     .number(2, 480).number(3, 360));
             Wire row = new Wire().message(1, new Wire().text(4, entry.title()))
                     .message(3, thumbnail).number(6, i == queue.selected() ? 1 : 0)
-                    .message(7, endpoint).text(10, entry.videoId()).text(26, entry.id())
+                    .data(7, i == queue.selected() && playingEndpoint != null
+                            ? playingEndpoint : endpoint.bytes())
+                    .text(10, entry.videoId()).text(26, entry.id())
                     .message(27, new Wire().number(1, 2)).number(36, 1);
             panel.message(2, new Wire().message(51779701, row));
         }

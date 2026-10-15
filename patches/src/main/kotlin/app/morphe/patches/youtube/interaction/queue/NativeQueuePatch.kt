@@ -76,7 +76,7 @@ val nativeQueuePatch = bytecodePatch(
             owner.methods.remove(target)
             owner.methods.add(ImmutableMethod(
                 BRIDGE, name, target.parameters, target.returnType, target.accessFlags,
-                target.annotations, target.hiddenApiRestrictions, MutableMethodImplementation(8)
+                target.annotations, target.hiddenApiRestrictions, MutableMethodImplementation(12)
             ).toMutable().apply { addInstructions(0, body) })
         }
 
@@ -125,6 +125,29 @@ val nativeQueuePatch = bytecodePatch(
         """)
 
         getter("responseVideo", "Lahwk;", "b", "Ljava/lang/String;")
+        val watchEndpoint = field("Lahwk;", "d", "Lazga;")
+        val descriptorEndpoint = field("Laopa;", "b", "Lazga;")
+        val descriptorVideo = method("Laopa;", "v", emptyList(), "Ljava/lang/String;")
+        bridge("descriptorVideo", """
+            check-cast p0, Laopa;
+            invoke-virtual {p0}, $descriptorVideo
+            move-result-object v0
+            return-object v0
+        """)
+        for ((name, owner, reference) in listOf(
+            Triple("responseEndpoint", "Lahwk;", watchEndpoint),
+            Triple("descriptorEndpoint", "Laopa;", descriptorEndpoint)
+        )) bridge(name, """
+            check-cast p0, $owner
+            iget-object v0, p0, $reference
+            if-eqz v0, :empty
+            invoke-virtual {v0}, Lazga;->toByteArray()[B
+            move-result-object v0
+            return-object v0
+            :empty
+            const/4 v0, 0x0
+            return-object v0
+        """)
         getter("responsePlaylist", "Lahwk;", "c", "Ljava/lang/String;")
         getter("responsePanel", "Lahwk;", "h", "Lbfzu;")
         setter("setResponsePanel", "Lahwk;", "h", "Lbfzu;")
@@ -164,11 +187,14 @@ val nativeQueuePatch = bytecodePatch(
         val playback = field("Lpqj;", "f", "Laobb;")
         val storageConstructor = method("Lnii;", "<init>", listOf("Laobb;", "Lbpv;", "Laooh;"), "V")
         val storageSwitch = method("Laojx;", "h", listOf("Laoju;"), "V")
+        val navigableConstructor = method("Laojl;", "<init>", listOf("Laoju;", "Lbpv;", "Laooh;"), "V")
+        val populate = method("Laojj;", "t", listOf("Lahwk;"), "V")
         // A new navigator alone still shares the manager's previous backing queue. Install
         // an isolated native playlist store so local rows load even when Premium is disabled.
         bridge("installStorage", """
             check-cast p0, Lniq;
             check-cast p1, Lpqj;
+            check-cast p2, Lahwk;
             iget-object v0, p0, $queueManager
             iget-object v1, v0, $storage
             iget-object v2, p1, $playback
@@ -176,6 +202,9 @@ val nativeQueuePatch = bytecodePatch(
             iget-object v4, v0, $queueConfig
             new-instance v5, Lnii;
             invoke-direct {v5, v2, v3, v4}, $storageConstructor
+            new-instance v2, Laojl;
+            invoke-direct {v2, v5, v3, v4}, $navigableConstructor
+            invoke-virtual {v2, p2}, $populate
             invoke-virtual {v0, v5}, $storageSwitch
             return-object v1
         """)
@@ -259,6 +288,19 @@ val nativeQueuePatch = bytecodePatch(
         """)
 
         navigatorRefresh.addInstructions(0, "invoke-static/range {p0 .. p1}, $EXTENSION->onResponse(Ljava/lang/Object;Ljava/lang/Object;)V")
+        method("Lpqj;", "g", listOf("Laopa;"), "V").addInstructions(0,
+            "invoke-static/range {p1 .. p1}, $EXTENSION->onPlaybackDescriptor(Ljava/lang/Object;)V")
+
+        // aojx.h always calls aokg.d(..., true), which stops the stream even if the
+        // selected video is unchanged. Block playback dispatch only during our own edits.
+        method("Laokg;", "d", listOf("Lisk;", "Laokf;", "Z"), "V").addInstructions(0, """
+            invoke-static {}, $EXTENSION->preservePlayback()Z
+            move-result v0
+            if-eqz v0, :original
+            return-void
+            :original
+            nop
+        """)
         val setModel = method("Lpqj;", "q", listOf("Lpqh;"), "V")
         setModel.addInstructions(0, "invoke-static/range {p0 .. p1}, $EXTENSION->onPanelModel(Ljava/lang/Object;Ljava/lang/Object;)V")
 

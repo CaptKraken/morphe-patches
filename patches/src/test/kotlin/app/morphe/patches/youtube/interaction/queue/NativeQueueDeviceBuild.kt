@@ -11,6 +11,9 @@ import app.morphe.patcher.Patcher
 import app.morphe.patcher.PatcherConfig
 import app.morphe.patcher.apk.ApkUtils.applyTo
 import app.morphe.patcher.dex.SdkDexVerifier
+import app.morphe.patcher.patch.bytecodePatch
+import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.nio.file.Files
@@ -23,8 +26,29 @@ fun main(arguments: Array<String>) {
     val sdk = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
         ?: error("Native queue validation requires an Android SDK for DEX verification")
     val workspace = Files.createTempDirectory("native-queue-validation").toFile()
+    val regression = bytecodePatch(name = "Verify local queue playback preservation") {
+        dependsOn(nativeQueuePatch)
+        execute {
+            val dispatch = mutableClassDefBy("Laokg;").methods.single { it.name == "d" }
+            val entry = dispatch.implementation!!.instructions.first() as ReferenceInstruction
+            check(entry.reference.toString().endsWith("NativeQueuePatch;->preservePlayback()Z")) {
+                "Native stop/reopen dispatcher is not guarded before any side effects"
+            }
+            val install = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
+                .methods.single { it.name == "installStorage" }
+            val calls = install.implementation!!.instructions.mapNotNull {
+                (it as? ReferenceInstruction)?.reference as? MethodReference
+            }.map { it.toString() }
+            val fill = calls.indexOf("Laojj;->t(Lahwk;)V")
+            val attach = calls.indexOf("Laojx;->h(Laoju;)V")
+            check(fill >= 0 && attach > fill) {
+                "An empty native store would become visible before local rows were loaded"
+            }
+            println("Verified dispatcher guard and populated-before-attach native queue")
+        }
+    }
     Patcher(PatcherConfig(input, workspace, verifier = SdkDexVerifier(File(sdk)))).use { patcher ->
-        patcher += setOf(nativeQueuePatch)
+        patcher += setOf(regression)
         runBlocking {
             patcher().collect { result ->
                 result.exception?.let { throw it }
