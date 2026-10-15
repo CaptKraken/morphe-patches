@@ -11,17 +11,25 @@ import java.util.LinkedHashMap;
 
 /** Native display strings, with independent precedence for each optional metadata field. */
 public final class QueueDetails {
-    public record Info(String channel, String views, String age,
+    public record Info(String channel, String views, String age, String duration,
                        QueueTitles.Source channelSource, QueueTitles.Source viewsSource,
-                       QueueTitles.Source ageSource) {
+                       QueueTitles.Source ageSource, QueueTitles.Source durationSource) {
         public static final Info EMPTY = of("", "", "", QueueTitles.Source.PLACEHOLDER);
 
         public static Info of(String channel, String views, String age, QueueTitles.Source source) {
-            return new Info(clean(channel), clean(views), clean(age), source, source, source);
+            return of(channel, views, age, "", source);
         }
 
-        public boolean complete() { return !channel.isEmpty() && !views.isEmpty() && !age.isEmpty(); }
-        public boolean empty() { return channel.isEmpty() && views.isEmpty() && age.isEmpty(); }
+        public static Info of(String channel, String views, String age, String duration, QueueTitles.Source source) {
+            return new Info(clean(channel), clean(views), clean(age), clean(duration), source, source, source, source);
+        }
+
+        public boolean complete() {
+            return !channel.isEmpty() && !views.isEmpty() && !age.isEmpty() && !duration.isEmpty();
+        }
+        public boolean empty() {
+            return channel.isEmpty() && views.isEmpty() && age.isEmpty() && duration.isEmpty();
+        }
         public String statistics() {
             return views.isEmpty() ? age : age.isEmpty() ? views : views + " • " + age;
         }
@@ -31,9 +39,11 @@ public final class QueueDetails {
             boolean c = accepts(channel, channelSource, incoming.channel, incoming.channelSource);
             boolean v = accepts(views, viewsSource, incoming.views, incoming.viewsSource);
             boolean a = accepts(age, ageSource, incoming.age, incoming.ageSource);
+            boolean d = accepts(duration, durationSource, incoming.duration, incoming.durationSource);
             return new Info(c ? incoming.channel : channel, v ? incoming.views : views,
-                    a ? incoming.age : age, c ? incoming.channelSource : channelSource,
-                    v ? incoming.viewsSource : viewsSource, a ? incoming.ageSource : ageSource);
+                    a ? incoming.age : age, d ? incoming.duration : duration,
+                    c ? incoming.channelSource : channelSource, v ? incoming.viewsSource : viewsSource,
+                    a ? incoming.ageSource : ageSource, d ? incoming.durationSource : durationSource);
         }
 
         private static boolean accepts(String old, QueueTitles.Source oldSource, String value,

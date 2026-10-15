@@ -59,6 +59,9 @@ public final class PlaylistPanel {
             if (!entry.details().channel().isEmpty()) {
                 row.message(2, new Wire().text(4, entry.details().channel()));
             }
+            if (!entry.details().duration().isEmpty()) {
+                row.message(4, new Wire().text(4, entry.details().duration()));
+            }
             if (!entry.details().statistics().isEmpty()) {
                 row.message(31, new Wire().text(4, entry.details().statistics()));
             }

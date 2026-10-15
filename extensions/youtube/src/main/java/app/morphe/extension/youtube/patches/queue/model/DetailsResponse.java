@@ -32,7 +32,7 @@ public final class DetailsResponse {
                             first(text(renderer.get("shortBylineText")), text(renderer.get("longBylineText")),
                                     text(renderer.get("ownerText"))),
                             first(text(renderer.get("shortViewCountText")), text(renderer.get("viewCountText"))),
-                            text(renderer.get("publishedTimeText")), QueueTitles.Source.NETWORK) : null;
+                            text(renderer.get("publishedTimeText")), duration(renderer), QueueTitles.Source.NETWORK) : null;
                 } else candidate = find(entry.getValue(), video, depth + 1);
                 if (candidate != null && !candidate.empty()) result = result == null ? candidate : result.merge(candidate);
             }
@@ -43,6 +43,19 @@ public final class DetailsResponse {
             }
         }
         return result;
+    }
+
+    private static String duration(Map<?, ?> renderer) {
+        String overlayDuration = "";
+        if (renderer.get("thumbnailOverlays") instanceof List<?> overlays) for (Object overlay : overlays) {
+            if (!(overlay instanceof Map<?, ?> fields)
+                    || !(fields.get("thumbnailOverlayTimeStatusRenderer") instanceof Map<?, ?> status)) continue;
+            // Live/upcoming status labels are not elapsed or total video lengths.
+            Object style = status.get("style");
+            if ("LIVE".equals(style) || "UPCOMING".equals(style)) return "";
+            if ("DEFAULT".equals(style)) overlayDuration = text(status.get("text"));
+        }
+        return first(text(renderer.get("lengthText")), overlayDuration);
     }
 
     private static String text(Object node) {

@@ -95,7 +95,11 @@ fun main(arguments: Array<String>) {
             }
             val rowReferences = mutableClassDefBy("Loxk;").methods.single { it.name == "gR" }
                 .implementation!!.instructions.filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
+            check(NativeQueueProto(classDefBy("Lbfzy;")).field(4).toString() == "Lbfzy;->h:Lbbbt;") {
+                "The encoded duration must match the host's playlist row schema"
+            }
             for (field in listOf("Lbfzy;->e:Lbbbt;", "Lbfzy;->y:Lbbbt;",
+                "Lbfzy;->h:Lbbbt;", "Loxk;->t:Lcom/google/android/libraries/youtube/rendering/ui/badge/DurationBadgeView;",
                 "Loxk;->q:Landroid/widget/TextView;", "Loxk;->b:Landroid/widget/TextView;")) {
                 check(field in rowReferences) { "Queue metadata must be bound by the native channel/video_info views" }
             }
