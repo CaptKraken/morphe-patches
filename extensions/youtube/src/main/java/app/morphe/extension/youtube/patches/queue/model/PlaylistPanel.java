@@ -45,8 +45,9 @@ public final class PlaylistPanel {
             // as ahmg; our owned-panel gesture hook removes that exact local entry.
             // No playlist-edit or network endpoint is included in this action.
             Wire remove = new Wire().number(1, 1) // Host STYLE_DEFAULT.
-                    .message(5, new Wire().text(4, removeLabel))
-                    .message(8, new Wire().number(1, 55)) // Host DELETE icon.
+                    // Omit visible text: the host's swipe presenter selects its compact
+                    // icon-only layout when buttonRenderer.text is absent.
+                    .message(8, new Wire().number(1, 426)) // Host VISIBILITY_OFF (crossed-out eye).
                     .message(9, new Wire().message(77297742, new Wire()))
                     .message(10, new Wire().text(2, removeLabel)); // Native accessibility label.
             row.message(22, new Wire().message(65153809, remove));

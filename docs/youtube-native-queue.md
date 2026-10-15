@@ -17,11 +17,16 @@ and intercepts both the base and alternate Next implementation, plus Previous.
 If local navigation is unavailable, a registered queue control consumes the click
 instead of falling back to a recommendation.
 
-Preview 6 supplies YouTube's own swipe-button renderer in each row's action data.
-The host creates, styles, binds, and recycles the button; the custom red button
-from preview 5 has been removed. Swipe toward the start edge (left in left-to-right
-layouts), then tap Remove. The native HideEnclosingCommand emits the tagged row
-to our existing local removal handler, without a server playlist-edit endpoint.
+Preview 7 supplies YouTube's icon-only swipe-button renderer in each row's action
+data, with the native crossed-out-eye icon (`VISIBILITY_OFF`). Omitting visible
+text selects the host's compact layout and spacing. Preview 6 used the same native
+presenter but incorrectly supplied a trash icon and visible text, producing the
+wide button seen in the device comparison. The host creates, styles, binds, and
+recycles the button. Swipe toward the start edge (left in left-to-right layouts),
+then tap the crossed-out-eye action. The native HideEnclosingCommand emits the
+tagged row to our existing local removal handler, without a server playlist-edit
+endpoint. The Watch Later full-swipe behavior is a different reference and is not
+enabled for this queue.
 Swipe removal still needs a device retest. Repeat and shuffle remain unimplemented.
 
 Queue edits populate the detached native store before attaching it, preserve the
@@ -30,7 +35,7 @@ on the editing thread. Normal user navigation and autoplay run outside that scop
 The original resume-crash stack was absent from exported logs; pause/resume still
 needs device testing.
 
-Import the replacement bundle as **Morphe Patches (queue preview 6)** and disable
+Import the replacement bundle as **Morphe Patches (queue preview 7)** and disable
 the preceding preview source. Select all desired YouTube patches from the new
 source alone. Starting from an untouched APK avoids applying shared setup twice.
 
@@ -45,8 +50,8 @@ There is no save-to-account operation in this prototype.
 2. In another video's menu, choose **Play next in queue** or **Play last in queue**.
    The currently playing video remains in the list and playback should continue.
 3. Expand the playlist bar in the watch screen to see the queue. Drag the native
-   handles to change its order. Swipe a row to reveal Remove, or use its three-dot
-   menu to remove that entry. Removing an upcoming entry keeps the current video
+   handles to change its order. Swipe a row to reveal the crossed-out-eye action,
+   or use its three-dot menu to remove that entry. Removing an upcoming entry keeps the current video
    playing; removing the current entry selects its successor (or the preceding
    entry if it was last). Removing the final entry clears the queue.
 4. Use **Clear temporary queue** in a video menu to return to normal playback.
@@ -108,9 +113,9 @@ original delegates, including the alternate Next implementation, and that owners
 is captured where the composite controller registers with the actual overlay.
 Navigation must commit a queue descriptor before loading it.
 Additional checks cover the native swipe presenter lifecycle, renderer/command tags,
-and the host's tagged-row removal event. Model regressions cover the localized
-native button payload and removing one duplicate by its captured entry identity
-after reordering while preserving the playing entry.
+and the host's tagged-row removal event. Model regressions cover the icon-only
+native hide action with a localized accessibility label and removing one duplicate
+by its captured entry identity after reordering while preserving the playing entry.
 APK verification establishes that the patched DEX and
 resources can be built; it does not establish that YouTube renders the UI or plays
 the queue correctly on an Android device.

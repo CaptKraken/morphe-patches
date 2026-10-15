@@ -145,7 +145,7 @@ class LocalQueueTest {
         }
     }
 
-    @Test fun `native swipe button carries a localized label and a client-only hide action`() {
+    @Test fun `native swipe hide action is icon-only with a localized accessibility label`() {
         val queue = LocalQueue()
         queue.add("abcdefghijk", "Title", false)
         val label = "Retirer de la file"
@@ -154,12 +154,11 @@ class LocalQueueTest {
             .getValue(51779701).single() as ByteArray)
         val button = fields(fields(row.getValue(22).single() as ByteArray)
             .getValue(65153809).single() as ByteArray)
-        assertEquals(label, (fields(button.getValue(5).single() as ByteArray)
-            .getValue(4).single() as ByteArray).decodeToString())
+        assertFalse(button.containsKey(5), "Visible text selects the host's wide swipe-button layout")
         assertEquals(1L, button.getValue(1).single())
         assertEquals(label, (fields(button.getValue(10).single() as ByteArray)
             .getValue(2).single() as ByteArray).decodeToString())
-        assertEquals(55L, fields(button.getValue(8).single() as ByteArray).getValue(1).single())
+        assertEquals(426L, fields(button.getValue(8).single() as ByteArray).getValue(1).single())
         val command = fields(button.getValue(9).single() as ByteArray)
         assertEquals(setOf(77297742), command.keys)
         assertTrue((command.getValue(77297742).single() as ByteArray).isEmpty())
