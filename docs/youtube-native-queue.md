@@ -17,9 +17,11 @@ and intercepts both the base and alternate Next implementation, plus Previous.
 If local navigation is unavailable, a registered queue control consumes the click
 instead of falling back to a recommendation.
 
-Preview 5 adds a local Remove button to each row's native swipe layout. Swipe toward
-the start edge (left in left-to-right layouts) to reveal it, then tap to remove
-that entry. Rebinding and recycling clear the action and reset the swipe position.
+Preview 6 supplies YouTube's own swipe-button renderer in each row's action data.
+The host creates, styles, binds, and recycles the button; the custom red button
+from preview 5 has been removed. Swipe toward the start edge (left in left-to-right
+layouts), then tap Remove. The native HideEnclosingCommand emits the tagged row
+to our existing local removal handler, without a server playlist-edit endpoint.
 Swipe removal still needs a device retest. Repeat and shuffle remain unimplemented.
 
 Queue edits populate the detached native store before attaching it, preserve the
@@ -28,7 +30,7 @@ on the editing thread. Normal user navigation and autoplay run outside that scop
 The original resume-crash stack was absent from exported logs; pause/resume still
 needs device testing.
 
-Import the replacement bundle as **Morphe Patches (queue preview 5)** and disable
+Import the replacement bundle as **Morphe Patches (queue preview 6)** and disable
 the preceding preview source. Select all desired YouTube patches from the new
 source alone. Starting from an untouched APK avoids applying shared setup twice.
 
@@ -105,9 +107,10 @@ They also check that manual overlay controls consult the local queue before thei
 original delegates, including the alternate Next implementation, and that ownership
 is captured where the composite controller registers with the actual overlay.
 Navigation must commit a queue descriptor before loading it.
-Additional checks cover native swipe setup scoped to local rows and cleanup before
-rebinding or recycling. A model regression covers removing one duplicate by its
-captured entry identity after reordering while preserving the playing entry.
+Additional checks cover the native swipe presenter lifecycle, renderer/command tags,
+and the host's tagged-row removal event. Model regressions cover the localized
+native button payload and removing one duplicate by its captured entry identity
+after reordering while preserving the playing entry.
 APK verification establishes that the patched DEX and
 resources can be built; it does not establish that YouTube renders the UI or plays
 the queue correctly on an Android device.

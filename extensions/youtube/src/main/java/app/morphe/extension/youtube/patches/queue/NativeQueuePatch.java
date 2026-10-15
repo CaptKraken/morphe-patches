@@ -11,10 +11,7 @@ import static app.morphe.extension.shared.StringRef.str;
 import static app.morphe.extension.youtube.patches.queue.NativeQueueBridge.*;
 
 import android.graphics.drawable.Drawable;
-import android.content.res.ColorStateList;
-import android.graphics.Color;
 import android.view.View;
-import android.widget.ImageButton;
 import android.widget.PopupMenu;
 
 import java.lang.ref.WeakReference;
@@ -75,7 +72,8 @@ public final class NativeQueuePatch {
                 endpoint = responseEndpoint(response);
             }
         }
-        Object panel = parsePanel(PlaylistPanel.encode(snapshot, str("morphe_local_queue_title"), endpoint));
+        Object panel = parsePanel(PlaylistPanel.encode(snapshot, str("morphe_local_queue_title"),
+                endpoint, str("morphe_local_queue_remove")));
         if (panel == null) throw new IllegalStateException("Native playlist parser unavailable");
         ownedPanels.add(panel);
         return panel;
@@ -227,23 +225,9 @@ public final class NativeQueuePatch {
         return owns(adapterPanel(adapter)) ? 0 : original;
     }
 
-    /** Native row gestures reveal a local removal action, with no account playlist command. */
-    public static void onRowBound(Object row, View root, String entryId) {
+    /** The existing three-dot affordance supplies local actions; swipe buttons are host-rendered. */
+    public static void onRowBound(View root, String entryId) {
         if (!isLocalEntry(entryId)) return;
-        ImageButton removeButton = new ImageButton(root.getContext());
-        removeButton.setImageResource(android.R.drawable.ic_menu_delete);
-        removeButton.setColorFilter(Color.WHITE);
-        removeButton.setBackgroundTintList(ColorStateList.valueOf(0xFFB3261E));
-        removeButton.setContentDescription(str("morphe_local_queue_remove"));
-        int padding = Math.round(24 * root.getResources().getDisplayMetrics().density);
-        removeButton.setMinimumWidth(padding * 3);
-        removeButton.setPadding(padding, padding / 2, padding, padding / 2);
-        removeButton.setOnClickListener(view -> {
-            clearLocalSwipe(row);
-            remove(entryId);
-        });
-        bindLocalSwipe(row, removeButton);
-
         int id = ResourceUtils.getIdentifier(ResourceType.ID, "three_dots_menu");
         View button = root.findViewById(id);
         if (button == null) return;

@@ -14,7 +14,7 @@ import app.morphe.patcher.dex.SdkDexVerifier
 import app.morphe.patcher.patch.bytecodePatch
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
-import com.android.tools.smali.dexlib2.iface.reference.FieldReference
+import com.android.tools.smali.dexlib2.iface.instruction.WideLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -96,31 +96,30 @@ fun main(arguments: Array<String>) {
             check(commit >= 0 && load > commit && manual.count { it == manual[load] } == 1) {
                 "Manual navigation must commit a queue descriptor before loading it once"
             }
-            val row = mutableClassDefBy("Loxk;")
-            for (name in listOf("gR", "oN")) {
-                val first = row.methods.single { it.name == name }
-                    .implementation!!.instructions.first() as ReferenceInstruction
-                check(first.reference.toString().endsWith(
-                    "NativeQueueBridge;->clearLocalSwipe(Ljava/lang/Object;)V")) {
-                    "Local swipe actions must be cleared before row $name can reuse the view"
+            for ((name, hostLifecycle) in listOf("gR" to "d", "oN" to "e")) {
+                val references = mutableClassDefBy("Loxk;").methods.single { it.name == name }
+                    .implementation!!.instructions.filterIsInstance<ReferenceInstruction>()
+                    .map { it.reference.toString() }
+                check(references.any { it.startsWith("Lolb;->$hostLifecycle(") }) {
+                    "Swipe buttons must retain YouTube's native presenter $name lifecycle"
                 }
             }
-            val bindSwipe = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
-                .methods.single { it.name == "bindLocalSwipe" }
+            for ((owner, name, literal) in listOf(
+                Triple("Lngw;", "a", 65153809L),
+                Triple("Lbbmu;", "<clinit>", 77297742L)
+            )) {
+                check(mutableClassDefBy(owner).methods.single { it.name == name }
+                    .implementation!!.instructions.any {
+                        (it as? WideLiteralInstruction)?.wideLiteral == literal
+                    }) { "Native swipe renderer or client-only hide-command tag changed" }
+            }
+            val hideCalls = mutableClassDefBy("Lidg;").methods.single { it.name == "b" }
                 .implementation!!.instructions.filterIsInstance<ReferenceInstruction>()
                 .map { it.reference.toString() }
-            val swipeFields = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
-                .methods.single { it.name == "bindLocalSwipe" }
-                .implementation!!.instructions.mapNotNull {
-                    ((it as? ReferenceInstruction)?.reference as? FieldReference)?.toString()
-                }
-            check(swipeFields.first() == "Loxk;->patch_isLocalQueueRow:Z") {
-                "Swipe configuration must be restricted to local queue rows"
+            check("Lahmg;-><init>(Ljava/lang/Object;)V" in hideCalls) {
+                "The native hide command must emit the tagged-row event intercepted by the queue"
             }
-            check(bindSwipe.any { it.startsWith("Ladfh;->r(") }) {
-                "Local removal actions must be installed through the native SwipeLayout helper"
-            }
-            println("Verified playback/navigation guards and native swipe action setup/cleanup")
+            println("Verified playback/navigation guards and native swipe presenter/client-only removal route")
         }
     }
     Patcher(PatcherConfig(input, workspace, verifier = SdkDexVerifier(File(sdk)))).use { patcher ->

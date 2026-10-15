@@ -478,41 +478,10 @@ val nativeQueuePatch = bytecodePatch(
         val rowView = field("Loxk;", "a", "Landroid/view/View;")
         val localRow = "Loxk;->patch_isLocalQueueRow:Z"
         mutableClassDefBy("Loxk;").fields.add(ImmutableField(
-            "Loxk;", "patch_isLocalQueueRow", "Z", AccessFlags.PUBLIC.value,
+            "Loxk;", "patch_isLocalQueueRow", "Z", AccessFlags.PRIVATE.value,
             null, null, null
         ).toMutable())
-        val swipeType = "Lcom/google/android/libraries/youtube/common/ui/swipelayout/SwipeLayout;"
-        val rowSwipe = field("Loxk;", "h", swipeType)
-        val swipeActions = method("Ladfh;", "r", listOf(swipeType, "Ljava/util/List;"), "V")
-        val resetSwipe = method(swipeType, "j", emptyList(), "V")
-        bridge("clearLocalSwipe", """
-            check-cast p0, Loxk;
-            iget-boolean v0, p0, $localRow
-            if-eqz v0, :done
-            const/4 v0, 0x0
-            iput-boolean v0, p0, $localRow
-            iget-object v0, p0, $rowSwipe
-            invoke-virtual {v0}, $resetSwipe
-            invoke-static {}, Ljava/util/Collections;->emptyList()Ljava/util/List;
-            move-result-object v1
-            invoke-static {v0, v1}, $swipeActions
-            :done
-            return-void
-        """)
-        bridge("bindLocalSwipe", """
-            check-cast p0, Loxk;
-            iget-boolean v0, p0, $localRow
-            if-eqz v0, :done
-            iget-object v0, p0, $rowSwipe
-            invoke-virtual {v0}, $resetSwipe
-            invoke-static {p1}, Ljava/util/Collections;->singletonList(Ljava/lang/Object;)Ljava/util/List;
-            move-result-object v1
-            invoke-static {v0, v1}, $swipeActions
-            :done
-            return-void
-        """)
         rowBind.addInstructions(0, """
-            invoke-static/range {p0 .. p0}, $BRIDGE->clearLocalSwipe(Ljava/lang/Object;)V
             move-object/from16 v0, p2
             check-cast v0, Loxj;
             iget-object v0, v0, $wrapper
@@ -528,11 +497,8 @@ val nativeQueuePatch = bytecodePatch(
             move-object/from16 v0, p0
             iget-object v1, v0, $rowEntry
             iget-object v0, v0, $rowView
-            move-object/from16 v2, p0
-            invoke-static {v2, v0, v1}, $EXTENSION->onRowBound(Ljava/lang/Object;Landroid/view/View;Ljava/lang/String;)V
+            invoke-static {v0, v1}, $EXTENSION->onRowBound(Landroid/view/View;Ljava/lang/String;)V
         """)
-        method("Loxk;", "oN", listOf("Laqns;"), "V").addInstructions(0,
-            "invoke-static/range {p0 .. p0}, $BRIDGE->clearLocalSwipe(Ljava/lang/Object;)V")
         method("Loxk;", "s", emptyList(), "Z").addInstructions(0, """
             iget-boolean v0, p0, $localRow
             if-eqz v0, :original

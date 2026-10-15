@@ -145,6 +145,26 @@ class LocalQueueTest {
         }
     }
 
+    @Test fun `native swipe button carries a localized label and a client-only hide action`() {
+        val queue = LocalQueue()
+        queue.add("abcdefghijk", "Title", false)
+        val label = "Retirer de la file"
+        val panel = fields(PlaylistPanel.encode(queue.snapshot(), "Queue", null, label))
+        val row = fields(fields(panel.getValue(2).single() as ByteArray)
+            .getValue(51779701).single() as ByteArray)
+        val button = fields(fields(row.getValue(22).single() as ByteArray)
+            .getValue(65153809).single() as ByteArray)
+        assertEquals(label, (fields(button.getValue(5).single() as ByteArray)
+            .getValue(4).single() as ByteArray).decodeToString())
+        assertEquals(1L, button.getValue(1).single())
+        assertEquals(label, (fields(button.getValue(10).single() as ByteArray)
+            .getValue(2).single() as ByteArray).decodeToString())
+        assertEquals(55L, fields(button.getValue(8).single() as ByteArray).getValue(1).single())
+        val command = fields(button.getValue(9).single() as ByteArray)
+        assertEquals(setOf(77297742), command.keys)
+        assertTrue((command.getValue(77297742).single() as ByteArray).isEmpty())
+    }
+
     private fun fields(bytes: ByteArray): Map<Int, List<Any>> {
         val input = CodedInputStream.newInstance(bytes)
         val fields = mutableMapOf<Int, MutableList<Any>>()

@@ -20,6 +20,11 @@ public final class PlaylistPanel {
 
     /** Keep the actual playing video's endpoint, including its existing playback context. */
     public static byte[] encode(LocalQueue.Snapshot queue, String title, byte[] playingEndpoint) {
+        return encode(queue, title, playingEndpoint, "Remove from queue");
+    }
+
+    public static byte[] encode(LocalQueue.Snapshot queue, String title, byte[] playingEndpoint,
+                                String removeLabel) {
         Wire panel = new Wire().text(1, title).number(3, queue.selected())
                 .text(5, "").number(6, queue.entries().size()).number(8, 1);
         for (int i = 0; i < queue.entries().size(); i++) {
@@ -36,6 +41,15 @@ public final class PlaylistPanel {
                             ? playingEndpoint : endpoint.bytes())
                     .text(10, entry.videoId()).text(26, entry.id())
                     .message(27, new Wire().number(1, 2)).number(36, 1);
+            // Native swipe-button renderer. HideEnclosingCommand emits the tagged bfzy row
+            // as ahmg; our owned-panel gesture hook removes that exact local entry.
+            // No playlist-edit or network endpoint is included in this action.
+            Wire remove = new Wire().number(1, 1) // Host STYLE_DEFAULT.
+                    .message(5, new Wire().text(4, removeLabel))
+                    .message(8, new Wire().number(1, 55)) // Host DELETE icon.
+                    .message(9, new Wire().message(77297742, new Wire()))
+                    .message(10, new Wire().text(2, removeLabel)); // Native accessibility label.
+            row.message(22, new Wire().message(65153809, remove));
             panel.message(2, new Wire().message(51779701, row));
         }
         return panel.bytes();
