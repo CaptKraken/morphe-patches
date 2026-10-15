@@ -1,23 +1,23 @@
-# Native YouTube queue preview 11
+# Native YouTube queue preview 12
 
-Download [youtube-native-queue-21.20.405-preview11.mpp](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-queue-preview/youtube-native-queue-21.20.405-preview11.mpp).
+Download [youtube-native-queue-21.20.405-preview12.mpp](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-queue-preview/youtube-native-queue-21.20.405-preview12.mpp).
 
-This update enables the selected queue row's native thumbs-up and thumbs-down buttons. Tap a selected thumb again to remove that rating, or switch directly to the other thumb. These actions change the signed-in account's rating for that video.
+This update adds the native three-dot button at the right of the repeat/shuffle row. Its native bottom sheet contains only **Save playlist**, with YouTube's bookmark icon, and no Share action.
 
-- The queue supplies native toggle-button renderers and video-specific LikeCommand endpoints, including undo endpoints. YouTube creates and handles the buttons itself.
-- The native command retains the account check, sign-in flow, authenticated requests, error handling and rating rollback. No custom HTTP voting or credentials are introduced.
-- Native account entity subscriptions and legacy rating events keep the presenters updated. A bounded cache of observed native ratings initializes refreshed rows. Native presenter recycling releases its subscriptions.
-- Queue edits still do not create or edit an account playlist. Native rating targets contain only the video's ID.
+Choosing Save opens YouTube's native creation dialog. Enter a playlist name, choose privacy, and confirm to create a new account playlist containing every queue video in visible order, including the playing and preceding entries. Shuffle does not change the saved order. Opening or cancelling the dialog does not create a playlist.
 
-The preview 10 channel and video-statistics update was confirmed on the device. This rating update needs a device retest: like, unlike, dislike, undo dislike, switching thumbs, synchronization with the main player, initial ratings, sign-in/account changes and failed-request rollback. No real account rating was submitted during cloud validation.
+- The native creation command receives an immutable snapshot of explicit video IDs. It does not require or invent a source playlist ID.
+- YouTube retains its normal sign-in, name validation, privacy controls, authenticated creation request and success/error handling.
+- Saving creates a separate copy. The queue keeps its local identity; later edits or clearing do not update/delete the saved playlist. Saving again creates another playlist.
+- The preview 11 rating actions were confirmed working on the device. This new save flow needs a device retest, including checking Library contents/order, cancellation, sign-in and request failures.
 
-Disable the preceding preview source, import this file in Morphe Manager, and use **Morphe Patches (queue preview 11)** alone for YouTube. Select **Native temporary queue (experimental)** alongside the other desired patches from that same source. Patch the untouched YouTube 21.20.405 APK. Keep **Override feed flyout queue button** enabled in the app's Morphe queue settings.
+Disable the preceding preview source, import this file in Morphe Manager, and use **Morphe Patches (queue preview 12)** alone for YouTube. Select **Native temporary queue (experimental)** alongside the other desired patches from that same source. Patch the untouched YouTube 21.20.405 APK. Keep **Override feed flyout queue button** enabled in the app's Morphe queue settings.
 
-Built from source commit `3f625b7552ea39228f1a24645578fa2e393b5f47` on `feature/youtube-native-queue`.
-Thirty-eight queue tests and real-APK DEX/resource verification passed. Rating tests cover per-video default/undo command targets after reordering, native icons and toggle states, localized accessibility, bounded caching, and preservation of playback endpoints. APK checks verify native dispatch, sign-in, entity/event lifecycle and rollback paths. These checks establish build compatibility, not live account behavior on the device.
+Built from source commit `c65bd9f99b35a10343ced86d9475e43d09ec5010` on `feature/youtube-native-queue`.
+Forty-three queue tests and real-APK DEX/resource verification passed. Save tests cover the single menu item, localized label/bookmark, exact ordered video IDs, duplicates/removals/reordering, pending-dialog snapshots, empty/single-item queues and preservation of playback/local state. APK checks require the existing native header listener and bottom sheet, creation command, authentication, name/privacy dialog and confirmation-to-request path. An optional JVM execution probe could not initialize the APK's optimized abstract protobuf classes and is not counted as passing. No account playlist was created during cloud validation. The actual dialog/save requires phone testing.
 
-Instructions: https://github.com/CaptKraken/morphe-patches/blob/3f625b7552ea39228f1a24645578fa2e393b5f47/docs/youtube-native-queue.md
+Instructions: https://github.com/CaptKraken/morphe-patches/blob/c65bd9f99b35a10343ced86d9475e43d09ec5010/docs/youtube-native-queue.md
 
-SHA256: `9b15d079c696f7e81d67edbc039eacafef094625d0c5f3db66d38559be17aeab`
+SHA256: `80ac0aa03d8eaedb6cb7f2a372dabcf5c2393f25cff5c1b4d0c0f9fae56afffc`
 
 Older preview files are superseded. This branch only distributes experimental builds; source development is on `feature/youtube-native-queue`.
