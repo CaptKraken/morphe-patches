@@ -12,7 +12,11 @@ public final class NativeQueueBridge {
     private NativeQueueBridge() {}
     public static String playerVideo(Object playerResponse) { return ""; }
     public static String playerTitle(Object playerResponse) { return ""; }
+    public static String playerChannel(Object playerResponse) { return ""; }
     public static String typedMenuTitle(Object renderer) { return ""; }
+    public static String typedMenuChannel(Object renderer) { return ""; }
+    public static String typedMenuViews(Object renderer) { return ""; }
+    public static String typedMenuAge(Object renderer) { return ""; }
     public static Object parsePanel(byte[] bytes) { return null; }
     public static String responseVideo(Object response) { return ""; }
     public static String responsePlaylist(Object response) { return ""; }

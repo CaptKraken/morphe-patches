@@ -12,7 +12,8 @@ import java.util.List;
 
 /** Session-only queue with unique videos and stable identities across edits. */
 public final class LocalQueue {
-    public record Entry(String id, String videoId, String title, QueueTitles.Source titleSource) {}
+    public record Entry(String id, String videoId, String title, QueueTitles.Source titleSource,
+                        QueueDetails.Info details) {}
     public record Snapshot(List<Entry> entries, int selected, int repeatMode,
                            boolean shuffled, long orderRevision) {
         public Entry current() {
@@ -47,7 +48,7 @@ public final class LocalQueue {
         boolean missing = title == null || title.text().isBlank() || title.text().equals(videoId);
         Entry entry = new Entry("morphe-queue-" + ++nextId, videoId,
                 missing ? videoId : title.text(),
-                missing ? QueueTitles.Source.PLACEHOLDER : title.source());
+                missing ? QueueTitles.Source.PLACEHOLDER : title.source(), QueueDetails.Info.EMPTY);
         entries.add(playNext && selected >= 0 ? selected + 1 : entries.size(), entry);
         if (selected < 0) selected = 0;
         orderRevision++;
@@ -117,11 +118,28 @@ public final class LocalQueue {
             if (entry.videoId().equals(videoId)
                     && entry.titleSource().ordinal() <= title.source().ordinal()
                     && (!entry.title().equals(title.text()) || entry.titleSource() != title.source())) {
-                entries.set(i, new Entry(entry.id(), videoId, title.text(), title.source()));
+                entries.set(i, new Entry(entry.id(), videoId, title.text(), title.source(), entry.details()));
                 changed = true;
             }
         }
         return changed;
+    }
+
+    public synchronized boolean updateDetails(String entryId, String video, QueueDetails.Info details) {
+        Entry entry = find(video);
+        return entry != null && entry.id().equals(entryId) && updateDetails(video, details);
+    }
+
+    public synchronized boolean updateDetails(String video, QueueDetails.Info details) {
+        for (int i = 0; i < entries.size(); i++) {
+            Entry entry = entries.get(i);
+            if (!entry.videoId().equals(video)) continue;
+            QueueDetails.Info merged = entry.details().merge(details);
+            if (merged.equals(entry.details())) return false;
+            entries.set(i, new Entry(entry.id(), video, entry.title(), entry.titleSource(), merged));
+            return true;
+        }
+        return false;
     }
 
     public synchronized boolean move(int from, int to) {

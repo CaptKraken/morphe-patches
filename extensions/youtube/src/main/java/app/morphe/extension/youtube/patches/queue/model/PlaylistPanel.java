@@ -41,6 +41,13 @@ public final class PlaylistPanel {
                             ? playingEndpoint : endpoint.bytes())
                     .text(10, entry.videoId()).text(26, entry.id())
                     .message(27, new Wire().number(1, 2)).number(36, 1);
+            // Existing channel and video_info TextViews in YouTube's compact playlist row.
+            if (!entry.details().channel().isEmpty()) {
+                row.message(2, new Wire().text(4, entry.details().channel()));
+            }
+            if (!entry.details().statistics().isEmpty()) {
+                row.message(31, new Wire().text(4, entry.details().statistics()));
+            }
             // Native swipe-button renderer. HideEnclosingCommand emits the tagged bfzy row
             // as ahmg; our owned-panel gesture hook removes that exact local entry.
             // No playlist-edit or network endpoint is included in this action.

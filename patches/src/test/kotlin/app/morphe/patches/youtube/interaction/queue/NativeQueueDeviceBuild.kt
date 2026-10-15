@@ -38,7 +38,7 @@ fun main(arguments: Array<String>) {
                 "This target needs paired native player title/ID capture despite the generic title-hook version gate"
             }
             val bridge = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
-            for ((name, native) in listOf("playerVideo" to "M", "playerTitle" to "L")) {
+            for ((name, native) in listOf("playerVideo" to "M", "playerTitle" to "L", "playerChannel" to "G")) {
                 check(bridge.methods.single { it.name == name }.implementation!!.instructions
                     .filterIsInstance<ReferenceInstruction>().any {
                         it.reference.toString() == "Lahzi;->$native()Ljava/lang/String;"
@@ -59,6 +59,18 @@ fun main(arguments: Array<String>) {
             val titleCalls = bridge.methods.single { it.name == "typedMenuTitle" }.implementation!!.instructions
                 .filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
             check("Laznl;->f:Lbbbt;" in titleCalls && "Lapkp;->b(Lbbbt;)Landroid/text/Spanned;" in titleCalls)
+            for ((name, member) in listOf("typedMenuChannel" to "g", "typedMenuViews" to "i", "typedMenuAge" to "j")) {
+                check(bridge.methods.single { it.name == name }.implementation!!.instructions
+                    .filterIsInstance<ReferenceInstruction>().any {
+                        it.reference.toString() == "Laznl;->$member:Lbbbt;"
+                    }) { "History metadata must use its native structured display fields" }
+            }
+            val rowReferences = mutableClassDefBy("Loxk;").methods.single { it.name == "gR" }
+                .implementation!!.instructions.filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
+            for (field in listOf("Lbfzy;->e:Lbbbt;", "Lbfzy;->y:Lbbbt;",
+                "Loxk;->q:Landroid/widget/TextView;", "Loxk;->b:Landroid/widget/TextView;")) {
+                check(field in rowReferences) { "Queue metadata must be bound by the native channel/video_info views" }
+            }
             val dispatch = mutableClassDefBy("Laokg;").methods.single { it.name == "d" }
             val entry = dispatch.implementation!!.instructions.first() as ReferenceInstruction
             check(entry.reference.toString().endsWith("NativeQueuePatch;->preservePlayback()Z")) {

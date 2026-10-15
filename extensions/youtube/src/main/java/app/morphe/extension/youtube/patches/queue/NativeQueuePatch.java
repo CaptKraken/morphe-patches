@@ -29,6 +29,7 @@ import app.morphe.extension.youtube.patches.LoadVideoPatch;
 import app.morphe.extension.youtube.patches.queue.model.LocalQueue;
 import app.morphe.extension.youtube.patches.queue.model.CardTitle;
 import app.morphe.extension.youtube.patches.queue.model.QueueTitles;
+import app.morphe.extension.youtube.patches.queue.model.QueueDetails;
 import app.morphe.extension.youtube.patches.queue.model.PlaylistPanel;
 import app.morphe.extension.youtube.patches.queue.model.QueueEditScope;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
@@ -41,6 +42,7 @@ import app.morphe.extension.youtube.settings.Settings;
 public final class NativeQueuePatch {
     private static final LocalQueue queue = new LocalQueue();
     private static final QueueTitles titles = new QueueTitles(200);
+    private static final QueueDetails details = new QueueDetails();
     // Old panels can still emit events after a refresh. Consume their edit events as well.
     private static final Set<Object> ownedPanels = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
@@ -87,7 +89,10 @@ public final class NativeQueuePatch {
     public static void onPlayerMetadata(Object playerResponse) {
         try {
             // Both values come from the same response, including during transitions/prefetch.
-            rememberTitle(playerVideo(playerResponse), playerTitle(playerResponse), QueueTitles.Source.PLAYER);
+            String video = playerVideo(playerResponse);
+            rememberTitle(video, playerTitle(playerResponse), QueueTitles.Source.PLAYER);
+            rememberDetails(video, QueueDetails.Info.of(playerChannel(playerResponse), "", "",
+                    QueueTitles.Source.PLAYER));
         } catch (Exception ex) {
             Logger.printDebug(() -> "Local queue player title unavailable", ex);
         }
@@ -96,9 +101,21 @@ public final class NativeQueuePatch {
     public static void onTypedMenu(String video, Object renderer) {
         try {
             rememberTitle(video, typedMenuTitle(renderer), QueueTitles.Source.CARD);
+            rememberDetails(video, QueueDetails.Info.of(typedMenuChannel(renderer), typedMenuViews(renderer),
+                    typedMenuAge(renderer), QueueTitles.Source.CARD));
         } catch (Exception ex) {
             Logger.printDebug(() -> "Local queue typed menu title unavailable", ex);
         }
+    }
+
+    private static void rememberDetails(String video, QueueDetails.Info info) {
+        if (video == null || !video.matches("[A-Za-z0-9_-]{11}") || info.empty()) return;
+        QueueDetails.Info known = details.put(video, info);
+        Utils.runOnMainThreadDelayed(() -> {
+            synchronized (NativeQueuePatch.class) {
+                if (queue.updateDetails(video, known)) publish();
+            }
+        }, 0);
     }
 
     public static void onCardMenu(String video, byte[] bytes, String label) {
@@ -428,6 +445,7 @@ public final class NativeQueuePatch {
                         String current = responseVideo(currentResponse);
                         if (current != null && !current.isEmpty()) {
                             queue.add(current, titleFor(current), false);
+                            queue.updateDetails(current, details.get(current));
                             QueueMetadata.fetch(current);
                         }
                     }
@@ -440,6 +458,7 @@ public final class NativeQueuePatch {
                         Utils.showToastShort(str("morphe_local_queue_already_added"));
                         return;
                     }
+                    queue.updateDetails(video, details.get(video));
                     // Starting with the playing video seeds that one entry above. Publish it
                     // once even when the requested video was the same as the seed.
                     Logger.printInfo(() -> "Local queue add " + (playNext ? "next: " : "last: ") + video);
@@ -539,6 +558,22 @@ public final class NativeQueuePatch {
         LocalQueue.Entry entry = queue.find(video);
         return entry != null && entry.titleSource().ordinal() < QueueTitles.Source.PLAYER.ordinal()
                 ? entry : null;
+    }
+
+    static synchronized LocalQueue.Entry detailsEntry(String video) {
+        LocalQueue.Entry entry = queue.find(video);
+        return entry != null && !entry.details().complete() ? entry : null;
+    }
+
+    static void updateDetails(String entryId, String video, QueueDetails.Info info) {
+        Utils.runOnMainThread(() -> {
+            synchronized (NativeQueuePatch.class) {
+                LocalQueue.Entry entry = queue.find(video);
+                if (entry == null || !entry.id().equals(entryId)) return;
+                QueueDetails.Info known = details.put(video, info);
+                if (queue.updateDetails(entryId, video, known)) publish();
+            }
+        });
     }
 
     static void updateMetadata(String entryId, String video, String title) {

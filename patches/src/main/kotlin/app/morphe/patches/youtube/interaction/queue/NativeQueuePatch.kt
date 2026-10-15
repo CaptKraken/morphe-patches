@@ -101,7 +101,7 @@ val nativeQueuePatch = bytecodePatch(
 
         // The generic VideoInformation title hook is absent on this target. Capture the
         // title and ID from the same native response used for channel information instead.
-        for ((name, nativeName) in listOf("playerVideo" to "M", "playerTitle" to "L")) {
+        for ((name, nativeName) in listOf("playerVideo" to "M", "playerTitle" to "L", "playerChannel" to "G")) {
             val reference = method("Lahzi;", nativeName, emptyList(), "Ljava/lang/String;")
             bridge(name, """
                 check-cast p0, Lahzi;
@@ -119,13 +119,15 @@ val nativeQueuePatch = bytecodePatch(
 
         // The legacy History renderer carries structured title text; no label heuristics
         // or network request is needed for this menu path.
-        val historyTitle = field("Laznl;", "f", "Lbbbt;")
         val formattedText = method("Lapkp;", "b", listOf("Lbbbt;"), "Landroid/text/Spanned;")
-        bridge("typedMenuTitle", """
+        for ((name, member) in listOf("typedMenuTitle" to "f", "typedMenuChannel" to "g",
+            "typedMenuViews" to "i", "typedMenuAge" to "j")) {
+            val reference = field("Laznl;", member, "Lbbbt;")
+            bridge(name, """
             instance-of v0, p0, Laznl;
             if-eqz v0, :empty
             check-cast p0, Laznl;
-            iget-object v0, p0, $historyTitle
+            iget-object v0, p0, $reference
             if-eqz v0, :empty
             invoke-static {v0}, $formattedText
             move-result-object v0
@@ -136,7 +138,8 @@ val nativeQueuePatch = bytecodePatch(
             :empty
             const-string v0, ""
             return-object v0
-        """)
+            """)
+        }
 
         // Decode using the host runtime and its extension registry. The protected parser is
         // called from a subclass, rather than relying on reflection or illegal DEX access.

@@ -24,6 +24,7 @@ final class QueueMetadata {
     private static final Set<String> pending = ConcurrentHashMap.newKeySet();
 
     static void fetch(String video) {
+        QueueDetailsRequest.fetch(video);
         LocalQueue.Entry entry = NativeQueuePatch.metadataEntry(video);
         if (entry == null || !pending.add(entry.id())) return;
         attempt(video, entry.id(), 0);

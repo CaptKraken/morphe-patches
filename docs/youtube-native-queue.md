@@ -53,9 +53,17 @@ needs device testing.
 Preview 9 captures native titles instead of relying on a metadata request for
 every entry. Menu actions retain an immutable video ID/title pair, and the playing
 video is seeded from its native player response. Captured titles take priority over
-network responses. The native-title paths still require a device retest.
+network responses. The preview 9 device retest confirmed native title capture.
 
-Import the replacement bundle as **Morphe Patches (queue preview 9)** and disable
+Preview 10 adds the channel name and a second metadata line containing YouTube's
+formatted view count and time since upload, using the native playlist row fields.
+History metadata and the native player channel are captured directly. Missing
+fields load asynchronously from the existing unauthenticated localized video-ID
+lookup, accepting only a video renderer whose ID exactly matches the queue entry.
+The row keeps YouTube's fonts, colors, spacing and responsive metadata visibility.
+This additional metadata still needs a device retest.
+
+Import the replacement bundle as **Morphe Patches (queue preview 10)** and disable
 the preceding preview source. Select all desired YouTube patches from the new
 source alone. Starting from an untouched APK avoids applying shared setup twice.
 
@@ -109,6 +117,16 @@ results cannot overwrite native card or player titles. Title updates retain entr
 identity, selection, repeat state and the shuffle mapping. A video ID remains as
 the label if neither source provides a title. Thumbnail images use YouTube's image
 host.
+
+Channel, views and upload-age strings have independent source precedence: a
+fallback can fill missing fields without replacing a native value. Existing
+localized strings (including live-viewer labels) are preserved; the patch does not
+convert view counts or guess dates. Missing fields remain blank. The lookup uses
+the same mobile-web client as original-title support and sends only the video ID
+and locale, without account authentication. Transient errors retry at most twice;
+a valid response without the video is not retried. Late responses for removed
+entries are discarded before updating the cache or row. No account playlist is
+created or edited by this lookup.
 
 Starting the queue while already playing an account playlist is currently rejected
 with a toast. Shorts, Cast/TV queues, persistence across process death, and saving
@@ -164,12 +182,23 @@ precedence, removed-entry responses, and transient versus permanent retry limits
 APK checks require the paired player-response hook on 21.20.405, the menu hooks
 surviving extension shrinking, and the native History renderer matching the same
 video-ID interface.
+Additional metadata regressions cover exact-ID renderer selection, localized text,
+live/missing fields, per-field precedence, immutable snapshots, stale-entry
+responses and the native channel/video-info protobuf fields (2 and 31). APK checks
+require the native History metadata fields and the existing row TextViews to
+remain bound by YouTube's renderer.
 APK verification establishes that the patched DEX and
 resources can be built; it does not establish that YouTube renders the UI or plays
 the queue correctly on an Android device.
 
 ## Device checks still required
 
+- Add videos from several channels and verify the channel line and
+  `views • upload age` line match YouTube's source cards. Allow a moment for missing
+  metadata to load. Include History, the initial playing entry, localized text,
+  live videos and unavailable/unlisted items. Unknown fields should stay blank.
+  Remove/re-add while details load; the old response must be ignored. Retest
+  reorder, shuffle and repeat after metadata appears.
 - Add videos from Home, search, related videos, subscriptions and History. Check
   full titles (including Khmer and long titles) and the initial playing entry.
   Open different menus quickly; each action must retain the correct ID/title.
