@@ -18,23 +18,29 @@ import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.ArrayList;
+import java.util.List;
 
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.Utils;
 import app.morphe.extension.shared.ResourceType;
 import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.youtube.patches.LoadVideoPatch;
-import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.queue.model.LocalQueue;
+import app.morphe.extension.youtube.patches.queue.model.CardTitle;
+import app.morphe.extension.youtube.patches.queue.model.QueueTitles;
 import app.morphe.extension.youtube.patches.queue.model.PlaylistPanel;
 import app.morphe.extension.youtube.patches.queue.model.QueueEditScope;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
+import app.morphe.extension.youtube.patches.utils.ProtoNode;
+import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
 import app.morphe.extension.youtube.settings.Settings;
 
 /** Experimental session queue, rendered and navigated by YouTube's playlist implementation. */
 @SuppressWarnings("unused")
 public final class NativeQueuePatch {
     private static final LocalQueue queue = new LocalQueue();
+    private static final QueueTitles titles = new QueueTitles(200);
     // Old panels can still emit events after a refresh. Consume their edit events as well.
     private static final Set<Object> ownedPanels = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
@@ -62,6 +68,59 @@ public final class NativeQueuePatch {
     }
 
     private static boolean active() { return !queue.isEmpty(); }
+
+    public static QueueTitles.Title titleFor(String video) { return titles.get(video); }
+
+    private static void rememberTitle(String video, String text, QueueTitles.Source source) {
+        String clean = CardTitle.clean(text);
+        if (video == null || !video.matches("[A-Za-z0-9_-]{11}") || clean.isEmpty()) return;
+        QueueTitles.Title title = titles.put(video,
+                RestoreOriginalTitlesPatch.getTitle(video, clean), source);
+        if (title == null) return;
+        Utils.runOnMainThreadDelayed(() -> {
+            synchronized (NativeQueuePatch.class) {
+                if (queue.updateTitle(video, title)) publish();
+            }
+        }, 0);
+    }
+
+    public static void onPlayerMetadata(Object playerResponse) {
+        try {
+            // Both values come from the same response, including during transitions/prefetch.
+            rememberTitle(playerVideo(playerResponse), playerTitle(playerResponse), QueueTitles.Source.PLAYER);
+        } catch (Exception ex) {
+            Logger.printDebug(() -> "Local queue player title unavailable", ex);
+        }
+    }
+
+    public static void onTypedMenu(String video, Object renderer) {
+        try {
+            rememberTitle(video, typedMenuTitle(renderer), QueueTitles.Source.CARD);
+        } catch (Exception ex) {
+            Logger.printDebug(() -> "Local queue typed menu title unavailable", ex);
+        }
+    }
+
+    public static void onCardMenu(String video, byte[] bytes, String label) {
+        try {
+            if (bytes == null || bytes.length > 1024 * 1024) return;
+            List<ProtoNode> root = ProtoNode.parse(bytes);
+            if (root == null) return;
+            String title = CardTitle.find(cardNode(root), video, label);
+            if (title != null) rememberTitle(video, title, QueueTitles.Source.CARD);
+        } catch (Exception ex) {
+            Logger.printDebug(() -> "Local queue card title unavailable", ex);
+        }
+    }
+
+    private static CardTitle.Node cardNode(List<ProtoNode> nodes) {
+        List<CardTitle.Node> children = new ArrayList<>(nodes.size());
+        for (ProtoNode node : nodes) {
+            children.add(node.isText() ? new CardTitle.Node(node.getText(), List.of())
+                    : node.children == null ? new CardTitle.Node(null, List.of()) : cardNode(node.children));
+        }
+        return new CardTitle.Node(null, children);
+    }
 
     private static Object renderer() {
         LocalQueue.Snapshot snapshot = queue.snapshot();
@@ -346,6 +405,10 @@ public final class NativeQueuePatch {
     }
 
     public static boolean enqueue(String video, boolean playNext) {
+        return enqueue(video, titleFor(video), playNext);
+    }
+
+    public static boolean enqueue(String video, QueueTitles.Title capturedTitle, boolean playNext) {
         if (!isPatchIncluded()) return false;
         Utils.runOnMainThread(() -> {
             try {
@@ -364,14 +427,16 @@ public final class NativeQueuePatch {
                         if (navigation == null) throw new IllegalStateException("Watch navigator unavailable");
                         String current = responseVideo(currentResponse);
                         if (current != null && !current.isEmpty()) {
-                            queue.add(current, current.equals(VideoInformation.getVideoId())
-                                    ? VideoInformation.getVideoTitle() : current, false);
-                            // This target has no VideoInformation title hook. Resolve the seed too.
+                            queue.add(current, titleFor(current), false);
                             QueueMetadata.fetch(current);
                         }
                     }
-                    if (!queue.add(video, video.equals(VideoInformation.getVideoId())
-                            ? VideoInformation.getVideoTitle() : video, playNext) && !startingQueue) {
+                    QueueTitles.Title title = capturedTitle;
+                    QueueTitles.Title cached = titleFor(video);
+                    if (title == null || cached != null && cached.source().ordinal() > title.source().ordinal()) {
+                        title = cached;
+                    }
+                    if (!queue.add(video, title, playNext) && !startingQueue) {
                         Utils.showToastShort(str("morphe_local_queue_already_added"));
                         return;
                     }
@@ -440,7 +505,6 @@ public final class NativeQueuePatch {
         publishing = true;
         try {
             QueueEditScope.run(() -> {
-                queue.updateTitle(VideoInformation.getVideoId(), VideoInformation.getVideoTitle());
                 setResponsePanel(response, active() ? renderer() : originalPanel);
                 setResponseNavigation(response, active() ? null : originalNavigation);
                 if (active()) prepareNavigation(navigation);
@@ -469,20 +533,34 @@ public final class NativeQueuePatch {
         if (publish()) openPanel(controller.get());
     }
 
-    static void updateTitle(String video, String title) {
+    static synchronized LocalQueue.Entry metadataEntry(String video) {
+        QueueTitles.Title known = titleFor(video);
+        if (known != null && known.source().ordinal() >= QueueTitles.Source.PLAYER.ordinal()) return null;
+        LocalQueue.Entry entry = queue.find(video);
+        return entry != null && entry.titleSource().ordinal() < QueueTitles.Source.PLAYER.ordinal()
+                ? entry : null;
+    }
+
+    static void updateMetadata(String entryId, String video, String title) {
         Utils.runOnMainThread(() -> {
             synchronized (NativeQueuePatch.class) {
-                if (queue.updateTitle(video, title)) publish();
+                QueueTitles.Title known = titleFor(video);
+                if (known != null && known.source().ordinal() >= QueueTitles.Source.PLAYER.ordinal()) return;
+                if (queue.updateMetadata(entryId, video, title)) {
+                    titles.put(video, title, QueueTitles.Source.NETWORK);
+                    publish();
+                }
             }
         });
     }
 
     public static int addFlyoutButtons(Object panel, int index, String video, Drawable icon) {
         if (!Settings.QUEUE_ADD_FLYOUT_MENU.get() || video.isEmpty()) return index;
+        QueueTitles.Title title = titleFor(video);
         index = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_next"),
-                v -> enqueue(video, true), index);
+                v -> enqueue(video, title, true), index);
         index = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_last"),
-                v -> enqueue(video, false), index);
+                v -> enqueue(video, title, false), index);
         if (active()) {
             index = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_clear"),
                     v -> { clear(); FlyoutUtils.dismissFlyout(); }, index);

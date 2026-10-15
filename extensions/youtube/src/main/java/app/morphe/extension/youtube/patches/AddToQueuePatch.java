@@ -151,6 +151,15 @@ public final class AddToQueuePatch {
     }
 
     private static Runnable getNewRunnable(@Nullable Runnable original, String buttonName) {
+        if (NativeQueuePatch.isPatchIncluded() && queueButtonOriginalNames.contains(buttonName)) {
+            // The flyout globals can change or reset before this runnable is clicked.
+            String video = FlyoutUtils.getFlyoutVideoId();
+            var title = NativeQueuePatch.titleFor(video);
+            return () -> {
+                FlyoutUtils.resetCurrentButtonIndex();
+                NativeQueuePatch.enqueue(video, title, buttonName.equals("QUEUE_PLAY_NEXT"));
+            };
+        }
         return () -> {
             try {
                 // Reset index logic goes here if needed between UI clicks

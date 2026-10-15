@@ -12,7 +12,7 @@ import java.util.List;
 
 /** Session-only queue with unique videos and stable identities across edits. */
 public final class LocalQueue {
-    public record Entry(String id, String videoId, String title) {}
+    public record Entry(String id, String videoId, String title, QueueTitles.Source titleSource) {}
     public record Snapshot(List<Entry> entries, int selected, int repeatMode,
                            boolean shuffled, long orderRevision) {
         public Entry current() {
@@ -35,12 +35,19 @@ public final class LocalQueue {
 
     /** Existing videos keep their position, title, and identity without changing selection. */
     public synchronized boolean add(String videoId, String title, boolean playNext) {
+        return add(videoId, new QueueTitles.Title(title == null ? "" : title,
+                QueueTitles.Source.CARD), playNext);
+    }
+
+    public synchronized boolean add(String videoId, QueueTitles.Title title, boolean playNext) {
         if (videoId == null || videoId.isEmpty()) throw new IllegalArgumentException("Empty video ID");
         for (Entry entry : entries) {
             if (entry.videoId().equals(videoId)) return false;
         }
+        boolean missing = title == null || title.text().isBlank() || title.text().equals(videoId);
         Entry entry = new Entry("morphe-queue-" + ++nextId, videoId,
-                title == null || title.isEmpty() ? videoId : title);
+                missing ? videoId : title.text(),
+                missing ? QueueTitles.Source.PLACEHOLDER : title.source());
         entries.add(playNext && selected >= 0 ? selected + 1 : entries.size(), entry);
         if (selected < 0) selected = 0;
         orderRevision++;
@@ -86,12 +93,31 @@ public final class LocalQueue {
     }
 
     public synchronized boolean updateTitle(String videoId, String title) {
-        if (title == null || title.isEmpty()) return false;
+        return updateTitle(videoId, new QueueTitles.Title(title == null ? "" : title,
+                QueueTitles.Source.CARD));
+    }
+
+    public synchronized Entry find(String video) {
+        for (Entry entry : entries) if (entry.videoId().equals(video)) return entry;
+        return null;
+    }
+
+    public synchronized boolean updateMetadata(String entryId, String video, String title) {
+        Entry entry = find(video);
+        return entry != null && entry.id().equals(entryId) && updateTitle(video,
+                new QueueTitles.Title(title, QueueTitles.Source.NETWORK));
+    }
+
+    public synchronized boolean updateTitle(String videoId, QueueTitles.Title title) {
+        if (title == null || title.text() == null || title.text().isBlank()
+                || title.text().equals(videoId)) return false;
         boolean changed = false;
         for (int i = 0; i < entries.size(); i++) {
             Entry entry = entries.get(i);
-            if (entry.videoId().equals(videoId) && !entry.title().equals(title)) {
-                entries.set(i, new Entry(entry.id(), videoId, title));
+            if (entry.videoId().equals(videoId)
+                    && entry.titleSource().ordinal() <= title.source().ordinal()
+                    && (!entry.title().equals(title.text()) || entry.titleSource() != title.source())) {
+                entries.set(i, new Entry(entry.id(), videoId, title.text(), title.source()));
                 changed = true;
             }
         }

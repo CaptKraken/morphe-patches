@@ -42,7 +42,7 @@ playback navigation while keeping the visible list order and current video.
 Its native successor/predecessor mapping remains stable through title updates
 and video changes, and is rebuilt after additions, removals, or drag reordering.
 Toggling shuffle off restores navigation in visible list order. Modes reset when
-the queue ends. These new controls still require a device retest.
+the queue ends. The preview 8 device retest confirmed that update works.
 
 Queue edits populate the detached native store before attaching it, preserve the
 playing video's existing endpoint, and suppress native stop/reopen dispatch only
@@ -50,7 +50,12 @@ on the editing thread. Normal user navigation and autoplay run outside that scop
 The original resume-crash stack was absent from exported logs; pause/resume still
 needs device testing.
 
-Import the replacement bundle as **Morphe Patches (queue preview 8)** and disable
+Preview 9 captures native titles instead of relying on a metadata request for
+every entry. Menu actions retain an immutable video ID/title pair, and the playing
+video is seeded from its native player response. Captured titles take priority over
+network responses. The native-title paths still require a device retest.
+
+Import the replacement bundle as **Morphe Patches (queue preview 9)** and disable
 the preceding preview source. Select all desired YouTube patches from the new
 source alone. Starting from an untouched APK avoids applying shared setup twice.
 
@@ -86,10 +91,24 @@ are bypassed when this experimental patch is selected.
 Each video appears at most once. Stable entry IDs keep row actions attached to the
 correct entry across reordering and protect a re-added video from stale removal
 events.
-Titles for both the initial playing video and added videos load asynchronously
-from YouTube's public oEmbed endpoint without account
-credentials. A video ID remains as the label if metadata is unavailable. Thumbnail
-images use YouTube's image host.
+Titles are read from the same video card that opened the menu, from the native
+History renderer, or from a player response containing both the video ID and title.
+Card extraction uses the full title field associated with the accessibility label,
+scoped to that video's component; it does not split the label on commas or hyphens.
+The source data can contain multiple video cards, so ambiguous or truncated-only
+titles fall back to metadata rather than borrowing a nearby video's title.
+A bounded process-local cache retains up to 200 titles. Existing original-title
+replacements are consulted without starting or waiting for another request.
+
+When no native title is available, YouTube's public oEmbed endpoint supplies the
+fallback without account credentials. Transient failures retry after one and four
+seconds (at most three attempts); permanent access/not-found errors do not retry.
+A native title cancels remaining retries. Responses are scoped to the stable queue
+entry, so an old request cannot rename a removed/re-added video. Late network
+results cannot overwrite native card or player titles. Title updates retain entry
+identity, selection, repeat state and the shuffle mapping. A video ID remains as
+the label if neither source provides a title. Thumbnail images use YouTube's image
+host.
 
 Starting the queue while already playing an account playlist is currently rejected
 with a toast. Shorts, Cast/TV queues, persistence across process death, and saving
@@ -139,11 +158,26 @@ Playback-mode tests cover preserving modes across edits, resetting modes at the 
 of a queue, and invalidating shuffle mappings only for structural changes. Real-APK
 checks also require the native random navigator, native button listeners and state
 rendering, and rebuilding random mappings before notifying availability observers.
+Title regressions cover punctuation and Khmer text, localized/truncated labels,
+multi-video card isolation, immutable menu snapshots, bounded caching, source
+precedence, removed-entry responses, and transient versus permanent retry limits.
+APK checks require the paired player-response hook on 21.20.405, the menu hooks
+surviving extension shrinking, and the native History renderer matching the same
+video-ID interface.
 APK verification establishes that the patched DEX and
 resources can be built; it does not establish that YouTube renders the UI or plays
 the queue correctly on an Android device.
 
 ## Device checks still required
+
+- Add videos from Home, search, related videos, subscriptions and History. Check
+  full titles (including Khmer and long titles) and the initial playing entry.
+  Open different menus quickly; each action must retain the correct ID/title.
+  Repeat with original-title and DeArrow settings, and after scrolling cards out
+  of view and back. Ambiguous layouts should use the fallback, not a wrong title.
+- Simulate an interrupted connection while adding a video without a native title.
+  Check fallback retries and that a later native title wins. Remove/re-add while
+  a request is pending and verify that the old response is ignored.
 
 - Add next/last while playing; confirm the stream does not restart and the native
   collapsed bar and expanded list update immediately.

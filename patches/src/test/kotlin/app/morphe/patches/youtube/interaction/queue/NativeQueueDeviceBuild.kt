@@ -32,6 +32,33 @@ fun main(arguments: Array<String>) {
     val regression = bytecodePatch(name = "Verify local queue playback and manual controls") {
         dependsOn(nativeQueuePatch)
         execute {
+            val playerMetadata = mutableClassDefBy("Lapgd;").methods.single { it.name == "setChannelInformation" }
+            check((playerMetadata.implementation!!.instructions.first() as ReferenceInstruction)
+                .reference.toString().endsWith("NativeQueuePatch;->onPlayerMetadata(Ljava/lang/Object;)V")) {
+                "This target needs paired native player title/ID capture despite the generic title-hook version gate"
+            }
+            val bridge = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
+            for ((name, native) in listOf("playerVideo" to "M", "playerTitle" to "L")) {
+                check(bridge.methods.single { it.name == name }.implementation!!.instructions
+                    .filterIsInstance<ReferenceInstruction>().any {
+                        it.reference.toString() == "Lahzi;->$native()Ljava/lang/String;"
+                    })
+            }
+            val utils = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/utils/FlyoutUtils;")
+            for ((method, callback) in listOf("setFlyoutVideoId" to "onCardMenu",
+                "extractFlyoutIdFromObject" to "onTypedMenu")) {
+                check(utils.methods.single { it.name == method }.implementation!!.instructions
+                    .filterIsInstance<ReferenceInstruction>().any {
+                        it.reference.toString().contains("NativeQueuePatch;->$callback(")
+                    }) { "Native title capture must survive extension shrinking on both menu paths" }
+            }
+            val historyModel = mutableClassDefBy("Laznl;")
+            check(historyModel.interfaces.any { it.endsWith("FlyoutUtils\$FlyoutMenuVideoIdInterface;") }) {
+                "Structured History title capture must match the same renderer used to get the menu's video ID"
+            }
+            val titleCalls = bridge.methods.single { it.name == "typedMenuTitle" }.implementation!!.instructions
+                .filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
+            check("Laznl;->f:Lbbbt;" in titleCalls && "Lapkp;->b(Lbbbt;)Landroid/text/Spanned;" in titleCalls)
             val dispatch = mutableClassDefBy("Laokg;").methods.single { it.name == "d" }
             val entry = dispatch.implementation!!.instructions.first() as ReferenceInstruction
             check(entry.reference.toString().endsWith("NativeQueuePatch;->preservePlayback()Z")) {

@@ -99,6 +99,45 @@ val nativeQueuePatch = bytecodePatch(
             """)
         }
 
+        // The generic VideoInformation title hook is absent on this target. Capture the
+        // title and ID from the same native response used for channel information instead.
+        for ((name, nativeName) in listOf("playerVideo" to "M", "playerTitle" to "L")) {
+            val reference = method("Lahzi;", nativeName, emptyList(), "Ljava/lang/String;")
+            bridge(name, """
+                check-cast p0, Lahzi;
+                if-eqz p0, :empty
+                invoke-interface {p0}, $reference
+                move-result-object v0
+                return-object v0
+                :empty
+                const-string v0, ""
+                return-object v0
+            """)
+        }
+        method("Lapgd;", "setChannelInformation", listOf("Lahzi;"), "V").addInstructions(0,
+            "invoke-static/range {p1 .. p1}, $EXTENSION->onPlayerMetadata(Ljava/lang/Object;)V")
+
+        // The legacy History renderer carries structured title text; no label heuristics
+        // or network request is needed for this menu path.
+        val historyTitle = field("Laznl;", "f", "Lbbbt;")
+        val formattedText = method("Lapkp;", "b", listOf("Lbbbt;"), "Landroid/text/Spanned;")
+        bridge("typedMenuTitle", """
+            instance-of v0, p0, Laznl;
+            if-eqz v0, :empty
+            check-cast p0, Laznl;
+            iget-object v0, p0, $historyTitle
+            if-eqz v0, :empty
+            invoke-static {v0}, $formattedText
+            move-result-object v0
+            if-eqz v0, :empty
+            invoke-virtual {v0}, Ljava/lang/Object;->toString()Ljava/lang/String;
+            move-result-object v0
+            return-object v0
+            :empty
+            const-string v0, ""
+            return-object v0
+        """)
+
         // Decode using the host runtime and its extension registry. The protected parser is
         // called from a subclass, rather than relying on reflection or illegal DEX access.
         method("Laxbo;", "parseFrom", listOf("Laxbo;", "[B", "Lcom/google/protobuf/ExtensionRegistryLite;"), "Laxbo;")

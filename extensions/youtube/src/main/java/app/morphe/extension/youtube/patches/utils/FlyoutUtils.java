@@ -55,6 +55,7 @@ import app.morphe.extension.youtube.patches.AddToQueuePatch;
 import app.morphe.extension.youtube.patches.PictureinPictureButtonPatch;
 import app.morphe.extension.youtube.patches.SaveToWatchLaterPatch;
 import app.morphe.extension.youtube.patches.VideoInformation;
+import app.morphe.extension.youtube.patches.queue.NativeQueuePatch;
 import app.morphe.extension.youtube.patches.components.PlayerFlyoutMenuComponentsFilter;
 import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
 import app.morphe.extension.youtube.settings.Settings;
@@ -981,6 +982,9 @@ public final class FlyoutUtils {
             String videoId = videoIdInterface.patch_getVideoId();
             if (videoId != null) {
                 flyoutVideoId = videoId;
+                if (NativeQueuePatch.isPatchIncluded()) {
+                    NativeQueuePatch.onTypedMenu(videoId, bufferObject);
+                }
             }
             return;
         }
@@ -1176,6 +1180,9 @@ public final class FlyoutUtils {
                             VIDEO_ID_LENGTH,
                             StandardCharsets.US_ASCII
                     );
+                    if (NativeQueuePatch.isPatchIncluded()) {
+                        NativeQueuePatch.onCardMenu(flyoutVideoId, buffer, rawDescription);
+                    }
 
                     Logger.printDebug(() -> "Flyout Video ID found: " +
                             flyoutVideoId

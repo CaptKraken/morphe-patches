@@ -10,6 +10,9 @@ package app.morphe.extension.youtube.patches.queue;
 /** Bodies are replaced with type-checked host access during patching. No runtime reflection. */
 public final class NativeQueueBridge {
     private NativeQueueBridge() {}
+    public static String playerVideo(Object playerResponse) { return ""; }
+    public static String playerTitle(Object playerResponse) { return ""; }
+    public static String typedMenuTitle(Object renderer) { return ""; }
     public static Object parsePanel(byte[] bytes) { return null; }
     public static String responseVideo(Object response) { return ""; }
     public static String responsePlaylist(Object response) { return ""; }
