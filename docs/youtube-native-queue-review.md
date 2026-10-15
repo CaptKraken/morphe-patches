@@ -34,17 +34,19 @@ unchanged identities, switching accounts, returning to a prior account, sign-out
 incognito and clearing states collected before the first observed identity.
 Native entity subscriptions, event dispatch, authentication and voting remain intact.
 
-### P2 — Published bundle identification still described the upstream project
+### Contribution scope correction
 
-The preview name used “Morphe Patches”, the author was “MorpheApp”, and source/site
-links identified upstream. This conflicted with the README's derivative-branding
-rule and NOTICE's requirement to distinguish modified versions.
+The source branch should retain upstream project metadata and README branding for
+an eventual contribution. The earlier review incorrectly treated the experimental
+preview's distribution identity as a reason to rebrand the project on this branch.
+Those source-level branding changes have been reverted; the rating-cache fix and
+its regression tests remain.
 
-The bundle is now **Kraken Queue Patches (preview 13)**, with CaptKraken as author
-and links to this fork. The README identifies the fork without the upstream logo
-as its header. Upstream credit, source notices and embedded license/notice files
-are retained; the download branch also includes LICENSE and NOTICE alongside the
-bundle. The generated upstream patch list is explicitly identified as upstream.
+Unofficial preview builds should be clearly identified in their distribution
+metadata and download documentation. Any preview-specific metadata changes belong
+in a separate build checkout, outside the contribution diff. Preserve upstream
+license notices and attribution in both source and distributed builds. The
+repository's branding rules do not require renaming an upstream feature submission.
 
 ## Validation
 
@@ -54,8 +56,8 @@ bundle. The generated upstream patch list is explicitly identified as upstream.
 - Actual patch/dependency application to stock YouTube 21.20.405 passed, including
   account-hook assertions, DEX verification, cross-DEX class hierarchy verification
   and resource compilation.
-- Android bundle built and checked for `classes.dex`, fork metadata and retained
-  upstream license/notice resources.
+- Android bundle built and checked for `classes.dex` and retained upstream
+  license/notice resources. The contribution branch retains upstream metadata.
 - `git diff --check` passed.
 
 No live account vote or playlist-creation request was submitted in cloud checks.

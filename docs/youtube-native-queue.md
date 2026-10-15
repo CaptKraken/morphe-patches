@@ -1,13 +1,9 @@
 # Experimental native YouTube queue
 
-This fork adds **Native temporary queue (experimental)** for YouTube **21.20.405**.
+This patch adds **Native temporary queue (experimental)** for YouTube **21.20.405**.
 It is opt-in and depends on the existing Add to queue patch. Other YouTube versions
 are deliberately unsupported: the native methods and protobuf fields are pinned
 to the supplied APK.
-
-The distributed source is **Kraken Queue Patches (preview 13)**, maintained by
-CaptKraken and based on Morphe Patches. Upstream attribution and license notices
-are preserved. See [LICENSE](../LICENSE) and [NOTICE](../NOTICE).
 
 ## Install and use
 
