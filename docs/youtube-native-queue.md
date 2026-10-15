@@ -2,7 +2,7 @@
 
 Select **Native temporary queue (experimental)** when patching YouTube **21.20.405**.
 The patch is off by default and includes the existing Add to queue dependencies.
-This is a prototype awaiting Android device testing, not a verified release feature.
+This is a prototype undergoing Android device testing.
 
 Preview 2 addresses the first device report: adopting the queue stopped the playing
 video, left its row labeled with an ID, and was followed by a crash on resume. The
@@ -13,7 +13,16 @@ existing endpoint. Normal user navigation and autoplay run outside that scope.
 The reported crash itself was not present in the exported logs; the device retest
 must verify both uninterrupted playback and successful pause/resume.
 
-Import the replacement bundle as **Morphe Patches (queue preview 2)** and disable
+The device retest confirmed that the native temporary playlist appears and advances
+to the next queued video when the current video ends. The player Next button still
+opened a recommendation outside the queue. Preview 3 routes the video overlay's
+Next and Previous controls through the installed local queue navigator and loads
+its committed native descriptor. Availability checks and playback-state updates
+also use that navigator, including when old watch-response delegates remain
+attached. At the queue boundary, a manual click cannot fall through to a
+recommendation. This change still needs a device retest.
+
+Import the replacement bundle as **Morphe Patches (queue preview 3)** and disable
 the preceding preview source. Select all desired YouTube patches from the new
 source alone. Starting from an untouched APK avoids applying shared setup twice.
 
@@ -31,6 +40,10 @@ There is no save-to-account operation in this prototype.
    handles to change its order; use a row's three-dot menu to remove an entry.
 4. Use **Clear temporary queue** in a video menu to return to normal playback.
    Opening an account playlist or a video outside the queue also ends the queue.
+
+If the queue actions are missing, enable **Override feed flyout queue button**
+in the Morphe queue settings. The device tester needed this setting enabled.
+**Add feed flyout queue menu item** controls insertion of the additional actions.
 
 If the optional Save to Watch later/queue player button is installed, its queue
 action opens the same native panel. Its Watch later action retains its existing
@@ -79,6 +92,8 @@ panel/endpoint wire data, including preservation of the playing endpoint. Additi
 tests cover nested edit scopes, exception cleanup, and isolation from playback on
 other threads. APK regression checks verify that the playback-dispatch guard runs
 before native side effects and that a new store is populated before attachment.
+They also check that manual overlay controls consult the local queue before their
+original delegates and that navigation commits a queue descriptor before loading it.
 APK verification establishes that the patched DEX and
 resources can be built; it does not establish that YouTube renders the UI or plays
 the queue correctly on an Android device.

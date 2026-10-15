@@ -176,6 +176,131 @@ val nativeQueuePatch = bytecodePatch(
             return-void
         """)
 
+        // The overlay has watch-response-specific Next/Previous delegates (apfj/apfk).
+        // Those can remain attached even after the playback queue is replaced. Scope the
+        // override to the video-overlay transport and leave other transports untouched.
+        val transportControls = field("Laogu;", "c", "Laogt;")
+        val transportPlayer = field("Laogu;", "b", "Laowt;")
+        val transportEvents = field("Laogu;", "e", "Lanug;")
+        val nextIntent = field("Laovl;", "a", "Laovl;")
+        val previousIntent = field("Laovl;", "b", "Laovl;")
+        val queueAvailability = method("Lniq;", "u", listOf("Laovl;"), "I")
+        val queueCommit = method("Lniq;", "b", listOf("Laovl;"), "Laopa;")
+        val loadDescriptor = method("Laowt;", "a", listOf("Laopa;"), "V")
+        val nextEvent = method("Lanug;", "c", emptyList(), "V")
+        val previousEvent = method("Lanug;", "d", emptyList(), "V")
+        bridge("isOverlayTransport", """
+            check-cast p0, Laogu;
+            iget-object v0, p0, $transportControls
+            instance-of v0, v0, Lmxy;
+            return v0
+        """)
+        bridge("canNavigateQueue", """
+            check-cast p0, Lniq;
+            if-eqz p1, :previous
+            sget-object v0, $nextIntent
+            goto :check
+            :previous
+            sget-object v0, $previousIntent
+            :check
+            invoke-virtual {p0, v0}, $queueAvailability
+            move-result v0
+            const/4 v1, 0x2
+            if-eq v0, v1, :available
+            const/4 v0, 0x0
+            return v0
+            :available
+            const/4 v0, 0x1
+            return v0
+        """)
+        bridge("navigateQueue", """
+            check-cast p0, Laogu;
+            check-cast p1, Lniq;
+            iget-object v0, p0, $transportEvents
+            if-eqz p2, :previous
+            if-eqz v0, :next_intent
+            invoke-interface {v0}, $nextEvent
+            :next_intent
+            sget-object v0, $nextIntent
+            goto :commit
+            :previous
+            if-eqz v0, :previous_intent
+            invoke-interface {v0}, $previousEvent
+            :previous_intent
+            sget-object v0, $previousIntent
+            :commit
+            invoke-virtual {p1, v0}, $queueCommit
+            move-result-object v1
+            if-eqz v1, :missing
+            iget-object v0, p0, $transportPlayer
+            invoke-interface {v0, v1}, $loadDescriptor
+            const/4 v0, 0x1
+            return v0
+            :missing
+            const/4 v0, 0x0
+            return v0
+        """)
+
+        val refreshNext = method("Laogu;", "f", emptyList(), "V")
+        val refreshPrevious = method("Laogu;", "g", emptyList(), "V")
+        for ((target, enabledFlag, callback) in listOf(
+            Triple(refreshNext, field("Laogu;", "d", "Z"), "nextEnabled"),
+            Triple(refreshPrevious, field("Laogu;", "f", "Z"), "previousEnabled")
+        )) {
+            val flagIndex = target.implementation!!.instructions.indexOfFirst {
+                (it as? ReferenceInstruction)?.reference.toString() == enabledFlag
+            }
+            check(flagIndex >= 0) { "Overlay transport availability gate missing" }
+            val oldFlag = target.getInstruction<TwoRegisterInstruction>(flagIndex).registerA
+            val compare = target.getInstruction<TwoRegisterInstruction>(flagIndex + 1)
+            val result = if (compare.registerA == oldFlag) compare.registerB else compare.registerA
+            // Insert after the branch merge, so both native delegate and fallback use this.
+            target.addInstructions(flagIndex + 1, """
+                invoke-static {v$result, p0}, $EXTENSION->$callback(ZLjava/lang/Object;)Z
+                move-result v$result
+            """)
+        }
+        mutableClassDefBy("Laogu;").methods.add(ImmutableMethod(
+            "Laogu;", "patch_refreshLocalQueueControls", emptyList(), "V",
+            AccessFlags.PUBLIC.value or AccessFlags.FINAL.value,
+            null, null, MutableMethodImplementation(1)
+        ).toMutable().apply {
+            addInstructions(0, """
+                invoke-direct {p0}, $refreshNext
+                invoke-direct {p0}, $refreshPrevious
+                return-void
+            """)
+        })
+        bridge("refreshTransport", """
+            check-cast p0, Laogu;
+            invoke-virtual {p0}, Laogu;->patch_refreshLocalQueueControls()V
+            return-void
+        """)
+        val transportConstructor = method("Laogu;", "<init>", listOf("Laowz;", "Laowt;", "Laogt;", "Lanug;"), "V")
+        val constructorReturns = transportConstructor.implementation!!.instructions.withIndex()
+            .filter { it.value.opcode == Opcode.RETURN_VOID }.map { it.index }.reversed()
+        for (index in constructorReturns) transportConstructor.addInstructions(index,
+            "invoke-static/range {p0 .. p0}, $EXTENSION->onTransportReady(Ljava/lang/Object;)V")
+        method("Laogu;", "d", emptyList(), "V").addInstructions(0, """
+            invoke-static {p0}, $EXTENSION->onTransportUpdate(Ljava/lang/Object;)Z
+            move-result v0
+            if-eqz v0, :original
+            return-void
+            :original
+            nop
+        """)
+        for ((name, forward) in listOf("hD" to 1, "it" to 0)) {
+            method("Laogu;", name, emptyList(), "V").addInstructions(0, """
+                const/4 v0, $forward
+                invoke-static {p0, v0}, $EXTENSION->onManualNavigation(Ljava/lang/Object;Z)Z
+                move-result v0
+                if-eqz v0, :original
+                return-void
+                :original
+                nop
+            """)
+        }
+
         val panelRefresh = method("Lpqj;", "f", listOf("Lahwk;"), "V")
         val navigatorRefresh = method("Lniq;", "p", listOf("Lahwk;"), "V")
         val backend = field("Lniq;", "f", "Laovn;", true)

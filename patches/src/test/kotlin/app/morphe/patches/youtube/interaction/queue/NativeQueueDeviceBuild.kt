@@ -26,7 +26,7 @@ fun main(arguments: Array<String>) {
     val sdk = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
         ?: error("Native queue validation requires an Android SDK for DEX verification")
     val workspace = Files.createTempDirectory("native-queue-validation").toFile()
-    val regression = bytecodePatch(name = "Verify local queue playback preservation") {
+    val regression = bytecodePatch(name = "Verify local queue playback and manual controls") {
         dependsOn(nativeQueuePatch)
         execute {
             val dispatch = mutableClassDefBy("Laokg;").methods.single { it.name == "d" }
@@ -44,7 +44,34 @@ fun main(arguments: Array<String>) {
             check(fill >= 0 && attach > fill) {
                 "An empty native store would become visible before local rows were loaded"
             }
-            println("Verified dispatcher guard and populated-before-attach native queue")
+            val transport = mutableClassDefBy("Laogu;")
+            for ((name, callback, original) in listOf(
+                Triple("hD", "onManualNavigation", "Lanug;->c()V"),
+                Triple("it", "onManualNavigation", "Lanug;->d()V"),
+                Triple("d", "onTransportUpdate", "Laogu;->g()V"),
+                Triple("f", "nextEnabled", "Laogt;->iR(Z)V"),
+                Triple("g", "previousEnabled", "Laogt;->b(Z)V")
+            )) {
+                val references = transport.methods.single { it.name == name }
+                    .implementation!!.instructions.mapNotNull {
+                        ((it as? ReferenceInstruction)?.reference as? MethodReference)?.toString()
+                    }
+                val hook = references.indexOfFirst { it.contains("NativeQueuePatch;->$callback(") }
+                check(hook >= 0 && references.indexOf(original) > hook) {
+                    "Overlay $name must consult the local queue before its original delegate"
+                }
+            }
+            val manual = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
+                .methods.single { it.name == "navigateQueue" }
+                .implementation!!.instructions.mapNotNull {
+                    ((it as? ReferenceInstruction)?.reference as? MethodReference)?.toString()
+                }
+            val commit = manual.indexOf("Lniq;->b(Laovl;)Laopa;")
+            val load = manual.indexOf("Laowt;->a(Laopa;)V")
+            check(commit >= 0 && load > commit && manual.count { it == manual[load] } == 1) {
+                "Manual navigation must commit a queue descriptor before loading it once"
+            }
+            println("Verified dispatcher guard, populated-before-attach store, and manual overlay controls")
         }
     }
     Patcher(PatcherConfig(input, workspace, verifier = SdkDexVerifier(File(sdk)))).use { patcher ->

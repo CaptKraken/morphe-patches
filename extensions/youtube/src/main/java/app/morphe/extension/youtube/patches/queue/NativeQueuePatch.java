@@ -40,6 +40,7 @@ public final class NativeQueuePatch {
             Collections.newSetFromMap(new WeakHashMap<>()));
     private static volatile WeakReference<Object> controller = new WeakReference<>(null);
     private static volatile WeakReference<Object> navigator = new WeakReference<>(null);
+    private static volatile WeakReference<Object> overlayTransport = new WeakReference<>(null);
     private static volatile Object response;
     private static volatile Object playbackDescriptor;
     private static Object originalPanel;
@@ -103,6 +104,7 @@ public final class NativeQueuePatch {
             setResponsePanel(watchResponse, renderer());
             setResponseNavigation(watchResponse, null);
             prepareNavigation(source);
+            Utils.runOnMainThreadDelayed(NativeQueuePatch::refreshTransportControls, 0);
         } catch (Exception ex) {
             Logger.printException(() -> "Local queue watch response failed", ex);
         }
@@ -142,6 +144,59 @@ public final class NativeQueuePatch {
 
     public static void onPlaybackDescriptor(Object descriptor) {
         playbackDescriptor = descriptor;
+    }
+
+    public static void onTransportReady(Object transport) {
+        if (!isOverlayTransport(transport)) return;
+        overlayTransport = new WeakReference<>(transport);
+        if (active()) Utils.runOnMainThreadDelayed(NativeQueuePatch::refreshTransportControls, 0);
+    }
+
+    private static boolean ownsTransport(Object transport) {
+        Object navigation = navigator.get();
+        return active() && transport == overlayTransport.get() && navigation != null
+                && backendOwner.get() == navigation;
+    }
+
+    public static boolean nextEnabled(boolean original, Object transport) {
+        return ownsTransport(transport) ? canNavigateQueue(navigator.get(), true) : original;
+    }
+
+    public static boolean previousEnabled(boolean original, Object transport) {
+        return ownsTransport(transport) ? canNavigateQueue(navigator.get(), false) : original;
+    }
+
+    public static boolean onTransportUpdate(Object transport) {
+        if (!ownsTransport(transport)) return false;
+        // The original update skips controls that still have watch-response delegates.
+        refreshTransport(transport);
+        return true;
+    }
+
+    /** Manual controls must use the queue navigator, not a stale watch-response override. */
+    public static synchronized boolean onManualNavigation(Object transport, boolean next) {
+        if (!ownsTransport(transport)) return false;
+        if (QueueEditScope.active()) return true;
+        Object navigation = navigator.get();
+        try {
+            boolean available = canNavigateQueue(navigation, next);
+            Logger.printInfo(() -> "Local queue manual " + (next ? "next" : "previous")
+                    + ", available=" + available);
+            if (available && !navigateQueue(transport, navigation, next)) {
+                Utils.showToastShort(str("morphe_local_queue_failed"));
+            }
+            refreshTransportControls();
+        } catch (Exception ex) {
+            Logger.printException(() -> "Local queue manual navigation failed", ex);
+            Utils.showToastShort(str("morphe_local_queue_failed"));
+        }
+        // At a queue boundary, do not fall through to an unrelated recommendation.
+        return true;
+    }
+
+    private static void refreshTransportControls() {
+        Object transport = overlayTransport.get();
+        if (transport != null) refreshTransport(transport);
     }
 
     public static boolean isLocalEntry(String entryId) {
@@ -309,6 +364,7 @@ public final class NativeQueuePatch {
                 // notifications must update controls here without stopping/reopening playback.
                 refreshNavigator(navigation, response);
                 refreshPanel(panelController, response);
+                refreshTransportControls();
             });
             return true;
         } catch (Exception ex) {

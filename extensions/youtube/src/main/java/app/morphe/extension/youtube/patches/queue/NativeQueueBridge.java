@@ -27,6 +27,10 @@ public final class NativeQueueBridge {
     public static void restoreBackend(Object navigator, Object backend) {}
     public static void refreshPanel(Object controller, Object response) {}
     public static void openPanel(Object controller) {}
+    public static boolean isOverlayTransport(Object transport) { return false; }
+    public static void refreshTransport(Object transport) {}
+    public static boolean canNavigateQueue(Object navigator, boolean next) { return false; }
+    public static boolean navigateQueue(Object transport, Object navigator, boolean next) { return false; }
     public static Object controllerPanel(Object controller) { return null; }
     public static Object modelPanel(Object model) { return null; }
     public static String modelVideo(Object model) { return ""; }
