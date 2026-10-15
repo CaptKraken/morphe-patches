@@ -8,6 +8,7 @@
 package app.morphe.extension.youtube.patches.queue.model;
 
 import java.util.LinkedHashMap;
+import java.util.Objects;
 
 /** Initial native rating states only. The host owns voting, authentication and rollback. */
 public final class QueueRatings {
@@ -15,6 +16,17 @@ public final class QueueRatings {
     public record State(String entityKey, int status) {}
     public record Labels(String like, String unlike, String dislike, String undoDislike) {}
     private final LinkedHashMap<String, Integer> states = new LinkedHashMap<>(32, .75f, true);
+    private Object account;
+    private boolean accountKnown;
+
+    /** Native account objects include sign-out/incognito state; never log their contents. */
+    public synchronized boolean useAccount(Object current) {
+        boolean changed = accountKnown && !Objects.equals(account, current);
+        if (!accountKnown || changed) states.clear();
+        account = current;
+        accountKnown = true;
+        return changed;
+    }
 
     public synchronized void remember(String video, int status) {
         if (video == null || !video.matches("[A-Za-z0-9_-]{11}") || status < LIKE || status > NEUTRAL) return;

@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class QueueRatingsTest {
     private val first = "TVaLkaZyFik"
@@ -120,6 +121,34 @@ class QueueRatingsTest {
         ratings.remember(second, QueueRatings.NEUTRAL)
         assertEquals(QueueRatings.UNKNOWN, ratings.get("00000000000"))
         assertEquals(QueueRatings.LIKE, ratings.get(first))
+    }
+
+    @Test fun `switching native account clears both ratings and returning to an account starts fresh`() {
+        val ratings = QueueRatings()
+        assertFalse(ratings.useAccount("account A"))
+        ratings.remember(first, QueueRatings.LIKE)
+        ratings.remember(second, QueueRatings.DISLIKE)
+        assertFalse(ratings.useAccount(String("account A".toCharArray())))
+        assertEquals(QueueRatings.LIKE, ratings.get(first))
+        assertTrue(ratings.useAccount("account B"))
+        assertEquals(QueueRatings.UNKNOWN, ratings.get(first))
+        assertEquals(QueueRatings.UNKNOWN, ratings.get(second))
+        ratings.remember(first, QueueRatings.NEUTRAL)
+        assertTrue(ratings.useAccount("account A"))
+        assertEquals(QueueRatings.UNKNOWN, ratings.get(first))
+    }
+
+    @Test fun `first account selection sign-out and incognito do not reuse prior ratings`() {
+        val ratings = QueueRatings()
+        ratings.remember(first, QueueRatings.LIKE)
+        assertFalse(ratings.useAccount("signed in"))
+        assertEquals(QueueRatings.UNKNOWN, ratings.get(first))
+        ratings.remember(first, QueueRatings.DISLIKE)
+        assertTrue(ratings.useAccount(null))
+        assertEquals(QueueRatings.UNKNOWN, ratings.get(first))
+        assertFalse(ratings.useAccount(null))
+        assertTrue(ratings.useAccount("incognito"))
+        assertEquals(QueueRatings.UNKNOWN, ratings.get(first))
     }
 
     private class Message(data: ByteArray) {

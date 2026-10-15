@@ -14,6 +14,7 @@ import app.morphe.patcher.dex.SdkDexVerifier
 import app.morphe.patcher.patch.bytecodePatch
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.WideLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
@@ -29,7 +30,7 @@ fun main(arguments: Array<String>) {
     val sdk = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
         ?: error("Native queue validation requires an Android SDK for DEX verification")
     val workspace = Files.createTempDirectory("native-queue-validation").toFile()
-    val regression = bytecodePatch(name = "Verify local queue playback and manual controls") {
+    val regression = bytecodePatch(name = "Verify local queue playback and manual controls", default = false) {
         dependsOn(nativeQueuePatch)
         execute {
             val playerMetadata = mutableClassDefBy("Lapgd;").methods.single { it.name == "setChannelInformation" }
@@ -75,6 +76,20 @@ fun main(arguments: Array<String>) {
                 .single { it.name == name }.implementation!!.instructions
                 .filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
             val ratingBind = references("Lozb;", "k")
+            for (owner in listOf("Laajo;", "Laajk;")) {
+                val account = mutableClassDefBy(owner).methods.single { it.name == "h" }
+                    .implementation!!.instructions.toList()
+                for (index in account.indices.filter { account[it].opcode == Opcode.RETURN_OBJECT }) {
+                    check((account[index - 1] as ReferenceInstruction).reference.toString().endsWith(
+                        "NativeQueuePatch;->onRatingAccount(Ljava/lang/Object;)V")) {
+                        "Each native current-account return must invalidate the prior account's rating cache"
+                    }
+                    check((account[index - 1] as RegisterRangeInstruction).startRegister ==
+                        (account[index] as OneRegisterInstruction).registerA) {
+                        "The account callback must receive the returned identity without altering it"
+                    }
+                }
+            }
             check(ratingBind[0] == "Lozj;->k(Lbhxc;)V" && ratingBind[1].endsWith(
                 "NativeQueuePatch;->onRatingPresenter(Ljava/lang/Object;Ljava/lang/Object;)V")) {
                 "Local rating events must subscribe after the native model is initialized"

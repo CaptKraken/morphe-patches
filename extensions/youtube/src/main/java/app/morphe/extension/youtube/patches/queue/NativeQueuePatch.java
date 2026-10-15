@@ -181,6 +181,18 @@ public final class NativeQueuePatch {
         registerRatingEvents(presenter);
     }
 
+    public static void onRatingAccount(Object account) {
+        if (ratings.useAccount(account) && active()) {
+            // Refresh after the native account provider releases its lock. Existing buttons
+            // must not retain the previous account's selected state through a panel refresh.
+            Utils.runOnMainThreadDelayed(() -> {
+                synchronized (NativeQueuePatch.class) {
+                    if (active()) publish();
+                }
+            }, 0);
+        }
+    }
+
     public static void onVoteEvent(String video, Object status) {
         try {
             ratings.remember(video, ratingNumber(status));

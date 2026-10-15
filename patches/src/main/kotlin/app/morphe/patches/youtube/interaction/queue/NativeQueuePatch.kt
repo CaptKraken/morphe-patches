@@ -99,6 +99,20 @@ val nativeQueuePatch = bytecodePatch(
             """)
         }
 
+        // Both native global account-provider implementations are present in this APK.
+        // Observe only their current identity, not per-request account overrides or tokens.
+        for (owner in listOf("Laajo;", "Laajk;")) {
+            val currentAccount = method(owner, "h", emptyList(), "Lamqq;")
+            val returns = currentAccount.implementation!!.instructions.withIndex()
+                .filter { it.value.opcode == Opcode.RETURN_OBJECT }.map { it.index }.reversed()
+            check(returns.isNotEmpty()) { "Native current account return missing" }
+            for (index in returns) {
+                val register = currentAccount.getInstruction<OneRegisterInstruction>(index).registerA
+                currentAccount.addInstructions(index,
+                    "invoke-static/range {v$register .. v$register}, $EXTENSION->onRatingAccount(Ljava/lang/Object;)V")
+            }
+        }
+
         // Native LikeStatusEntity keys are account scoped by the presenter's entity store.
         val makeRatingKey = method("Lahvu;", "i", listOf("I", "Ljava/lang/String;"), "Ljava/lang/String;")
         bridge("ratingEntityKey", """
