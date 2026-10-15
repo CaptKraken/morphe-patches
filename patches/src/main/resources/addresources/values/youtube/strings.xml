@@ -21,6 +21,10 @@ Second \"item\" text"</string>
     <string name="morphe_local_queue_last">Play last in queue</string>
     <string name="morphe_local_queue_clear">Clear temporary queue</string>
     <string name="morphe_local_queue_remove">Remove from queue</string>
+    <string name="morphe_local_queue_like">Like</string>
+    <string name="morphe_local_queue_unlike">Remove like</string>
+    <string name="morphe_local_queue_dislike">Dislike</string>
+    <string name="morphe_local_queue_undo_dislike">Remove dislike</string>
     <string name="morphe_local_queue_empty">Add videos to the queue from their video menu</string>
     <string name="morphe_local_queue_added">Added to temporary queue</string>
     <string name="morphe_local_queue_already_added">Already in queue</string>

@@ -7,9 +7,18 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import java.util.List;
+
 /** Bodies are replaced with type-checked host access during patching. No runtime reflection. */
 public final class NativeQueueBridge {
     private NativeQueueBridge() {}
+    public static String ratingEntityKey(String video) { return ""; }
+    public static List<?> panelRatingButtons(Object panel) { return List.of(); }
+    public static void registerRatingEvents(Object presenter) {}
+    public static String legacyRatingVideo(Object builder) { return ""; }
+    public static int ratingNumber(Object status) { return -1; }
+    public static String entityRatingVideo(Object entity) { return ""; }
+    public static int entityRatingNumber(Object entity) { return -1; }
     public static String playerVideo(Object playerResponse) { return ""; }
     public static String playerTitle(Object playerResponse) { return ""; }
     public static String playerChannel(Object playerResponse) { return ""; }

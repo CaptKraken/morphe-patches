@@ -20,6 +20,8 @@ import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.Utils;
@@ -30,6 +32,7 @@ import app.morphe.extension.youtube.patches.queue.model.LocalQueue;
 import app.morphe.extension.youtube.patches.queue.model.CardTitle;
 import app.morphe.extension.youtube.patches.queue.model.QueueTitles;
 import app.morphe.extension.youtube.patches.queue.model.QueueDetails;
+import app.morphe.extension.youtube.patches.queue.model.QueueRatings;
 import app.morphe.extension.youtube.patches.queue.model.PlaylistPanel;
 import app.morphe.extension.youtube.patches.queue.model.QueueEditScope;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
@@ -43,6 +46,9 @@ public final class NativeQueuePatch {
     private static final LocalQueue queue = new LocalQueue();
     private static final QueueTitles titles = new QueueTitles(200);
     private static final QueueDetails details = new QueueDetails();
+    private static final QueueRatings ratings = new QueueRatings();
+    private static final Set<Object> ownedRatingButtons = Collections.synchronizedSet(
+            Collections.newSetFromMap(new WeakHashMap<>()));
     // Old panels can still emit events after a refresh. Consume their edit events as well.
     private static final Set<Object> ownedPanels = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
@@ -141,6 +147,11 @@ public final class NativeQueuePatch {
 
     private static Object renderer() {
         LocalQueue.Snapshot snapshot = queue.snapshot();
+        Map<String, QueueRatings.State> states = new HashMap<>();
+        for (LocalQueue.Entry entry : snapshot.entries()) {
+            states.put(entry.videoId(), new QueueRatings.State(ratingEntityKey(entry.videoId()),
+                    ratings.get(entry.videoId())));
+        }
         byte[] endpoint = null;
         if (snapshot.current() != null) {
             String video = snapshot.current().videoId();
@@ -153,10 +164,45 @@ public final class NativeQueuePatch {
             }
         }
         Object panel = parsePanel(PlaylistPanel.encode(snapshot, str("morphe_local_queue_title"),
-                endpoint, str("morphe_local_queue_remove")));
+                endpoint, str("morphe_local_queue_remove"), states, new QueueRatings.Labels(
+                        str("morphe_local_queue_like"), str("morphe_local_queue_unlike"),
+                        str("morphe_local_queue_dislike"), str("morphe_local_queue_undo_dislike"))));
         if (panel == null) throw new IllegalStateException("Native playlist parser unavailable");
         ownedPanels.add(panel);
+        ownedRatingButtons.addAll(panelRatingButtons(panel));
         return panel;
+    }
+
+    public static void onRatingPresenter(Object presenter, Object model) {
+        if (!ownedRatingButtons.contains(model)) return;
+        // Native entity subscriptions handle current state and rollback. Legacy rating paths
+        // also emit jkb events; retain that native subscription for these local presenters.
+        registerRatingEvents(presenter);
+    }
+
+    public static void onVoteEvent(String video, Object status) {
+        try {
+            ratings.remember(video, ratingNumber(status));
+        } catch (Exception ex) {
+            Logger.printDebug(() -> "Local queue rating event unavailable", ex);
+        }
+    }
+
+    public static void onLegacyRating(Object status, Object builder) {
+        try {
+            ratings.remember(legacyRatingVideo(builder), ratingNumber(status));
+        } catch (Exception ex) {
+            Logger.printDebug(() -> "Local queue legacy rating unavailable", ex);
+        }
+    }
+
+    public static void onEntityRating(Object entity) {
+        try {
+            ratings.remember(entityRatingVideo(entity), entityRatingNumber(entity));
+        } catch (Exception ex) {
+            // Observing an unsupported entity must never interrupt the host's rating path.
+            Logger.printDebug(() -> "Local queue rating entity unavailable", ex);
+        }
     }
 
     /** Called only from the active watch navigator, not from prefetched player responses. */

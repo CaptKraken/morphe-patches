@@ -99,6 +99,133 @@ val nativeQueuePatch = bytecodePatch(
             """)
         }
 
+        // Native LikeStatusEntity keys are account scoped by the presenter's entity store.
+        val makeRatingKey = method("Lahvu;", "i", listOf("I", "Ljava/lang/String;"), "Ljava/lang/String;")
+        bridge("ratingEntityKey", """
+            const/16 v0, 0x3e
+            invoke-static {v0, p0}, $makeRatingKey
+            move-result-object v0
+            return-object v0
+        """)
+        val voteNumber = field("Lbdkj;", "e", "I")
+        bridge("ratingNumber", """
+            check-cast p0, Lbdkj;
+            if-eqz p0, :unknown
+            iget v0, p0, $voteNumber
+            return v0
+            :unknown
+            const/4 v0, -0x1
+            return v0
+        """)
+        val legacyBuilder = field("Laxbg;", "instance", "Laxbo;")
+        val legacyTarget = field("Lbdjx;", "c", "Lbdkk;")
+        val ratingVideo = field("Lbdkk;", "c", "Ljava/lang/String;")
+        bridge("legacyRatingVideo", """
+            check-cast p0, Laxbi;
+            iget-object v0, p0, $legacyBuilder
+            instance-of v1, v0, Lbdjx;
+            if-eqz v1, :empty
+            check-cast v0, Lbdjx;
+            iget-object v0, v0, $legacyTarget
+            if-eqz v0, :empty
+            iget-object v0, v0, $ratingVideo
+            return-object v0
+            :empty
+            const-string v0, ""
+            return-object v0
+        """)
+        val ratingEntity = field("Lbdkg;", "c", "Lbdkh;")
+        val ratingEntityKey = field("Lbdkh;", "c", "Ljava/lang/String;")
+        val ratingEntityStatus = field("Lbdkh;", "d", "I")
+        val keyType = method("Lahvu;", "b", listOf("Ljava/lang/String;"), "I")
+        val keyVideo = method("Lahvu;", "j", listOf("Ljava/lang/String;"), "Ljava/lang/String;")
+        bridge("entityRatingVideo", """
+            check-cast p0, Lbdkg;
+            iget-object v0, p0, $ratingEntity
+            iget-object v0, v0, $ratingEntityKey
+            invoke-static {v0}, $keyType
+            move-result v1
+            const/16 v2, 0x3e
+            if-ne v1, v2, :empty
+            invoke-static {v0}, $keyVideo
+            move-result-object v0
+            return-object v0
+            :empty
+            const-string v0, ""
+            return-object v0
+        """)
+        bridge("entityRatingNumber", """
+            check-cast p0, Lbdkg;
+            iget-object v0, p0, $ratingEntity
+            iget v0, v0, $ratingEntityStatus
+            return v0
+        """)
+        method("Lbdkg;", "getLikeStatus", emptyList(), "Lbdkj;").addInstructions(0,
+            "invoke-static/range {p0 .. p0}, $EXTENSION->onEntityRating(Ljava/lang/Object;)V")
+        method("Laeeo;", "k", listOf("Lbdkj;", "Laxbi;"), "V").addInstructions(0,
+            "invoke-static/range {p1 .. p2}, $EXTENSION->onLegacyRating(Ljava/lang/Object;Ljava/lang/Object;)V")
+        method("Ljkb;", "<init>", listOf("Ljava/lang/String;", "Lbdkj;", "Z"), "V").addInstructions(1,
+            "invoke-static/range {p1 .. p2}, $EXTENSION->onVoteEvent(Ljava/lang/String;Ljava/lang/Object;)V")
+
+        // Register only the native button models that belong to our parsed panels. The host
+        // still creates/binds/recycles ozb and performs its normal entity subscriptions.
+        val panelRows = field("Lbfzu;", "j", "Laxcf;")
+        val wrappedRow = field("Lbfzt;", "c", "Lbfzy;")
+        val rowActions = field("Lbfzy;", "z", "Laxcf;")
+        val ratingExtension = field("Lbhxi;", "b", "Laxbm;")
+        val hasExtension = method("Laxbj;", "c", listOf("Laxay;"), "Z")
+        val getExtension = method("Laxbj;", "b", listOf("Laxay;"), "Ljava/lang/Object;")
+        bridge("panelRatingButtons", """
+            check-cast p0, Lbfzu;
+            new-instance v0, Ljava/util/ArrayList;
+            invoke-direct {v0}, Ljava/util/ArrayList;-><init>()V
+            iget-object v1, p0, $panelRows
+            invoke-interface {v1}, Ljava/lang/Iterable;->iterator()Ljava/util/Iterator;
+            move-result-object v1
+            :row
+            invoke-interface {v1}, Ljava/util/Iterator;->hasNext()Z
+            move-result v2
+            if-eqz v2, :done
+            invoke-interface {v1}, Ljava/util/Iterator;->next()Ljava/lang/Object;
+            move-result-object v2
+            check-cast v2, Lbfzt;
+            iget-object v2, v2, $wrappedRow
+            if-eqz v2, :row
+            iget-object v2, v2, $rowActions
+            invoke-interface {v2}, Ljava/lang/Iterable;->iterator()Ljava/util/Iterator;
+            move-result-object v2
+            :button
+            invoke-interface {v2}, Ljava/util/Iterator;->hasNext()Z
+            move-result v3
+            if-eqz v3, :row
+            invoke-interface {v2}, Ljava/util/Iterator;->next()Ljava/lang/Object;
+            move-result-object v3
+            check-cast v3, Lbgvi;
+            sget-object v4, $ratingExtension
+            invoke-virtual {v3, v4}, $hasExtension
+            move-result v5
+            if-eqz v5, :button
+            invoke-virtual {v3, v4}, $getExtension
+            move-result-object v3
+            invoke-interface {v0, v3}, Ljava/util/List;->add(Ljava/lang/Object;)Z
+            goto :button
+            :done
+            return-object v0
+        """)
+        val ratingEvents = field("Lozb;", "j", "Lacpz;")
+        val subscribeRatingEvents = method("Lacpz;", "f", listOf("Ljava/lang/Object;"), "V")
+        bridge("registerRatingEvents", """
+            check-cast p0, Lozb;
+            iget-object v0, p0, $ratingEvents
+            invoke-virtual {v0, p0}, $subscribeRatingEvents
+            return-void
+        """)
+        val ratingBind = method("Lozb;", "k", listOf("Lbhxc;"), "V")
+        check((ratingBind.implementation!!.instructions.first() as? ReferenceInstruction)?.reference
+            .toString() == "Lozj;->k(Lbhxc;)V") { "Native rating presenter initialization changed" }
+        ratingBind.addInstructions(1,
+            "invoke-static/range {p0 .. p1}, $EXTENSION->onRatingPresenter(Ljava/lang/Object;Ljava/lang/Object;)V")
+
         // The generic VideoInformation title hook is absent on this target. Capture the
         // title and ID from the same native response used for channel information instead.
         for ((name, nativeName) in listOf("playerVideo" to "M", "playerTitle" to "L", "playerChannel" to "G")) {

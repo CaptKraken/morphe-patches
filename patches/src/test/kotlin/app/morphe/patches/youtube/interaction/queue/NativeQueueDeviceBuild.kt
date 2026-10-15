@@ -71,6 +71,61 @@ fun main(arguments: Array<String>) {
                 "Loxk;->q:Landroid/widget/TextView;", "Loxk;->b:Landroid/widget/TextView;")) {
                 check(field in rowReferences) { "Queue metadata must be bound by the native channel/video_info views" }
             }
+            fun references(owner: String, name: String) = mutableClassDefBy(owner).methods
+                .single { it.name == name }.implementation!!.instructions
+                .filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
+            val ratingBind = references("Lozb;", "k")
+            check(ratingBind[0] == "Lozj;->k(Lbhxc;)V" && ratingBind[1].endsWith(
+                "NativeQueuePatch;->onRatingPresenter(Ljava/lang/Object;Ljava/lang/Object;)V")) {
+                "Local rating events must subscribe after the native model is initialized"
+            }
+            check("Lahrz;->c()Lahry;" in ratingBind) {
+                "The native account entity subscription must remain active"
+            }
+            val ratingClick = references("Lozb;", "onClick")
+            check("Layqy;->k:Lazga;" in ratingClick && "Layqy;->q:Lazga;" in ratingClick &&
+                "Lahnn;->c(Lazga;Ljava/util/Map;)V" in ratingClick &&
+                ratingClick.none { it.contains("NativeQueue") }) {
+                "Native rating buttons must dispatch their default/undo endpoints without custom click handlers"
+            }
+            val ratingCleanup = references("Lozb;", "b")
+            check("Lacpz;->l(Ljava/lang/Object;)V" in ratingCleanup && "Lozb;->n()V" in ratingCleanup) {
+                "Native recycling must release rating event and entity subscriptions"
+            }
+            for ((owner, name, callback) in listOf(
+                Triple("Lbdkg;", "getLikeStatus", "onEntityRating"),
+                Triple("Laeeo;", "k", "onLegacyRating"),
+                Triple("Ljkb;", "<init>", "onVoteEvent")
+            )) {
+                check(references(owner, name).any { it.contains("NativeQueuePatch;->$callback(") }) {
+                    "Initial and live native rating states must reach the queue cache"
+                }
+            }
+            check("Lacpz;->f(Ljava/lang/Object;)V" in references(bridge.type, "registerRatingEvents"))
+            val models = references(bridge.type, "panelRatingButtons")
+            check("Lbfzy;->z:Laxcf;" in models && "Lbhxi;->b:Laxbm;" in models &&
+                "Laxbj;->b(Laxay;)Ljava/lang/Object;" in models) {
+                "Ownership must use the actual parsed native button models"
+            }
+            val localRuntime = "Lapp/morphe/extension/youtube/patches/queue/NativeQueuePatch;"
+            check(references(localRuntime, "onRatingPresenter").any {
+                it.endsWith("NativeQueueBridge;->registerRatingEvents(Ljava/lang/Object;)V")
+            }) { "The local rating subscription hook must survive extension shrinking" }
+            for ((owner, literal) in listOf("Lbhxi;" to 124608045L, "Lbdkd;" to 63158558L)) {
+                check(mutableClassDefBy(owner).methods.single { it.name == "<clinit>" }
+                    .implementation!!.instructions.any { (it as? WideLiteralInstruction)?.wideLiteral == literal }) {
+                    "Native rating renderer or command extension changed"
+                }
+            }
+            val command = references("Liaq;", "b")
+            check("Lamqr;->z()Z" in command &&
+                "Lamrn;->c(Landroid/app/Activity;[BLamrl;)V" in command) {
+                "Rating must retain YouTube's account check and sign-in flow"
+            }
+            check(references("Liaq;", "e").any { it.startsWith("Lbdke;->d(Lbdkj;)") } &&
+                references("Liaq;", "e").any { it.startsWith("Lial;-><init>(") }) {
+                "The native entity update and failure rollback must remain available"
+            }
             val dispatch = mutableClassDefBy("Laokg;").methods.single { it.name == "d" }
             val entry = dispatch.implementation!!.instructions.first() as ReferenceInstruction
             check(entry.reference.toString().endsWith("NativeQueuePatch;->preservePlayback()Z")) {
@@ -202,7 +257,7 @@ fun main(arguments: Array<String>) {
             check("Lahmg;-><init>(Ljava/lang/Object;)V" in hideCalls) {
                 "The native hide command must emit the tagged-row event intercepted by the queue"
             }
-            println("Verified playback/navigation guards, native shuffle/repeat controls, and native swipe removal")
+            println("Verified playback/navigation, shuffle/repeat, swipe removal and native rating dispatch/state lifecycle")
         }
     }
     Patcher(PatcherConfig(input, workspace, verifier = SdkDexVerifier(File(sdk)))).use { patcher ->

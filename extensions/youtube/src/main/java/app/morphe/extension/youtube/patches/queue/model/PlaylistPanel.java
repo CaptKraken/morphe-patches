@@ -9,6 +9,7 @@ package app.morphe.extension.youtube.patches.queue.model;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 /** YouTube 21.20.405 playlist panel wire format, decoded by the host's own protobuf runtime. */
 public final class PlaylistPanel {
@@ -25,6 +26,13 @@ public final class PlaylistPanel {
 
     public static byte[] encode(LocalQueue.Snapshot queue, String title, byte[] playingEndpoint,
                                 String removeLabel) {
+        return encode(queue, title, playingEndpoint, removeLabel, Map.of(),
+                new QueueRatings.Labels("Like", "Remove like", "Dislike", "Remove dislike"));
+    }
+
+    public static byte[] encode(LocalQueue.Snapshot queue, String title, byte[] playingEndpoint,
+                                String removeLabel, Map<String, QueueRatings.State> ratings,
+                                QueueRatings.Labels labels) {
         Wire panel = new Wire().text(1, title).number(3, queue.selected())
                 .text(5, "").number(6, queue.entries().size()).number(8, 1);
         for (int i = 0; i < queue.entries().size(); i++) {
@@ -48,6 +56,11 @@ public final class PlaylistPanel {
             if (!entry.details().statistics().isEmpty()) {
                 row.message(31, new Wire().text(4, entry.details().statistics()));
             }
+            QueueRatings.State rating = ratings.get(entry.videoId());
+            if (rating != null) {
+                row.message(32, ratingButton(entry.videoId(), rating, true, labels));
+                row.message(32, ratingButton(entry.videoId(), rating, false, labels));
+            }
             // Native swipe-button renderer. HideEnclosingCommand emits the tagged bfzy row
             // as ahmg; our owned-panel gesture hook removes that exact local entry.
             // No playlist-edit or network endpoint is included in this action.
@@ -61,6 +74,29 @@ public final class PlaylistPanel {
             panel.message(2, new Wire().message(51779701, row));
         }
         return panel.bytes();
+    }
+
+    private static Wire ratingButton(String video, QueueRatings.State state, boolean like,
+                                     QueueRatings.Labels labels) {
+        int status = like ? QueueRatings.LIKE : QueueRatings.DISLIKE;
+        Wire button = new Wire().number(3, state.status() == status ? 1 : 0)
+                .message(5, new Wire().number(1, like ? 160 : 51)) // Native LIKE / DISLIKE.
+                .message(8, new Wire().number(1, like ? 301 : 302)) // Native selected icons.
+                .message(7, ratingEndpoint(video, status))
+                .message(10, ratingEndpoint(video, QueueRatings.NEUTRAL))
+                .message(19, new Wire().message(1, new Wire().text(2, like ? labels.like() : labels.dislike())))
+                .message(20, new Wire().message(1, new Wire().text(2, like ? labels.unlike() : labels.undoDislike())));
+        Wire presenter = new Wire().message(17, new Wire().text(1, video)) // Video target; no playlist target.
+                .number(like ? 20 : 21, 1)
+                .message(26, new Wire().message(79971800, button))
+                .text(27, state.entityKey());
+        return new Wire().message(124608045, presenter);
+    }
+
+    private static Wire ratingEndpoint(String video, int status) {
+        // Native LikeCommand, which performs sign-in, account-scoped state updates and requests.
+        return new Wire().message(63158558, new Wire().number(1, status)
+                .message(2, new Wire().text(1, video)));
     }
 
     private static final class Wire {

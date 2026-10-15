@@ -61,9 +61,21 @@ History metadata and the native player channel are captured directly. Missing
 fields load asynchronously from the existing unauthenticated localized video-ID
 lookup, accepting only a video renderer whose ID exactly matches the queue entry.
 The row keeps YouTube's fonts, colors, spacing and responsive metadata visibility.
-This additional metadata still needs a device retest.
+The preview 10 device retest confirmed this metadata update.
 
-Import the replacement bundle as **Morphe Patches (queue preview 10)** and disable
+Preview 11 supplies real native Like/Dislike toggle renderers for the selected row,
+replacing the host's disabled placeholders. Tapping a thumb sends YouTube's native
+video rating command; tapping the selected thumb again removes that rating. These
+actions change the signed-in account's rating for that video. They use the host's
+normal account check, sign-in flow, authenticated request, error handling and
+rollback. They do not create or edit an account playlist. Native entity and event
+subscriptions update the row icons, including changes made from the main player.
+A bounded cache of observed native ratings initializes refreshed rows. The native
+presenter still owns clicks, selected icons, accessibility and recycling. This
+rating update needs a device retest; build verification cannot exercise a live
+account or prove state synchronization on the phone.
+
+Import the replacement bundle as **Morphe Patches (queue preview 11)** and disable
 the preceding preview source. Select all desired YouTube patches from the new
 source alone. Starting from an untouched APK avoids applying shared setup twice.
 
@@ -84,7 +96,9 @@ There is no save-to-account operation in this prototype.
    entry if it was last). Removing the final entry clears the queue.
 4. Tap the native repeat button to cycle modes, or toggle shuffle. Use the selected
    row to follow shuffled playback; switching modes should not restart the video.
-5. Use **Clear temporary queue** in a video menu to return to normal playback.
+5. Use the selected row's thumbs to like or dislike its video. Tap the selected
+   thumb again to remove that rating; switching thumbs replaces the prior rating.
+6. Use **Clear temporary queue** in a video menu to return to normal playback.
    Opening an account playlist or a video outside the queue also ends the queue.
 
 If the queue actions are missing, enable **Override feed flyout queue button**
@@ -187,12 +201,26 @@ live/missing fields, per-field precedence, immutable snapshots, stale-entry
 responses and the native channel/video-info protobuf fields (2 and 31). APK checks
 require the native History metadata fields and the existing row TextViews to
 remain bound by YouTube's renderer.
+Rating regressions cover video-bound native default/undo endpoints, all initial
+rating states, native icon IDs, localized accessibility, bounded caching and
+preservation of the live playback endpoint. APK checks require model initialization
+before subscribing, native click dispatch, entity subscriptions and recycling,
+cache hooks surviving shrinking, and the native account/sign-in and rollback paths.
+No real account rating is submitted during these automated checks.
 APK verification establishes that the patched DEX and
 resources can be built; it does not establish that YouTube renders the UI or plays
 the queue correctly on an Android device.
 
 ## Device checks still required
 
+- On a signed-in account, like, undo like, dislike, undo dislike, and switch
+  directly between thumbs. Check the main player's rating agrees, then change it
+  from the main player and reopen the queue. Repeat after metadata updates,
+  reordering and navigation; every vote must affect only the selected video.
+  Confirm existing ratings initialize correctly. Disconnect the network during
+  a vote and verify the host's error/rollback behavior. Check signed-out behavior
+  follows YouTube's sign-in flow and retest after switching accounts. Open a normal
+  account playlist afterward and verify its rating controls retain native behavior.
 - Add videos from several channels and verify the channel line and
   `views • upload age` line match YouTube's source cards. Allow a moment for missing
   metadata to load. Include History, the initial playing entry, localized text,
