@@ -71,6 +71,21 @@ class LocalQueueTest {
         assertFalse(queue.remove(snapshot.current().id()))
     }
 
+    @Test fun `removing a captured duplicate after reorder preserves playback and the other copy`() {
+        val queue = LocalQueue()
+        queue.add("playing", "Playing", false)
+        repeat(2) { queue.add("duplicate", "Duplicate", false) }
+        queue.add("last", "Last", false)
+        val before = queue.snapshot()
+        val removed = before.entries()[2]
+        assertTrue(queue.move(2, 1))
+        assertTrue(queue.remove(removed.id()))
+        assertEquals(before.current(), queue.snapshot().current())
+        assertEquals(listOf(before.entries()[0], before.entries()[1], before.entries()[3]),
+            queue.snapshot().entries())
+        assertFalse(queue.remove(removed.id()))
+    }
+
     @Test fun `late metadata updates preserve duplicate identities and ignore removed videos`() {
         val queue = LocalQueue()
         repeat(2) { queue.add("video", "video", false) }

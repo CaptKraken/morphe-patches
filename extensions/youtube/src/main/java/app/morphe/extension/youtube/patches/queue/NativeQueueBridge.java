@@ -7,6 +7,8 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import android.view.View;
+
 /** Bodies are replaced with type-checked host access during patching. No runtime reflection. */
 public final class NativeQueueBridge {
     private NativeQueueBridge() {}
@@ -41,4 +43,6 @@ public final class NativeQueueBridge {
     public static int moveFrom(Object event) { return -1; }
     public static int moveTo(Object event) { return -1; }
     public static String removedEntry(Object event) { return ""; }
+    public static void bindLocalSwipe(Object row, View action) {}
+    public static void clearLocalSwipe(Object row) {}
 }

@@ -9,12 +9,18 @@ automatically when the current video ends. The player Next button still opened a
 recommendation outside the two-video queue. Investigation found that preview 3's
 ownership test rejected the composite controls used by the actual overlay factory.
 An alternate Next implementation could also bypass the patched base method.
+The preview 4 device retest confirmed player Next/Previous and drag reordering.
 
 Preview 4 captures handlers at the overlay's actual registration point, so a
 composite controls wrapper is supported. It tracks live overlay handlers weakly
 and intercepts both the base and alternate Next implementation, plus Previous.
 If local navigation is unavailable, a registered queue control consumes the click
-instead of falling back to a recommendation. This build still needs a device retest.
+instead of falling back to a recommendation.
+
+Preview 5 adds a local Remove button to each row's native swipe layout. Swipe toward
+the start edge (left in left-to-right layouts) to reveal it, then tap to remove
+that entry. Rebinding and recycling clear the action and reset the swipe position.
+Swipe removal still needs a device retest. Repeat and shuffle remain unimplemented.
 
 Queue edits populate the detached native store before attaching it, preserve the
 playing video's existing endpoint, and suppress native stop/reopen dispatch only
@@ -22,7 +28,7 @@ on the editing thread. Normal user navigation and autoplay run outside that scop
 The original resume-crash stack was absent from exported logs; pause/resume still
 needs device testing.
 
-Import the replacement bundle as **Morphe Patches (queue preview 4)** and disable
+Import the replacement bundle as **Morphe Patches (queue preview 5)** and disable
 the preceding preview source. Select all desired YouTube patches from the new
 source alone. Starting from an untouched APK avoids applying shared setup twice.
 
@@ -37,7 +43,10 @@ There is no save-to-account operation in this prototype.
 2. In another video's menu, choose **Play next in queue** or **Play last in queue**.
    The currently playing video remains in the list and playback should continue.
 3. Expand the playlist bar in the watch screen to see the queue. Drag the native
-   handles to change its order; use a row's three-dot menu to remove an entry.
+   handles to change its order. Swipe a row to reveal Remove, or use its three-dot
+   menu to remove that entry. Removing an upcoming entry keeps the current video
+   playing; removing the current entry selects its successor (or the preceding
+   entry if it was last). Removing the final entry clears the queue.
 4. Use **Clear temporary queue** in a video menu to return to normal playback.
    Opening an account playlist or a video outside the queue also ends the queue.
 
@@ -96,6 +105,9 @@ They also check that manual overlay controls consult the local queue before thei
 original delegates, including the alternate Next implementation, and that ownership
 is captured where the composite controller registers with the actual overlay.
 Navigation must commit a queue descriptor before loading it.
+Additional checks cover native swipe setup scoped to local rows and cleanup before
+rebinding or recycling. A model regression covers removing one duplicate by its
+captured entry identity after reordering while preserving the playing entry.
 APK verification establishes that the patched DEX and
 resources can be built; it does not establish that YouTube renders the UI or plays
 the queue correctly on an Android device.

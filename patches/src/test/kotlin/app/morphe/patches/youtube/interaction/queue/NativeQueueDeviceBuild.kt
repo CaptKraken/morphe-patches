@@ -14,6 +14,7 @@ import app.morphe.patcher.dex.SdkDexVerifier
 import app.morphe.patcher.patch.bytecodePatch
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
+import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -95,7 +96,31 @@ fun main(arguments: Array<String>) {
             check(commit >= 0 && load > commit && manual.count { it == manual[load] } == 1) {
                 "Manual navigation must commit a queue descriptor before loading it once"
             }
-            println("Verified playback guard, populated store, composite overlay registration, and both Next implementations")
+            val row = mutableClassDefBy("Loxk;")
+            for (name in listOf("gR", "oN")) {
+                val first = row.methods.single { it.name == name }
+                    .implementation!!.instructions.first() as ReferenceInstruction
+                check(first.reference.toString().endsWith(
+                    "NativeQueueBridge;->clearLocalSwipe(Ljava/lang/Object;)V")) {
+                    "Local swipe actions must be cleared before row $name can reuse the view"
+                }
+            }
+            val bindSwipe = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
+                .methods.single { it.name == "bindLocalSwipe" }
+                .implementation!!.instructions.filterIsInstance<ReferenceInstruction>()
+                .map { it.reference.toString() }
+            val swipeFields = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
+                .methods.single { it.name == "bindLocalSwipe" }
+                .implementation!!.instructions.mapNotNull {
+                    ((it as? ReferenceInstruction)?.reference as? FieldReference)?.toString()
+                }
+            check(swipeFields.first() == "Loxk;->patch_isLocalQueueRow:Z") {
+                "Swipe configuration must be restricted to local queue rows"
+            }
+            check(bindSwipe.any { it.startsWith("Ladfh;->r(") }) {
+                "Local removal actions must be installed through the native SwipeLayout helper"
+            }
+            println("Verified playback/navigation guards and native swipe action setup/cleanup")
         }
     }
     Patcher(PatcherConfig(input, workspace, verifier = SdkDexVerifier(File(sdk)))).use { patcher ->
