@@ -1,0 +1,37 @@
+/*
+ * Copyright 2026 Morphe.
+ * https://github.com/MorpheApp/morphe-patches
+ *
+ * See the included NOTICE file for GPLv3 Section 7 terms that apply to Morphe contributions.
+ */
+
+package app.morphe.extension.youtube.patches.queue;
+
+/** Bodies are replaced with type-checked host access during patching. No runtime reflection. */
+public final class NativeQueueBridge {
+    private NativeQueueBridge() {}
+    public static Object parsePanel(byte[] bytes) { return null; }
+    public static String responseVideo(Object response) { return ""; }
+    public static String responsePlaylist(Object response) { return ""; }
+    public static Object responsePanel(Object response) { return null; }
+    public static Object responseNavigation(Object response) { return null; }
+    public static void setResponseNavigation(Object response, Object navigation) {}
+    public static void setResponsePanel(Object response, Object panel) {}
+    public static void refreshNavigator(Object navigator, Object response) {}
+    public static Object captureBackend(Object navigator) { return null; }
+    public static Object installStorage(Object navigator, Object controller) { return null; }
+    public static void restoreStorage(Object navigator, Object storage) {}
+    public static void restoreBackend(Object navigator, Object backend) {}
+    public static void refreshPanel(Object controller, Object response) {}
+    public static void openPanel(Object controller) {}
+    public static Object controllerPanel(Object controller) { return null; }
+    public static Object modelPanel(Object model) { return null; }
+    public static String modelVideo(Object model) { return ""; }
+    public static String modelPlaylist(Object model) { return ""; }
+    public static void setModelPanel(Object model, Object panel) {}
+    public static Object adapterPanel(Object adapter) { return null; }
+    public static boolean isMoveForAdapter(Object adapter, Object event) { return false; }
+    public static int moveFrom(Object event) { return -1; }
+    public static int moveTo(Object event) { return -1; }
+    public static String removedEntry(Object event) { return ""; }
+}

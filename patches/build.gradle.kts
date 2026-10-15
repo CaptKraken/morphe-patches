@@ -19,6 +19,11 @@ patches {
 val patchListGeneratorClasspath = configurations.create("patchListGeneratorClasspath")
 val jamApk = providers.gradleProperty("jamApk")
 val jamOutput = providers.gradleProperty("jamOutput")
+val queueApk = providers.gradleProperty("queueApk")
+val queueOutput = providers.gradleProperty("queueOutput")
+
+// Exercise the Android-independent queue state and wire encoder on the JVM.
+sourceSets["test"].java.srcDir("../extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/model")
 
 dependencies {
     // Required due to smali, or build fails. Can be removed once smali is bumped.
@@ -32,11 +37,19 @@ dependencies {
     compileOnly(project(":patches:stub"))
 
     testImplementation(kotlin("test"))
+    testImplementation(libs.protobuf.javalite)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.1")
 }
 
 tasks {
+    named<JavaCompile>("compileTestJava") {
+        sourceCompatibility = "17"
+        targetCompatibility = "17"
+    }
+    named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileTestKotlin") {
+        compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
     test {
         useJUnitPlatform()
         jamApk.orNull?.let { systemProperty("jamApk", it) }
@@ -72,6 +85,19 @@ tasks {
             val apk = jamApk.orNull
                 ?: throw GradleException("validateJam requires -PjamApk=/absolute/path/to/ytm.apk")
             setArgs(listOfNotNull(apk, jamOutput.orNull))
+        }
+    }
+    register<JavaExec>("validateNativeQueue") {
+        description = "Applies the experimental native YouTube queue and verifies the resulting DEX"
+        group = "verification"
+        dependsOn("testClasses")
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("app.morphe.patches.youtube.interaction.queue.NativeQueueDeviceBuildKt")
+        maxHeapSize = "12g"
+        doFirst {
+            val apk = queueApk.orNull
+                ?: throw GradleException("validateNativeQueue requires -PqueueApk=/absolute/path/youtube.apk")
+            setArgs(listOfNotNull(apk, queueOutput.orNull))
         }
     }
     // Used by gradle-semantic-release-plugin.

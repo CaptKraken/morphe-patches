@@ -85,6 +85,11 @@ public class PlaylistPatch {
     public static void prepareDialogBuilder(Context context, String currentVideoId) {
         Utils.verifyOnMainThread();
 
+        if (app.morphe.extension.youtube.patches.queue.NativeQueuePatch.isPatchIncluded()) {
+            app.morphe.extension.youtube.patches.queue.NativeQueuePatch.showQueue();
+            return;
+        }
+
         if (AuthUtils.isNotLoggedIn()) {
             handleCheckError(checkFailedAuth);
             return;
@@ -115,6 +120,7 @@ public class PlaylistPatch {
      * Invoked by extension.
      */
     public static void syncIfNeeded() {
+        if (app.morphe.extension.youtube.patches.queue.NativeQueuePatch.isPatchIncluded()) return;
         if (!playlistId.isEmpty() && !syncStarted && !AuthUtils.isNotLoggedIn()) {
             syncStarted = true;
             syncPlaylistItems();

@@ -1,0 +1,63 @@
+/*
+ * Copyright 2026 Morphe.
+ * https://github.com/MorpheApp/morphe-patches
+ *
+ * See the included NOTICE file for GPLv3 Section 7 terms that apply to Morphe contributions.
+ */
+
+package app.morphe.extension.youtube.patches.queue.model;
+
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+
+/** YouTube 21.20.405 playlist panel wire format, decoded by the host's own protobuf runtime. */
+public final class PlaylistPanel {
+    private PlaylistPanel() {}
+
+    public static byte[] encode(LocalQueue.Snapshot queue, String title) {
+        Wire panel = new Wire().text(1, title).number(3, queue.selected())
+                .text(5, "").number(6, queue.entries().size()).number(8, 1);
+        for (int i = 0; i < queue.entries().size(); i++) {
+            LocalQueue.Entry entry = queue.entries().get(i);
+            // Endpoints deliberately omit playlistId: the queue has no server-side playlist.
+            Wire watch = new Wire().text(1, entry.videoId()).number(3, i).text(13, entry.id());
+            Wire endpoint = new Wire().message(48687757, watch);
+            Wire thumbnail = new Wire().message(1, new Wire()
+                    .text(1, "https://i.ytimg.com/vi/" + entry.videoId() + "/hqdefault.jpg")
+                    .number(2, 480).number(3, 360));
+            Wire row = new Wire().message(1, new Wire().text(4, entry.title()))
+                    .message(3, thumbnail).number(6, i == queue.selected() ? 1 : 0)
+                    .message(7, endpoint).text(10, entry.videoId()).text(26, entry.id())
+                    .message(27, new Wire().number(1, 2)).number(36, 1);
+            panel.message(2, new Wire().message(51779701, row));
+        }
+        return panel.bytes();
+    }
+
+    private static final class Wire {
+        private final ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Wire number(int field, long value) {
+            varint((long) field << 3);
+            varint(value);
+            return this;
+        }
+        Wire text(int field, String value) {
+            return data(field, value.getBytes(StandardCharsets.UTF_8));
+        }
+        Wire message(int field, Wire value) { return data(field, value.bytes()); }
+        Wire data(int field, byte[] data) {
+            varint(((long) field << 3) | 2);
+            varint(data.length);
+            out.write(data, 0, data.length);
+            return this;
+        }
+        void varint(long value) {
+            while ((value & ~127L) != 0) {
+                out.write(((int) value & 127) | 128);
+                value >>>= 7;
+            }
+            out.write((int) value);
+        }
+        byte[] bytes() { return out.toByteArray(); }
+    }
+}

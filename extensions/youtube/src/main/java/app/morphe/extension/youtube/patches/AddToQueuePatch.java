@@ -24,6 +24,7 @@ import app.morphe.extension.shared.Utils;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.PlaylistPatch;
 import app.morphe.extension.youtube.settings.Settings;
+import app.morphe.extension.youtube.patches.queue.NativeQueuePatch;
 
 @SuppressWarnings("unused")
 public final class AddToQueuePatch {
@@ -45,6 +46,9 @@ public final class AddToQueuePatch {
     }
 
     public static int addFlyoutButton(Object flyoutPanel, int index, String videoId) {
+        if (NativeQueuePatch.isPatchIncluded()) {
+            return NativeQueuePatch.addFlyoutButtons(flyoutPanel, index, videoId, queueButtonDrawable);
+        }
         if (!isPatchIncluded() || !Settings.QUEUE_ADD_FLYOUT_MENU.get() ||
                 !FlyoutUtils.getFlyoutPlaylistId().isEmpty() ||
                 videoId.isEmpty()) {
@@ -167,6 +171,9 @@ public final class AddToQueuePatch {
     public static boolean flyoutButtonClickLogic(String buttonName, String videoId) {
         try {
             if (queueButtonOriginalNames.contains(buttonName)) {
+                if (NativeQueuePatch.isPatchIncluded()) {
+                    return NativeQueuePatch.enqueue(videoId, buttonName.equals("QUEUE_PLAY_NEXT"));
+                }
                 Logger.printDebug(() -> "Opening custom queue flyout with videoId: " + videoId);
 
                 Activity activity = Utils.getActivity();
