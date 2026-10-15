@@ -42,6 +42,8 @@ public final class NativeQueuePatch {
     private static volatile WeakReference<Object> navigator = new WeakReference<>(null);
     private static final Set<Object> overlayTransports = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
+    private static final Set<Object> queueHeaders = Collections.synchronizedSet(
+            Collections.newSetFromMap(new WeakHashMap<>()));
     private static volatile Object response;
     private static volatile Object playbackDescriptor;
     private static Object originalPanel;
@@ -50,6 +52,8 @@ public final class NativeQueuePatch {
     private static Object originalStorage;
     private static WeakReference<Object> backendOwner = new WeakReference<>(null);
     private static boolean publishing;
+    private static long navigationRevision = -1;
+    private static boolean navigationShuffled;
 
     public static boolean isPatchIncluded() { return false; }
 
@@ -106,7 +110,7 @@ public final class NativeQueuePatch {
             setResponsePanel(watchResponse, renderer());
             setResponseNavigation(watchResponse, null);
             prepareNavigation(source);
-            Utils.runOnMainThreadDelayed(NativeQueuePatch::refreshTransportControls, 0);
+            Utils.runOnMainThreadDelayed(NativeQueuePatch::refreshQueuePlayback, 0);
         } catch (Exception ex) {
             Logger.printException(() -> "Local queue watch response failed", ex);
         }
@@ -164,6 +168,60 @@ public final class NativeQueuePatch {
     private static Object localNavigation() {
         Object navigation = navigator.get();
         return navigation != null && backendOwner.get() == navigation ? navigation : null;
+    }
+
+    public static synchronized void onQueueHeader(Object header) {
+        if (!active() || !owns(headerPanel(header))) return;
+        queueHeaders.add(header);
+        LocalQueue.Snapshot snapshot = queue.snapshot();
+        enableHeaderControls(header, snapshot.repeatMode(), snapshot.shuffled());
+    }
+
+    public static int repeatMode(int original, Object header) {
+        return active() && owns(headerPanel(header)) ? queue.snapshot().repeatMode() : original;
+    }
+
+    public static boolean shuffleMode(boolean original, Object header) {
+        return active() && owns(headerPanel(header)) ? queue.snapshot().shuffled() : original;
+    }
+
+    /** Native header clicks retain their own listeners; only this queue's mode changes are local. */
+    public static synchronized boolean onRepeatRequested(Object source, int mode) {
+        if (!active() || localNavigation() != source) return false;
+        queue.setRepeatMode(mode);
+        refreshQueuePlayback();
+        return true;
+    }
+
+    public static synchronized boolean onShuffleRequested(Object source, boolean enabled) {
+        if (!active() || localNavigation() != source) return false;
+        queue.setShuffled(enabled);
+        refreshQueuePlayback();
+        return true;
+    }
+
+    private static void applyPlaybackModes() {
+        Object navigation = localNavigation();
+        if (!active() || navigation == null) return;
+        LocalQueue.Snapshot snapshot = queue.snapshot();
+        boolean reset = navigationRevision != snapshot.orderRevision()
+                || (snapshot.shuffled() && !navigationShuffled);
+        setPlaybackModes(navigation, snapshot.repeatMode(), snapshot.shuffled(), reset);
+        navigationRevision = snapshot.orderRevision();
+        navigationShuffled = snapshot.shuffled();
+    }
+
+    private static synchronized void refreshQueuePlayback() {
+        try {
+            QueueEditScope.run(NativeQueuePatch::applyPlaybackModes);
+            Object[] headers;
+            synchronized (queueHeaders) { headers = queueHeaders.toArray(); }
+            for (Object header : headers) onQueueHeader(header);
+            refreshTransportControls();
+        } catch (Exception ex) {
+            Logger.printException(() -> "Local queue playback mode update failed", ex);
+            Utils.showToastShort(str("morphe_local_queue_failed"));
+        }
     }
 
     public static boolean nextEnabled(boolean original, Object transport) {
@@ -253,7 +311,7 @@ public final class NativeQueuePatch {
         publish();
     }
 
-    /** Native endpoints carry stable entry IDs, including when two entries have the same video. */
+    /** Native endpoints carry stable entry IDs across reordering and removal/re-addition. */
     public static synchronized boolean onPlaybackContext(Object source, String playlist,
                                                           String video, String entryId) {
         if (!owns(controllerPanel(source))) return false;
@@ -300,7 +358,8 @@ public final class NativeQueuePatch {
                             return;
                         }
                     }
-                    if (!active() && currentResponse != null) {
+                    boolean startingQueue = !active();
+                    if (startingQueue && currentResponse != null) {
                         Object navigation = navigator.get();
                         if (navigation == null) throw new IllegalStateException("Watch navigator unavailable");
                         String current = responseVideo(currentResponse);
@@ -311,8 +370,13 @@ public final class NativeQueuePatch {
                             QueueMetadata.fetch(current);
                         }
                     }
-                    queue.add(video, video.equals(VideoInformation.getVideoId())
-                            ? VideoInformation.getVideoTitle() : video, playNext);
+                    if (!queue.add(video, video.equals(VideoInformation.getVideoId())
+                            ? VideoInformation.getVideoTitle() : video, playNext) && !startingQueue) {
+                        Utils.showToastShort(str("morphe_local_queue_already_added"));
+                        return;
+                    }
+                    // Starting with the playing video seeds that one entry above. Publish it
+                    // once even when the requested video was the same as the seed.
                     Logger.printInfo(() -> "Local queue add " + (playNext ? "next: " : "last: ") + video);
                     if (currentResponse == null) {
                         LoadVideoPatch.openVideoIntentWithInternalContext(video);
@@ -348,6 +412,8 @@ public final class NativeQueuePatch {
         originalBackend = null;
         originalStorage = null;
         backendOwner = new WeakReference<>(null);
+        navigationRevision = -1;
+        navigationShuffled = false;
     }
 
     private static boolean prepareNavigation(Object navigation) {
@@ -381,8 +447,9 @@ public final class NativeQueuePatch {
                 // Updating only the engagement panel leaves next/previous stale. Native queue
                 // notifications must update controls here without stopping/reopening playback.
                 refreshNavigator(navigation, response);
+                applyPlaybackModes();
                 refreshPanel(panelController, response);
-                refreshTransportControls();
+                refreshQueuePlayback();
             });
             return true;
         } catch (Exception ex) {

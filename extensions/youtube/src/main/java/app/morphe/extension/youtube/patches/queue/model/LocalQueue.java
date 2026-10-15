@@ -10,10 +10,11 @@ package app.morphe.extension.youtube.patches.queue.model;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Session-only queue. Entry identities, rather than video IDs, distinguish duplicates. */
+/** Session-only queue with unique videos and stable identities across edits. */
 public final class LocalQueue {
     public record Entry(String id, String videoId, String title) {}
-    public record Snapshot(List<Entry> entries, int selected) {
+    public record Snapshot(List<Entry> entries, int selected, int repeatMode,
+                           boolean shuffled, long orderRevision) {
         public Entry current() {
             return selected < 0 ? null : entries.get(selected);
         }
@@ -22,19 +23,38 @@ public final class LocalQueue {
     private final ArrayList<Entry> entries = new ArrayList<>();
     private long nextId;
     private int selected = -1;
+    private int repeatMode;
+    private boolean shuffled;
+    private long orderRevision;
 
     public synchronized Snapshot snapshot() {
-        return new Snapshot(List.copyOf(entries), selected);
+        return new Snapshot(List.copyOf(entries), selected, repeatMode, shuffled, orderRevision);
     }
 
     public synchronized boolean isEmpty() { return entries.isEmpty(); }
 
-    public synchronized void add(String videoId, String title, boolean playNext) {
+    /** Existing videos keep their position, title, and identity without changing selection. */
+    public synchronized boolean add(String videoId, String title, boolean playNext) {
         if (videoId == null || videoId.isEmpty()) throw new IllegalArgumentException("Empty video ID");
+        for (Entry entry : entries) {
+            if (entry.videoId().equals(videoId)) return false;
+        }
         Entry entry = new Entry("morphe-queue-" + ++nextId, videoId,
                 title == null || title.isEmpty() ? videoId : title);
         entries.add(playNext && selected >= 0 ? selected + 1 : entries.size(), entry);
         if (selected < 0) selected = 0;
+        orderRevision++;
+        return true;
+    }
+
+    /** Native modes: off (0), repeat all (1), repeat one (2). */
+    public synchronized void setRepeatMode(int mode) {
+        if (mode < 0 || mode > 2) throw new IllegalArgumentException("Invalid repeat mode");
+        repeatMode = entries.isEmpty() ? 0 : mode;
+    }
+
+    public synchronized void setShuffled(boolean enabled) {
+        shuffled = enabled && !entries.isEmpty();
     }
 
     /** Exact entry wins; an unqualified response for the current video preserves its identity. */
@@ -80,11 +100,13 @@ public final class LocalQueue {
 
     public synchronized boolean move(int from, int to) {
         if (from < 0 || from >= entries.size() || to < 0 || to >= entries.size()) return false;
+        if (from == to) return true;
         String current = entries.get(selected).id();
         entries.add(to, entries.remove(from));
         for (int i = 0; i < entries.size(); i++) {
             if (entries.get(i).id().equals(current)) selected = i;
         }
+        orderRevision++;
         return true;
     }
 
@@ -94,13 +116,22 @@ public final class LocalQueue {
             entries.remove(i);
             if (i < selected) selected--;
             selected = entries.isEmpty() ? -1 : Math.min(selected, entries.size() - 1);
+            orderRevision++;
+            if (entries.isEmpty()) resetModes();
             return true;
         }
         return false;
     }
 
     public synchronized void clear() {
+        if (!entries.isEmpty()) orderRevision++;
         entries.clear();
         selected = -1;
+        resetModes();
+    }
+
+    private void resetModes() {
+        repeatMode = 0;
+        shuffled = false;
     }
 }

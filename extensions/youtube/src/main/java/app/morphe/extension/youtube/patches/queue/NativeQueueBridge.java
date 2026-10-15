@@ -25,6 +25,10 @@ public final class NativeQueueBridge {
     public static Object installStorage(Object navigator, Object controller, Object response) { return null; }
     public static void restoreStorage(Object navigator, Object storage) {}
     public static void restoreBackend(Object navigator, Object backend) {}
+    public static void setPlaybackModes(Object navigator, int repeatMode, boolean shuffled,
+                                        boolean resetShuffle) {}
+    public static Object headerPanel(Object header) { return null; }
+    public static void enableHeaderControls(Object header, int repeatMode, boolean shuffled) {}
     public static void refreshPanel(Object controller, Object response) {}
     public static void openPanel(Object controller) {}
     public static boolean isPlayerTransport(Object transport) { return false; }

@@ -18,6 +18,73 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertTrue
 
 class LocalQueueTest {
+    @Test fun `native playback modes preserve selection and survive queue edits`() {
+        val queue = LocalQueue()
+        listOf("a", "b", "c").forEach { queue.add(it, it, false) }
+        queue.select("b", null)
+        val current = queue.snapshot().current()
+        for (mode in listOf(1, 2, 0)) {
+            queue.setRepeatMode(mode)
+            assertEquals(mode, queue.snapshot().repeatMode())
+            assertEquals(current, queue.snapshot().current())
+        }
+        queue.setRepeatMode(2)
+        queue.setShuffled(true)
+        queue.add("d", "d", true)
+        queue.move(1, 3)
+        queue.remove(queue.snapshot().entries().first().id())
+        assertEquals(current, queue.snapshot().current())
+        assertEquals(2, queue.snapshot().repeatMode())
+        assertTrue(queue.snapshot().shuffled())
+        queue.setShuffled(false)
+        assertFalse(queue.snapshot().shuffled())
+        assertEquals(2, queue.snapshot().repeatMode())
+    }
+
+    @Test fun `ending the queue resets modes including after removing its final entry`() {
+        val queue = LocalQueue()
+        for (clear in listOf(false, true)) {
+            queue.add("a", "a", false)
+            queue.setRepeatMode(1)
+            queue.setShuffled(true)
+            if (clear) queue.clear() else queue.remove(queue.snapshot().current().id())
+            assertEquals(0, queue.snapshot().repeatMode())
+            assertFalse(queue.snapshot().shuffled())
+            queue.setRepeatMode(2)
+            queue.setShuffled(true)
+            queue.add("b", "b", false)
+            assertEquals(0, queue.snapshot().repeatMode())
+            assertFalse(queue.snapshot().shuffled())
+            queue.clear()
+        }
+    }
+
+    @Test fun `only structural edits invalidate native shuffle mapping`() {
+        val queue = LocalQueue()
+        queue.add("a", "a", false)
+        queue.add("b", "b", false)
+        val revision = queue.snapshot().orderRevision()
+        queue.select("b", null)
+        queue.updateTitle("a", "Title")
+        queue.setRepeatMode(1)
+        queue.setShuffled(true)
+        assertFalse(queue.add("a", "duplicate", true))
+        assertTrue(queue.move(1, 1))
+        assertFalse(queue.move(1, 2))
+        assertFalse(queue.remove("stale"))
+        assertEquals(revision, queue.snapshot().orderRevision())
+        queue.move(1, 0)
+        assertEquals(revision + 1, queue.snapshot().orderRevision())
+        queue.add("c", "c", false)
+        assertEquals(revision + 2, queue.snapshot().orderRevision())
+        queue.remove(queue.snapshot().entries().last().id())
+        assertEquals(revision + 3, queue.snapshot().orderRevision())
+        queue.clear()
+        assertEquals(revision + 4, queue.snapshot().orderRevision())
+        queue.clear()
+        assertEquals(revision + 4, queue.snapshot().orderRevision())
+    }
+
     @Test fun `play next inserts after current while play last appends`() {
         val queue = LocalQueue()
         queue.add("playing", "Playing", false)
@@ -27,11 +94,15 @@ class LocalQueueTest {
         assertEquals("playing", queue.snapshot().current().videoId())
     }
 
-    @Test fun `duplicate videos keep separate identities through navigation and reordering`() {
+    @Test fun `both insertion modes reject existing videos before at and after the playing entry`() {
         val queue = LocalQueue()
-        repeat(3) { queue.add("same-video", "Title", false) }
+        listOf("a", "b", "c").forEach { assertTrue(queue.add(it, it, false)) }
+        assertTrue(queue.select("b", null))
         val before = queue.snapshot()
-        assertEquals(3, before.entries().map { it.id() }.distinct().size)
+        for (video in listOf("a", "b", "c")) for (next in listOf(false, true)) {
+            assertFalse(queue.add(video, "Changed title", next))
+            assertEquals(before, queue.snapshot())
+        }
         val selected = before.entries()[1]
         assertTrue(queue.select(selected.videoId(), selected.id()))
         assertTrue(queue.select(selected.videoId(), null))
@@ -71,27 +142,31 @@ class LocalQueueTest {
         assertFalse(queue.remove(snapshot.current().id()))
     }
 
-    @Test fun `removing a captured duplicate after reorder preserves playback and the other copy`() {
+    @Test fun `a removed video can be re-added without letting stale removal delete its new entry`() {
         val queue = LocalQueue()
         queue.add("playing", "Playing", false)
-        repeat(2) { queue.add("duplicate", "Duplicate", false) }
+        queue.add("queued", "Queued", false)
         queue.add("last", "Last", false)
         val before = queue.snapshot()
-        val removed = before.entries()[2]
-        assertTrue(queue.move(2, 1))
+        val removed = before.entries()[1]
+        assertTrue(queue.move(1, 2))
         assertTrue(queue.remove(removed.id()))
         assertEquals(before.current(), queue.snapshot().current())
-        assertEquals(listOf(before.entries()[0], before.entries()[1], before.entries()[3]),
-            queue.snapshot().entries())
+        assertTrue(queue.add("queued", "Queued again", false))
+        val readded = queue.snapshot()
+        assertEquals(listOf("playing", "last", "queued"), readded.entries().map { it.videoId() })
+        assertNotEquals(removed.id(), readded.entries().last().id())
         assertFalse(queue.remove(removed.id()))
+        assertEquals(readded, queue.snapshot())
     }
 
-    @Test fun `late metadata updates preserve duplicate identities and ignore removed videos`() {
+    @Test fun `late metadata updates preserve entry identities and ignore removed videos`() {
         val queue = LocalQueue()
-        repeat(2) { queue.add("video", "video", false) }
+        queue.add("video", "video", false)
+        queue.add("other", "Other title", false)
         val ids = queue.snapshot().entries().map { it.id() }
         assertTrue(queue.updateTitle("video", "Resolved title"))
-        assertEquals(listOf("Resolved title", "Resolved title"), queue.snapshot().entries().map { it.title() })
+        assertEquals(listOf("Resolved title", "Other title"), queue.snapshot().entries().map { it.title() })
         assertEquals(ids, queue.snapshot().entries().map { it.id() })
         assertFalse(queue.updateTitle("video", "Resolved title"))
         queue.clear()
@@ -101,9 +176,9 @@ class LocalQueueTest {
 
     @Test fun `panel encodes native row identities and endpoints without a server playlist ID`() {
         val queue = LocalQueue()
-        repeat(2) { queue.add("abcdefghijk", "Unicode 🎵", false) }
+        listOf("abcdefghijk", "lmnopqrstuv").forEach { queue.add(it, "Unicode 🎵", false) }
         val entries = queue.snapshot().entries()
-        queue.select("abcdefghijk", entries[1].id())
+        queue.select(entries[1].videoId(), entries[1].id())
         val panel = fields(PlaylistPanel.encode(queue.snapshot(), "Queue"))
         assertEquals("Queue", (panel.getValue(1).single() as ByteArray).decodeToString())
         assertEquals(1L, panel.getValue(3).single())
@@ -123,9 +198,9 @@ class LocalQueueTest {
         }
     }
 
-    @Test fun `playing endpoint survives insertion and reordering without changing duplicate identities`() {
+    @Test fun `playing endpoint survives insertion and reordering without changing entry identities`() {
         val queue = LocalQueue()
-        repeat(3) { queue.add("abcdefghijk", "Title", false) }
+        listOf("aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc").forEach { queue.add(it, "Title", false) }
         val current = queue.snapshot().entries()[1]
         queue.select(current.videoId(), current.id())
         queue.move(1, 2)

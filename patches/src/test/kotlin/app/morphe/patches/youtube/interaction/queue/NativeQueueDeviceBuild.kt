@@ -12,6 +12,7 @@ import app.morphe.patcher.PatcherConfig
 import app.morphe.patcher.apk.ApkUtils.applyTo
 import app.morphe.patcher.dex.SdkDexVerifier
 import app.morphe.patcher.patch.bytecodePatch
+import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.WideLiteralInstruction
@@ -45,6 +46,49 @@ fun main(arguments: Array<String>) {
             val attach = calls.indexOf("Laojx;->h(Laoju;)V")
             check(fill >= 0 && attach > fill) {
                 "An empty native store would become visible before local rows were loaded"
+            }
+            val shuffleConstructor = calls.indexOf("Lnig;-><init>(Lnii;Laobb;Lbpv;Lisl;Laooh;)V")
+            val backendConstructor = calls.indexOf("Laokc;-><init>(Laojo;Laokg;)V")
+            val switchBackend = calls.indexOf("Lniq;->patch_restoreLocalQueueBackend(Laovn;)V")
+            check(shuffleConstructor >= 0 && shuffleConstructor < fill &&
+                    backendConstructor > attach && switchBackend > backendConstructor) {
+                "The populated local store must use the native shuffle/repeat navigator"
+            }
+            val modeCalls = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
+                .methods.single { it.name == "setPlaybackModes" }.implementation!!.instructions
+                .filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
+            check(modeCalls.indexOf("Lnig;->a:[I") < modeCalls.lastIndexOf("Lnig;->f(Z)V") &&
+                    modeCalls.indexOf("Lnig;->b:[I") < modeCalls.lastIndexOf("Lnig;->f(Z)V") &&
+                    modeCalls.lastIndexOf("Lnig;->f(Z)V") < modeCalls.indexOf("Laokc;->q(I)V")) {
+                "Rebuild random navigation before notifying observers of mode/availability changes"
+            }
+            for ((name, callback) in listOf("q" to "onRepeatRequested", "f" to "onShuffleRequested")) {
+                val implementation = mutableClassDefBy("Lniq;").methods.single { it.name == name }
+                    .implementation!!
+                check(implementation.registerCount >= 3) {
+                    "The mode forwarder needs a result register that does not alias its receiver"
+                }
+                val first = implementation.instructions.first() as ReferenceInstruction
+                check(first.reference.toString().contains("NativeQueuePatch;->$callback("))
+                val delegate = if (name == "q") "Laovj;->q(I)V" else "Laovo;->f(Z)V"
+                check(implementation.instructions.filterIsInstance<ReferenceInstruction>()
+                    .last().reference.toString() == delegate) {
+                    "Normal account-playlist mode requests must retain their native delegate"
+                }
+            }
+            val headerBind = mutableClassDefBy("Lppo;").methods.single { it.name == "d" }
+                .implementation!!.instructions.toList()
+            for (index in headerBind.indices.filter { headerBind[it].opcode == Opcode.RETURN_VOID }) {
+                check((headerBind[index - 1] as ReferenceInstruction).reference.toString().contains(
+                    "NativeQueuePatch;->onQueueHeader("))
+            }
+            val headerControls = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
+                .methods.single { it.name == "enableHeaderControls" }.implementation!!.instructions
+                .filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
+            check("Lppo;->u:Landroid/view/View\$OnClickListener;" in headerControls &&
+                    "Lppo;->v:Landroid/view/View\$OnClickListener;" in headerControls &&
+                    "Lppo;->k(IZ)V" in headerControls) {
+                "Local mode controls must retain native listeners and native selected-state rendering"
             }
             val controls = listOf(
                 Triple("hD", "onManualNavigation", "Lanug;->c()V"),
@@ -119,7 +163,7 @@ fun main(arguments: Array<String>) {
             check("Lahmg;-><init>(Ljava/lang/Object;)V" in hideCalls) {
                 "The native hide command must emit the tagged-row event intercepted by the queue"
             }
-            println("Verified playback/navigation guards and native swipe presenter/client-only removal route")
+            println("Verified playback/navigation guards, native shuffle/repeat controls, and native swipe removal")
         }
     }
     Patcher(PatcherConfig(input, workspace, verifier = SdkDexVerifier(File(sdk)))).use { patcher ->

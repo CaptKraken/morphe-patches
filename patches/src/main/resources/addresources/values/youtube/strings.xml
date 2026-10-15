@@ -23,6 +23,7 @@ Second \"item\" text"</string>
     <string name="morphe_local_queue_remove">Remove from queue</string>
     <string name="morphe_local_queue_empty">Add videos to the queue from their video menu</string>
     <string name="morphe_local_queue_added">Added to temporary queue</string>
+    <string name="morphe_local_queue_already_added">Already in queue</string>
     <string name="morphe_local_queue_failed">Could not update queue</string>
     <string name="morphe_local_queue_leave_playlist">Open a video outside the playlist to start a temporary queue</string>
 

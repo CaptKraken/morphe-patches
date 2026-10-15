@@ -309,9 +309,13 @@ val nativeQueuePatch = bytecodePatch(
         val endpointParser = field("Laojx;", "k", "Lbpv;")
         val queueConfig = field("Laojx;", "h", "Laooh;")
         val playback = field("Lpqj;", "f", "Laobb;")
+        val tracking = field("Lpqj;", "J", "Lisl;")
+        val dispatcher = field("Laojx;", "a", "Laokg;")
         val storageConstructor = method("Lnii;", "<init>", listOf("Laobb;", "Lbpv;", "Laooh;"), "V")
         val storageSwitch = method("Laojx;", "h", listOf("Laoju;"), "V")
-        val navigableConstructor = method("Laojl;", "<init>", listOf("Laoju;", "Lbpv;", "Laooh;"), "V")
+        val shuffleConstructor = method("Lnig;", "<init>",
+            listOf("Lnii;", "Laobb;", "Lbpv;", "Lisl;", "Laooh;"), "V")
+        val backendConstructor = method("Laokc;", "<init>", listOf("Laojo;", "Laokg;"), "V")
         val populate = method("Laojj;", "t", listOf("Lahwk;"), "V")
         // A new navigator alone still shares the manager's previous backing queue. Install
         // an isolated native playlist store so local rows load even when Premium is disabled.
@@ -326,10 +330,19 @@ val nativeQueuePatch = bytecodePatch(
             iget-object v4, v0, $queueConfig
             new-instance v5, Lnii;
             invoke-direct {v5, v2, v3, v4}, $storageConstructor
-            new-instance v2, Laojl;
-            invoke-direct {v2, v5, v3, v4}, $navigableConstructor
+            move-object v3, v5
+            iget-object v4, p1, $playback
+            iget-object v5, v0, $endpointParser
+            iget-object v6, p1, $tracking
+            iget-object v7, v0, $queueConfig
+            new-instance v2, Lnig;
+            invoke-direct/range {v2 .. v7}, $shuffleConstructor
             invoke-virtual {v2, p2}, $populate
-            invoke-virtual {v0, v5}, $storageSwitch
+            invoke-virtual {v0, v3}, $storageSwitch
+            new-instance v3, Laokc;
+            iget-object v4, v0, $dispatcher
+            invoke-direct {v3, v2, v4}, $backendConstructor
+            invoke-virtual {p0, v3}, Lniq;->patch_restoreLocalQueueBackend(Laovn;)V
             return-object v1
         """)
         bridge("restoreStorage", """
@@ -365,6 +378,104 @@ val nativeQueuePatch = bytecodePatch(
             check-cast p1, Laovn;
             invoke-virtual {p0, p1}, Lniq;->patch_restoreLocalQueueBackend(Laovn;)V
             return-void
+        """)
+        // Reuse the host's random successor/predecessor mapping. Invalidate it only when
+        // row order changes or shuffle is newly enabled, never for selection/title updates.
+        val nativeQueue = field("Laokc;", "a", "Laojo;")
+        val shuffledNext = field("Lnig;", "a", "[I", true)
+        val shuffledPrevious = field("Lnig;", "b", "[I", true)
+        val shuffle = method("Lnig;", "f", listOf("Z"), "V")
+        val repeat = method("Laokc;", "q", listOf("I"), "V")
+        bridge("setPlaybackModes", """
+            check-cast p0, Lniq;
+            iget-object v0, p0, $backend
+            check-cast v0, Laokc;
+            iget-object v1, v0, $nativeQueue
+            check-cast v1, Lnig;
+            if-eqz p3, :apply
+            const/4 v2, 0x0
+            invoke-virtual {v1, v2}, $shuffle
+            iput-object v2, v1, $shuffledNext
+            iput-object v2, v1, $shuffledPrevious
+            :apply
+            invoke-virtual {v1, p2}, $shuffle
+            invoke-virtual {v0, p1}, $repeat
+            return-void
+        """)
+        for ((name, parameter, callback) in listOf(
+            Triple("q", "I", "onRepeatRequested"),
+            Triple("f", "Z", "onShuffleRequested")
+        )) {
+            // These two stock forwarding methods have no spare registers: v0 aliases
+            // their receiver. Give the guarded forwarder a separate result register.
+            val type = if (name == "q") "Laovj;" else "Laovo;"
+            val delegate = field("Lniq;", if (name == "q") "g" else "h", type)
+            val forward = method(type, name, listOf(parameter), "V")
+            val target = method("Lniq;", name, listOf(parameter), "V")
+            val owner = mutableClassDefBy("Lniq;")
+            owner.methods.remove(target)
+            owner.methods.add(ImmutableMethod(
+                "Lniq;", name, target.parameters, target.returnType, target.accessFlags,
+                target.annotations, target.hiddenApiRestrictions, MutableMethodImplementation(3)
+            ).toMutable().apply {
+                addInstructions(0, """
+                    invoke-static {p0, p1}, $EXTENSION->$callback(Ljava/lang/Object;$parameter)Z
+                    move-result v0
+                    if-eqz v0, :original
+                    return-void
+                    :original
+                    iget-object v0, p0, $delegate
+                    invoke-interface {v0, p1}, $forward
+                    return-void
+                """)
+            })
+        }
+
+        // Retain the actual native views, click listeners, repeat-one drawable and analytics.
+        getter("headerPanel", "Lppo;", "k", "Lbfzu;")
+        val headerRoot = field("Lppo;", "h", "Landroid/view/View;")
+        val repeatButton = field("Lppo;", "i", "Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;")
+        val shuffleButton = field("Lppo;", "j", "Landroid/widget/ImageView;")
+        val repeatClick = field("Lppo;", "u", "Landroid/view/View\$OnClickListener;")
+        val shuffleClick = field("Lppo;", "v", "Landroid/view/View\$OnClickListener;")
+        val repeatAll = field("Lppo;", "m", "Z", true)
+        val repeatOne = field("Lppo;", "n", "Z", true)
+        val shuffleAllowed = field("Lppo;", "w", "Z", true)
+        val updateHeader = method("Lppo;", "k", listOf("I", "Z"), "V")
+        bridge("enableHeaderControls", """
+            check-cast p0, Lppo;
+            const/4 v0, 0x0
+            iget-object v1, p0, $headerRoot
+            invoke-virtual {v1, v0}, Landroid/view/View;->setVisibility(I)V
+            iget-object v1, p0, $repeatButton
+            invoke-virtual {v1, v0}, Landroid/view/View;->setVisibility(I)V
+            iget-object v2, p0, $shuffleButton
+            invoke-virtual {v2, v0}, Landroid/view/View;->setVisibility(I)V
+            const/4 v0, 0x1
+            iput-boolean v0, p0, $repeatAll
+            iput-boolean v0, p0, $repeatOne
+            iput-boolean v0, p0, $shuffleAllowed
+            invoke-virtual {v1, v0}, Landroid/view/View;->setEnabled(Z)V
+            invoke-virtual {v2, v0}, Landroid/view/View;->setEnabled(Z)V
+            iget-object v0, p0, $repeatClick
+            invoke-virtual {v1, v0}, Landroid/view/View;->setOnClickListener(Landroid/view/View${'$'}OnClickListener;)V
+            iget-object v0, p0, $shuffleClick
+            invoke-virtual {v2, v0}, Landroid/view/View;->setOnClickListener(Landroid/view/View${'$'}OnClickListener;)V
+            invoke-virtual {p0, p1, p2}, $updateHeader
+            return-void
+        """)
+        val bindHeader = method("Lppo;", "d", listOf("Lbfzu;", "Lahwb;", "I"), "V")
+        for (index in bindHeader.implementation!!.instructions.withIndex()
+            .filter { it.value.opcode == Opcode.RETURN_VOID }.map { it.index }.reversed()) {
+            bindHeader.addInstructions(index,
+                "invoke-static/range {p0 .. p0}, $EXTENSION->onQueueHeader(Ljava/lang/Object;)V")
+        }
+        // A delayed global mode event must not overwrite the local header's selected states.
+        updateHeader.addInstructions(0, """
+            invoke-static {p1, p0}, $EXTENSION->repeatMode(ILjava/lang/Object;)I
+            move-result p1
+            invoke-static {p2, p0}, $EXTENSION->shuffleMode(ZLjava/lang/Object;)Z
+            move-result p2
         """)
         for ((name, native) in listOf("refreshPanel" to panelRefresh, "refreshNavigator" to navigatorRefresh)) {
             bridge(name, """
