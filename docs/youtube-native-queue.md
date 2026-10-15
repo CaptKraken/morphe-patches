@@ -1,312 +1,173 @@
 # Experimental native YouTube queue
 
-Select **Native temporary queue (experimental)** when patching YouTube **21.20.405**.
-The patch is off by default and includes the existing Add to queue dependencies.
-This is a prototype undergoing Android device testing.
+This fork adds **Native temporary queue (experimental)** for YouTube **21.20.405**.
+It is opt-in and depends on the existing Add to queue patch. Other YouTube versions
+are deliberately unsupported: the native methods and protobuf fields are pinned
+to the supplied APK.
 
-Device testing confirmed that the native temporary playlist appears and advances
-automatically when the current video ends. The player Next button still opened a
-recommendation outside the two-video queue. Investigation found that preview 3's
-ownership test rejected the composite controls used by the actual overlay factory.
-An alternate Next implementation could also bypass the patched base method.
-The preview 4 device retest confirmed player Next/Previous and drag reordering.
+The distributed source is **Kraken Queue Patches (preview 13)**, maintained by
+CaptKraken and based on Morphe Patches. Upstream attribution and license notices
+are preserved. See [LICENSE](../LICENSE) and [NOTICE](../NOTICE).
 
-Preview 4 captures handlers at the overlay's actual registration point, so a
-composite controls wrapper is supported. It tracks live overlay handlers weakly
-and intercepts both the base and alternate Next implementation, plus Previous.
-If local navigation is unavailable, a registered queue control consumes the click
-instead of falling back to a recommendation.
+## Install and use
 
-Preview 7 supplies YouTube's icon-only swipe-button renderer in each row's action
-data, with the native crossed-out-eye icon (`VISIBILITY_OFF`). Omitting visible
-text selects the host's compact layout and spacing. Preview 6 used the same native
-presenter but incorrectly supplied a trash icon and visible text, producing the
-wide button seen in the device comparison. The host creates, styles, binds, and
-recycles the button. Swipe toward the start edge (left in left-to-right layouts),
-then tap the crossed-out-eye action. The native HideEnclosingCommand emits the
-tagged row to our existing local removal handler, without a server playlist-edit
-endpoint. The Watch Later full-swipe behavior is a different reference and is not
-enabled for this queue.
-
-The preview 7 device retest confirmed the Mix-style swipe action. Preview 8 makes
-the queue unique by video ID. Both add actions reject a video already anywhere in
-the queue, including the playing video, without moving it or changing playback.
-The app shows **Already in queue**. A video can be added again after removal or
-clearing the queue. Starting a queue with the playing video creates just one entry.
-
-Preview 8 also connects the existing native shuffle and repeat buttons to the
-isolated local playlist navigator. Repeat cycles **off → repeat all → repeat one
-→ off** using YouTube's native drawable states. Repeat one affects automatic
-advance; manual Next/Previous still select another entry. Shuffle randomizes
-playback navigation while keeping the visible list order and current video.
-Its native successor/predecessor mapping remains stable through title updates
-and video changes, and is rebuilt after additions, removals, or drag reordering.
-Toggling shuffle off restores navigation in visible list order. Modes reset when
-the queue ends. The preview 8 device retest confirmed that update works.
-
-Queue edits populate the detached native store before attaching it, preserve the
-playing video's existing endpoint, and suppress native stop/reopen dispatch only
-on the editing thread. Normal user navigation and autoplay run outside that scope.
-The original resume-crash stack was absent from exported logs; pause/resume still
-needs device testing.
-
-Preview 9 captures native titles instead of relying on a metadata request for
-every entry. Menu actions retain an immutable video ID/title pair, and the playing
-video is seeded from its native player response. Captured titles take priority over
-network responses. The preview 9 device retest confirmed native title capture.
-
-Preview 10 adds the channel name and a second metadata line containing YouTube's
-formatted view count and time since upload, using the native playlist row fields.
-History metadata and the native player channel are captured directly. Missing
-fields load asynchronously from the existing unauthenticated localized video-ID
-lookup, accepting only a video renderer whose ID exactly matches the queue entry.
-The row keeps YouTube's fonts, colors, spacing and responsive metadata visibility.
-The preview 10 device retest confirmed this metadata update.
-
-Preview 11 supplies real native Like/Dislike toggle renderers for the selected row,
-replacing the host's disabled placeholders. Tapping a thumb sends YouTube's native
-video rating command; tapping the selected thumb again removes that rating. These
-actions change the signed-in account's rating for that video. They use the host's
-normal account check, sign-in flow, authenticated request, error handling and
-rollback. They do not create or edit an account playlist. Native entity and event
-subscriptions update the row icons, including changes made from the main player.
-A bounded cache of observed native ratings initializes refreshed rows. The native
-presenter still owns clicks, selected icons, accessibility and recycling. The
-preview 11 device retest confirmed working rating actions.
-
-Preview 12 adds the existing three-dot button at the right of the repeat/shuffle
-row. Its native bottom sheet contains only **Save playlist**, with the native
-bookmark icon. That action opens YouTube's native creation dialog with name and
-privacy controls. Confirming creates a new playlist in the signed-in account from
-all queue videos in visible list order, including the playing and preceding entries.
-Shuffle does not change the saved order. The native sign-in, name validation,
-creation request and success/error handling remain in charge. No account playlist
-is created by opening or cancelling the dialog. Each dialog retains the queue
-snapshot it was opened with; later queue edits do not change that pending save.
-Saving makes a separate copy: the temporary queue keeps its local identity, and
-later queue edits or clearing do not update or delete the saved playlist. Repeating
-Save creates another playlist. This save flow still needs an Android device retest.
-
-Import the replacement bundle as **Morphe Patches (queue preview 12)** and disable
-the preceding preview source. Select all desired YouTube patches from the new
-source alone. Starting from an untouched APK avoids applying shared setup twice.
-
-The queue lives in memory for the app process. It uses YouTube's native playlist
-panel, collapsed playlist bar, selected-row indicator, and playback navigator.
-Adding and rearranging videos does not create or edit a playlist in your account.
-Only confirming the explicit **Save playlist** creation flow saves an account copy.
-
-## Using it
-
-1. Open a regular video outside an existing playlist.
-2. In another video's menu, choose **Play next in queue** or **Play last in queue**.
-   The currently playing video remains in the list and playback should continue.
-3. Expand the playlist bar in the watch screen to see the queue. Drag the native
-   handles to change its order. Swipe a row to reveal the crossed-out-eye action,
-   or use its three-dot menu to remove that entry. Removing an upcoming entry keeps
-   the current video playing; removing the current entry selects its successor (or the preceding
-   entry if it was last). Removing the final entry clears the queue.
-4. Tap the native repeat button to cycle modes, or toggle shuffle. Use the selected
-   row to follow shuffled playback; switching modes should not restart the video.
-5. Use the selected row's thumbs to like or dislike its video. Tap the selected
-   thumb again to remove that rating; switching thumbs replaces the prior rating.
-6. To keep a copy, open the three-dot menu beside repeat/shuffle and choose
-   **Save playlist**. Enter a name, choose privacy, and confirm in YouTube's dialog.
-   Cancel to leave without creating a playlist. The queue remains temporary.
-7. Use **Clear temporary queue** in a video menu to return to normal playback.
+1. Disable the preceding experimental source and import the replacement `.mpp` in
+   Morphe Manager. Select all desired patches from the replacement source alone.
+2. Patch an untouched YouTube 21.20.405 APK. An already patched APK or a selection
+   mixing the official and experimental sources can apply shared setup twice.
+   For non-root installation, include the usual GmsCore patches from the same source.
+3. Enable **Override feed flyout queue button** in the app's queue settings if the
+   native queue menu actions are missing. **Add feed flyout queue menu item**
+   controls insertion of the additional actions.
+4. Play a regular video outside an account playlist. In another video's menu,
+   choose **Play next in queue** or **Play last in queue**. The current video stays
+   in the queue and should continue playing without restarting.
+5. Expand the playlist bar to see the native Queue panel. Tap rows, use the player
+   Next/Previous buttons, or let playback advance automatically. Drag the native
+   handles to reorder entries. Swipe toward the start edge (left in left-to-right
+   layouts) and tap the native crossed-out-eye action to remove an entry. Its
+   three-dot menu also offers Remove.
+6. Use the native shuffle and repeat buttons. Repeat cycles off → all → one → off.
+   Repeat one affects automatic advance; manual Next/Previous still advance.
+   Shuffle changes playback navigation while keeping visible list order.
+7. The selected row's native thumbs change the signed-in account's rating for
+   that video. Tap the selected thumb again to remove the rating, or switch thumbs.
+   YouTube handles sign-in, requests, rating events and failure rollback.
+8. The header's three-dot menu beside repeat/shuffle contains **Save playlist**
+   without Share. It opens YouTube's native name/privacy dialog. Confirm to create
+   a new account playlist containing all queue videos in visible order, including
+   the current and preceding entries. Shuffle does not change the saved order.
+   Opening or cancelling the dialog does not create a playlist.
+9. Use **Clear temporary queue** in a video menu to return to normal playback.
    Opening an account playlist or a video outside the queue also ends the queue.
 
-If the queue actions are missing, enable **Override feed flyout queue button**
-in the Morphe queue settings. The device tester needed this setting enabled.
-**Add feed flyout queue menu item** controls insertion of the additional actions.
+Each video appears at most once. Adding a duplicate shows **Already in queue**
+without moving it or changing playback. A removed video can be added again.
+Removing the current entry chooses its successor, or the preceding entry if it was
+last. Removing the final entry clears the queue. Modes reset when the queue ends.
 
-If the optional Save to Watch later/queue player button is installed, its queue
-action opens the same native panel. Its Watch later action retains its existing
-meaning. The old account-backed queue dialog and automatic queue synchronization
-are bypassed when this experimental patch is selected.
+Saving creates a separate copy. Later queue edits or clearing do not update or
+delete the saved playlist. Each open creation dialog retains its original queue
+snapshot. Saving again creates another playlist. Ordinary queue additions,
+reordering and removal do not create or edit an account playlist.
 
-Each video appears at most once. Stable entry IDs keep row actions attached to the
-correct entry across reordering and protect a re-added video from stale removal
-events.
-Titles are read from the same video card that opened the menu, from the native
-History renderer, or from a player response containing both the video ID and title.
-Card extraction uses the full title field associated with the accessibility label,
-scoped to that video's component; it does not split the label on commas or hyphens.
-The source data can contain multiple video cards, so ambiguous or truncated-only
-titles fall back to metadata rather than borrowing a nearby video's title.
-A bounded process-local cache retains up to 200 titles. Existing original-title
-replacements are consulted without starting or waiting for another request.
+The optional Save to Watch later/queue player button opens the same panel for its
+queue action. Its Watch later action retains its existing meaning. The old
+account-backed queue dialog and automatic queue synchronization are bypassed only
+when this experimental patch is included.
 
-When no native title is available, YouTube's public oEmbed endpoint supplies the
-fallback without account credentials. Transient failures retry after one and four
-seconds (at most three attempts); permanent access/not-found errors do not retry.
-A native title cancels remaining retries. Responses are scoped to the stable queue
-entry, so an old request cannot rename a removed/re-added video. Late network
-results cannot overwrite native card or player titles. Title updates retain entry
-identity, selection, repeat state and the shuffle mapping. A video ID remains as
-the label if neither source provides a title. Thumbnail images use YouTube's image
-host.
+## Titles and metadata
 
-Channel, views and upload-age strings have independent source precedence: a
-fallback can fill missing fields without replacing a native value. Existing
-localized strings (including live-viewer labels) are preserved; the patch does not
-convert view counts or guess dates. Missing fields remain blank. The lookup uses
-the same mobile-web client as original-title support and sends only the video ID
-and locale, without account authentication. Transient errors retry at most twice;
-a valid response without the video is not retried. Late responses for removed
-entries are discarded before updating the cache or row. No account playlist is
-created or edited by this lookup.
+Titles come from the same native card that opened the menu, the native History
+renderer, or a player response containing the video ID and title. Menu actions
+capture an immutable ID/title pair. Card extraction scopes text to the matching
+video, preserves punctuation and non-Latin text, and rejects ambiguous or
+truncated-only data. Original-title replacements are consulted without waiting
+for another request.
 
-Starting the queue while already playing an account playlist is currently rejected
-with a toast. Shorts, Cast/TV queues, persistence across process death, and linking
-ongoing queue edits to a saved account playlist are outside the current implementation.
+Missing titles use YouTube's public oEmbed endpoint. Transient failures retry after
+one and four seconds, with at most three attempts. Native titles beat fallback
+responses. A stale response cannot rename a removed and re-added entry. An ID
+remains the label when no source supplies a title.
+
+Channel, views and upload-age strings use the native playlist row fields. History
+and player metadata are captured directly. Missing fields use the existing
+unauthenticated localized video-ID lookup; only a renderer matching the exact ID
+is accepted. Source precedence is independent per field. Localized strings and
+live-viewer labels are preserved; missing values stay blank. Transient errors have
+at most two retries, and stale entry responses are discarded. Both metadata caches
+are bounded to 200 videos. Thumbnails use YouTube's image host.
+
+Metadata updates retain entry identity, selection, repeat mode and shuffle mapping.
+The native row retains YouTube's fonts, spacing and responsive metadata visibility.
+
+Initial rating states are cached separately, for at most 200 videos. Observing a
+changed native global account identity clears this cache and schedules a panel
+refresh. Native account-scoped entity subscriptions and rating events remain in
+charge of live state; no account identity or token is logged by the queue.
+
+## Implementation and limits
+
+Local state supplies playlist-panel protobuf data to the native panel and watch
+navigator. The host's parser and extension registry decode it. Typed DEX bridges
+check every referenced member; runtime reflection is not used.
+
+An isolated native playlist store prevents autoplay recommendations from entering
+the queue. The native `nig` navigator supplies random successor/predecessor arrays
+and repeat behavior through `aokc`. Shuffle mappings rebuild only after structural
+edits or enabling shuffle. Modes and metadata updates do not reload playback.
+
+Queue edits populate the detached store before attaching it and preserve the
+playing endpoint. A thread-local edit scope suppresses the native stop/reopen
+operation only during those edits. The preceding store, backend and cached watch
+response fields are restored when ownership ends. Manual overlay controls use
+the local navigator before their normal delegates and consume queue-boundary taps.
+
+Owned row gestures are intercepted before the native server-edit dispatcher;
+account-playlist rows retain their normal path. Stable local entry IDs reject stale
+removal events. Native swipe and rating presenters retain their own styling,
+listeners, entity/event subscriptions and recycling. Save uses a native creation
+dialog endpoint with explicit snapshot video IDs and no synthetic source playlist.
+
+The queue lives only for the app process. Starting it from an existing account
+playlist is rejected with a toast. Shorts, Cast/TV queues, persistence across
+process death and synchronizing later edits to a saved playlist are unsupported.
 
 ## Validation
 
 Use JDK 21 and a configured Android SDK. From the repository root:
 
 ```sh
-./gradlew :patches:test
+./gradlew :patches:test :patches:checkStringResources
 ./gradlew :patches:validateNativeQueue -PqueueApk=/absolute/path/youtube.apk
 ./gradlew :patches:buildAndroid
 ```
 
-`validateNativeQueue` applies the actual patch and dependencies to a supplied APK,
-rebuilds its resources, and invokes the Android SDK DEX and cross-DEX hierarchy
-verifiers. An incompatible version or missing native member aborts patching.
-The native ABI and protobuf field numbers are intentionally pinned to the supplied
-21.20.405 APK; additional versions require further discovery and validation.
+The validation task applies the actual patch and dependencies to the stock APK,
+checks native hooks and ABI assumptions, rebuilds resources, and runs Android SDK
+DEX and cross-DEX hierarchy verification. An incompatible APK or missing native
+member aborts patching. This patch supports one version, so its minimum and maximum
+supported version are both 21.20.405.
 
-The patch bundle is `patches/build/libs/patches-1.47.0.mpp`. Run `buildAndroid` last
-if another task has rebuilt the JAR at that same path; the distributable bundle
-must contain `classes.dex`.
+The distributable is `patches/build/libs/patches-1.47.0.mpp`. Run `buildAndroid` last
+if another task rebuilt a JVM JAR at the same path; the Android bundle must contain
+`classes.dex`. Add `-PqueueOutput=/absolute/path/queue-unsigned.apk` for an unsigned
+APK intended for a separate signing/testing workflow. The validation task does not
+add GmsCore support, change the package name, sign or install the APK.
 
-For an unsigned APK intended for a separate signing/testing workflow, add
-`-PqueueOutput=/absolute/path/queue-unsigned.apk` to the validation command.
-This task does not add GmsCore support, change the package name, sign the APK, or
-install it. For normal non-root use, select the experimental patch alongside the
-usual YouTube/GmsCore patches in Morphe Manager.
+Model tests cover queue ordering, uniqueness, selection and stable IDs, immutable
+snapshots, stale metadata/removal events, per-source metadata precedence, bounded
+caches, retry limits, native wire data, playback preservation, ratings/account
+cache invalidation and save-dialog snapshots. APK checks cover native transport
+registration, forwarding/delegates, storage attachment, mode updates, gestures,
+metadata hooks, rating lifecycle, account callbacks and the Save dialog's
+confirmation/authentication path. The resource checker validates all bundled locales.
 
-Automated JVM tests cover insertion order, duplicate rejection in both add modes,
-selection through moves/removals, immutable snapshots, late metadata, and native
-panel/endpoint wire data, including preservation of the playing endpoint. Additional
-tests cover nested edit scopes, exception cleanup, and isolation from playback on
-other threads. APK regression checks verify that the playback-dispatch guard runs
-before native side effects and that a new store is populated before attachment.
-They also check that manual overlay controls consult the local queue before their
-original delegates, including the alternate Next implementation, and that ownership
-is captured where the composite controller registers with the actual overlay.
-Navigation must commit a queue descriptor before loading it.
-Additional checks cover the native swipe presenter lifecycle, renderer/command tags,
-and the host's tagged-row removal event. Model regressions cover the icon-only
-native hide action with a localized accessibility label and removing/re-adding a
-video after reordering while preserving playback and rejecting stale removal events.
-Playback-mode tests cover preserving modes across edits, resetting modes at the end
-of a queue, and invalidating shuffle mappings only for structural changes. Real-APK
-checks also require the native random navigator, native button listeners and state
-rendering, and rebuilding random mappings before notifying availability observers.
-Title regressions cover punctuation and Khmer text, localized/truncated labels,
-multi-video card isolation, immutable menu snapshots, bounded caching, source
-precedence, removed-entry responses, and transient versus permanent retry limits.
-APK checks require the paired player-response hook on 21.20.405, the menu hooks
-surviving extension shrinking, and the native History renderer matching the same
-video-ID interface.
-Additional metadata regressions cover exact-ID renderer selection, localized text,
-live/missing fields, per-field precedence, immutable snapshots, stale-entry
-responses and the native channel/video-info protobuf fields (2 and 31). APK checks
-require the native History metadata fields and the existing row TextViews to
-remain bound by YouTube's renderer.
-Rating regressions cover video-bound native default/undo endpoints, all initial
-rating states, native icon IDs, localized accessibility, bounded caching and
-preservation of the live playback endpoint. APK checks require model initialization
-before subscribing, native click dispatch, entity subscriptions and recycling,
-cache hooks surviving shrinking, and the native account/sign-in and rollback paths.
-No real account rating is submitted during these automated checks.
-Save regressions cover the single-item native menu, localized label/bookmark icon,
-ordered unique video IDs, edits while a dialog is pending, empty/single-item queues,
-and preservation of playback endpoints, local identity, selection and modes. APK
-checks require the original header menu listener and bottom-sheet presenter, the
-explicit-video creation endpoint, native authentication and name/privacy dialog,
-and the native confirmation-to-request path. Menu and command field numbers were
-resolved from the supplied APK's protobuf message information. An optional attempt
-to execute those Android data classes directly on the JVM stopped at an optimized
-abstract protobuf class (`axaj`); it is not counted as passing validation. The
-Android dialog and actual account save still require the device checks below.
-Automated checks do not submit a playlist creation request.
-APK verification establishes that the patched DEX and
-resources can be built; it does not establish that YouTube renders the UI or plays
-the queue correctly on an Android device.
+Automated checks submit no account votes or playlist creation requests. A separate
+attempt to run the APK's Android protobuf classes on the JVM stopped at an
+optimized abstract class (`axaj`); it is not counted as passing validation.
 
-## Device checks still required
+## Device verification
 
-- Open the queue header's three-dot menu. Confirm it contains only **Save playlist**,
-  then verify that it opens YouTube's name/privacy dialog. Cancel and confirm that
-  nothing was created. Save a named private playlist and check the Library for the
-  exact queue videos in visible order, including the current/earlier entries.
-  Repeat after reordering, removal and shuffle; playback and the temporary queue
-  should remain usable. Clear/edit the queue afterward and confirm the saved copy
-  stays intact. Test a single-entry queue, signed-out sign-in, interrupted network,
-  account switching and a normal account playlist's existing menu.
-- On a signed-in account, like, undo like, dislike, undo dislike, and switch
-  directly between thumbs. Check the main player's rating agrees, then change it
-  from the main player and reopen the queue. Repeat after metadata updates,
-  reordering and navigation; every vote must affect only the selected video.
-  Confirm existing ratings initialize correctly. Disconnect the network during
-  a vote and verify the host's error/rollback behavior. Check signed-out behavior
-  follows YouTube's sign-in flow and retest after switching accounts. Open a normal
-  account playlist afterward and verify its rating controls retain native behavior.
-- Add videos from several channels and verify the channel line and
-  `views • upload age` line match YouTube's source cards. Allow a moment for missing
-  metadata to load. Include History, the initial playing entry, localized text,
-  live videos and unavailable/unlisted items. Unknown fields should stay blank.
-  Remove/re-add while details load; the old response must be ignored. Retest
-  reorder, shuffle and repeat after metadata appears.
-- Add videos from Home, search, related videos, subscriptions and History. Check
-  full titles (including Khmer and long titles) and the initial playing entry.
-  Open different menus quickly; each action must retain the correct ID/title.
-  Repeat with original-title and DeArrow settings, and after scrolling cards out
-  of view and back. Ambiguous layouts should use the fallback, not a wrong title.
-- Simulate an interrupted connection while adding a video without a native title.
-  Check fallback retries and that a later native title wins. Remove/re-add while
-  a request is pending and verify that the old response is ignored.
+The tester confirmed on a Samsung SM-S928U running Android 16 with YouTube
+21.20.405 that the native panel, automatic and manual navigation, reordering,
+swipe removal, unique entries, shuffle/repeat, titles, channel/statistics,
+ratings/undo and Save playlist work. Save was confirmed after preview 12.
 
-- Add next/last while playing; confirm the stream does not restart and the native
-  collapsed bar and expanded list update immediately.
-- Tap rows, use next/previous, and let videos end with the screen on and off;
-  confirm the selected row and playback follow the same order.
-- Try adding the playing, previous, and upcoming videos again using both add actions;
-  confirm there is still one entry per video and playback/order do not change.
-  Remove a video and add it again. Drag entries before and after the current row
-  and confirm next/previous use the new order.
-- Toggle shuffle without interrupting playback. Follow Next/Previous and automatic
-  advance, then toggle it off and check visible list order. Add, remove and reorder
-  while shuffled, and check that navigation stays inside the queue. Update a title
-  or change the current video and check that the random mapping remains stable.
-- Cycle repeat off/all/one. Verify wrapping at either boundary for repeat all,
-  replaying the same video on completion for repeat one, and manual Next/Previous
-  advancing normally with repeat one. Check a single-entry queue, and combined
-  repeat/shuffle. Clear and start a queue; both modes should reset.
-- Remove upcoming/current/final entries, clear the queue, rotate the screen, and
-  reopen the player. Confirm there are no stale entries or duplicate advances.
-- Open and edit a normal account playlist afterward. Check that normal editing
-  still works and that local reordering/removal sends no `browse/edit_playlist`
-  requests. Check any selected loop and sleep-timer patches together with this one.
+The review's account-cache invalidation change still needs a device retest.
+Build verification does not establish live account behavior or prove every
+interaction with other selected patches. Remaining targeted checks include:
 
-## Implementation notes
-
-Local state supplies playlist-panel protobuf data to both the native panel model
-and watch navigator. The host's own protobuf parser and extension registry decode
-the data; host access is installed as typed DEX bridges, without runtime reflection.
-An isolated native playlist backing store prevents normal autoplay candidates from
-being mixed into the local list. The native `nig` navigator supplies repeat handling
-and random successor/predecessor arrays, wrapped in the existing `aokc` playback
-navigator. Only owned local headers enable their existing native click listeners;
-normal account-playlist controls retain their original path. Local mode requests
-update the native backend inside the playback-preservation scope, without loading
-a video or republishing the playlist. The preceding store and navigator are restored
-when the session ends. Cached watch responses are restored before being released.
-
-Local row gestures are intercepted before the native server-edit dispatcher.
-Account playlist rows retain their native path. No synthetic playlist ID is put in
-watch endpoints; local entry IDs distinguish removed entries from later re-additions.
-These endpoint and lifecycle assumptions still require the device checks above.
+- Switch accounts, sign out and enter/leave incognito with an existing queue.
+  Verify initial thumbs and main-player state, including an in-flight vote.
+- Cancel Save, save a named private playlist, and verify Library contents/order.
+  Repeat after reordering, shuffle and removal; later queue edits must leave the
+  saved copy intact. Test sign-in and interrupted-network errors.
+- Exercise pause/resume, screen-off completion, rotation, single-entry queues,
+  queue boundaries and clearing during pending metadata/gesture callbacks.
+- Open a normal account playlist afterward and check its editing, modes, ratings
+  and menu. Local reordering/removal must not send `browse/edit_playlist` requests.
+- Check missing/live/unlisted and localized metadata, rapid menu changes,
+  remove/re-add during requests, and the selected original-title/DeArrow settings.
+- Retest with the user's full selected patch set, including loop, sleep-timer,
+  player-control and layout options.

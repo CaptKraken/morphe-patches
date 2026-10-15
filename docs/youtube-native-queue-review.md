@@ -1,0 +1,74 @@
+# Native queue branch review — 2026-10-15
+
+Reviewed the branch changes from `e54643954` through `c65bd9f99`, including queue
+state and native DEX bridges, playback/gesture ownership, title/details requests,
+ratings, Save playlist, integration into existing patches, resources, Gradle tasks,
+tests and documentation. The review fixes are subsequent commits on the same branch.
+
+## Project rules checked
+
+- [README contribution and license rules](../README.md): supported application scope,
+  retained attribution and distinct identification/branding of derivative builds.
+- [NOTICE](../NOTICE) and [LICENSE](../LICENSE): preserve notices and identify the
+  modified version without implying upstream authorship.
+- [PR template](../.github/PULL_REQUEST_TEMPLATE.md): test minimum/maximum supported
+  versions. This experimental patch intentionally supports only 21.20.405.
+- [Build workflow](../.github/workflows/build_pull_request.yml): JDK 21 and
+  `:patches:buildAndroid`. Existing resource-string formatting rules were checked
+  with the project's resource checker. No AGENTS.md or CONTRIBUTING file was
+  present in the checkout or its instruction-bearing parent directories.
+
+## Findings fixed
+
+### P2 — Initial rating cache survived account changes
+
+The process-local cache keyed ratings only by video ID. A later panel refresh could
+initialize the selected thumbs using another account's cached rating. The native
+entity store was account scoped, but the queue's initial-state cache was not reset.
+
+Both native global account-provider implementations now notify the queue before
+returning their current identity. A changed identity clears cached ratings and
+schedules a panel refresh after the provider releases its lock. The returned native
+identity is unchanged and its contents are not logged. Regression tests cover
+unchanged identities, switching accounts, returning to a prior account, sign-out,
+incognito and clearing states collected before the first observed identity.
+Native entity subscriptions, event dispatch, authentication and voting remain intact.
+
+### P2 — Published bundle identification still described the upstream project
+
+The preview name used “Morphe Patches”, the author was “MorpheApp”, and source/site
+links identified upstream. This conflicted with the README's derivative-branding
+rule and NOTICE's requirement to distinguish modified versions.
+
+The bundle is now **Kraken Queue Patches (preview 13)**, with CaptKraken as author
+and links to this fork. The README identifies the fork without the upstream logo
+as its header. Upstream credit, source notices and embedded license/notice files
+are retained; the download branch also includes LICENSE and NOTICE alongside the
+bundle. The generated upstream patch list is explicitly identified as upstream.
+
+## Validation
+
+- Patch test task: 48 passed, 5 unrelated Jam APK tests skipped; no failures.
+  All 45 native-queue tests ran and passed.
+- String-resource checker: 90,681 strings passed.
+- Actual patch/dependency application to stock YouTube 21.20.405 passed, including
+  account-hook assertions, DEX verification, cross-DEX class hierarchy verification
+  and resource compilation.
+- Android bundle built and checked for `classes.dex`, fork metadata and retained
+  upstream license/notice resources.
+- `git diff --check` passed.
+
+No live account vote or playlist-creation request was submitted in cloud checks.
+The optional earlier JVM probe of Android protobuf classes did not run successfully
+and is not counted as validation. No emulator or attached Android device was
+available for this review.
+
+## Remaining limits
+
+The existing device reports confirm navigation, ordering/removal, modes, metadata,
+ratings and Save playlist. The new account-cache invalidation needs a device retest,
+especially account switching/incognito and votes already in flight. Pause/resume,
+rotation, network-error rollback, normal-account-playlist isolation and interactions
+with the full selected patch set remain targeted device checks. The patch is still
+experimental and pinned to one APK version; build verification does not establish
+behavior on other versions. See the [current usage and device checklist](youtube-native-queue.md).

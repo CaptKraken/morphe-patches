@@ -4,12 +4,12 @@ group = "app.morphe"
 
 patches {
     about {
-        name = "Morphe Patches (queue preview 12)"
-        description = "Patches for Morphe"
-        source = "git@github.com:MorpheApp/morphe-patches.git"
-        author = "MorpheApp"
+        name = "Kraken Queue Patches (preview 13)"
+        description = "Experimental YouTube queue fork based on Morphe Patches"
+        source = "https://github.com/CaptKraken/morphe-patches"
+        author = "CaptKraken"
         contact = "na"
-        website = "https://morphe.software"
+        website = "https://github.com/CaptKraken/morphe-patches"
         license = "GNU General Public License v3.0, with additional GPL section 7 requirements"
     }
 }
