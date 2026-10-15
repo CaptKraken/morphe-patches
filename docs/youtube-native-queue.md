@@ -4,25 +4,25 @@ Select **Native temporary queue (experimental)** when patching YouTube **21.20.4
 The patch is off by default and includes the existing Add to queue dependencies.
 This is a prototype undergoing Android device testing.
 
-Preview 2 addresses the first device report: adopting the queue stopped the playing
-video, left its row labeled with an ID, and was followed by a crash on resume. The
-native store switch explicitly invokes a forced stop/reopen, so this build suppresses
-that playback dispatcher only inside the current thread's local queue edits. It
-populates the detached store before attaching it and preserves the playing video's
-existing endpoint. Normal user navigation and autoplay run outside that scope.
-The reported crash itself was not present in the exported logs; the device retest
-must verify both uninterrupted playback and successful pause/resume.
+Device testing confirmed that the native temporary playlist appears and advances
+automatically when the current video ends. The player Next button still opened a
+recommendation outside the two-video queue. Investigation found that preview 3's
+ownership test rejected the composite controls used by the actual overlay factory.
+An alternate Next implementation could also bypass the patched base method.
 
-The device retest confirmed that the native temporary playlist appears and advances
-to the next queued video when the current video ends. The player Next button still
-opened a recommendation outside the queue. Preview 3 routes the video overlay's
-Next and Previous controls through the installed local queue navigator and loads
-its committed native descriptor. Availability checks and playback-state updates
-also use that navigator, including when old watch-response delegates remain
-attached. At the queue boundary, a manual click cannot fall through to a
-recommendation. This change still needs a device retest.
+Preview 4 captures handlers at the overlay's actual registration point, so a
+composite controls wrapper is supported. It tracks live overlay handlers weakly
+and intercepts both the base and alternate Next implementation, plus Previous.
+If local navigation is unavailable, a registered queue control consumes the click
+instead of falling back to a recommendation. This build still needs a device retest.
 
-Import the replacement bundle as **Morphe Patches (queue preview 3)** and disable
+Queue edits populate the detached native store before attaching it, preserve the
+playing video's existing endpoint, and suppress native stop/reopen dispatch only
+on the editing thread. Normal user navigation and autoplay run outside that scope.
+The original resume-crash stack was absent from exported logs; pause/resume still
+needs device testing.
+
+Import the replacement bundle as **Morphe Patches (queue preview 4)** and disable
 the preceding preview source. Select all desired YouTube patches from the new
 source alone. Starting from an untouched APK avoids applying shared setup twice.
 
@@ -93,7 +93,9 @@ tests cover nested edit scopes, exception cleanup, and isolation from playback o
 other threads. APK regression checks verify that the playback-dispatch guard runs
 before native side effects and that a new store is populated before attachment.
 They also check that manual overlay controls consult the local queue before their
-original delegates and that navigation commits a queue descriptor before loading it.
+original delegates, including the alternate Next implementation, and that ownership
+is captured where the composite controller registers with the actual overlay.
+Navigation must commit a queue descriptor before loading it.
 APK verification establishes that the patched DEX and
 resources can be built; it does not establish that YouTube renders the UI or plays
 the queue correctly on an Android device.

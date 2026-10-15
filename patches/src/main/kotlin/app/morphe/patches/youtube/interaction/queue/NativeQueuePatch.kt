@@ -178,8 +178,8 @@ val nativeQueuePatch = bytecodePatch(
 
         // The overlay has watch-response-specific Next/Previous delegates (apfj/apfk).
         // Those can remain attached even after the playback queue is replaced. Scope the
-        // override to the video-overlay transport and leave other transports untouched.
-        val transportControls = field("Laogu;", "c", "Laogt;")
+        // override to handlers actually registered with the overlay. The controls field
+        // is normally an aogr composite, not the mxy overlay itself.
         val transportPlayer = field("Laogu;", "b", "Laowt;")
         val transportEvents = field("Laogu;", "e", "Lanug;")
         val nextIntent = field("Laovl;", "a", "Laovl;")
@@ -189,10 +189,8 @@ val nativeQueuePatch = bytecodePatch(
         val loadDescriptor = method("Laowt;", "a", listOf("Laopa;"), "V")
         val nextEvent = method("Lanug;", "c", emptyList(), "V")
         val previousEvent = method("Lanug;", "d", emptyList(), "V")
-        bridge("isOverlayTransport", """
-            check-cast p0, Laogu;
-            iget-object v0, p0, $transportControls
-            instance-of v0, v0, Lmxy;
+        bridge("isPlayerTransport", """
+            instance-of v0, p0, Laogu;
             return v0
         """)
         bridge("canNavigateQueue", """
@@ -276,11 +274,8 @@ val nativeQueuePatch = bytecodePatch(
             invoke-virtual {p0}, Laogu;->patch_refreshLocalQueueControls()V
             return-void
         """)
-        val transportConstructor = method("Laogu;", "<init>", listOf("Laowz;", "Laowt;", "Laogt;", "Lanug;"), "V")
-        val constructorReturns = transportConstructor.implementation!!.instructions.withIndex()
-            .filter { it.value.opcode == Opcode.RETURN_VOID }.map { it.index }.reversed()
-        for (index in constructorReturns) transportConstructor.addInstructions(index,
-            "invoke-static/range {p0 .. p0}, $EXTENSION->onTransportReady(Ljava/lang/Object;)V")
+        method("Lmxy;", "c", listOf("Laogs;"), "V").addInstructions(0,
+            "invoke-static/range {p1 .. p1}, $EXTENSION->onTransportReady(Ljava/lang/Object;)V")
         method("Laogu;", "d", emptyList(), "V").addInstructions(0, """
             invoke-static {p0}, $EXTENSION->onTransportUpdate(Ljava/lang/Object;)Z
             move-result v0
@@ -289,8 +284,12 @@ val nativeQueuePatch = bytecodePatch(
             :original
             nop
         """)
-        for ((name, forward) in listOf("hD" to 1, "it" to 0)) {
-            method("Laogu;", name, emptyList(), "V").addInstructions(0, """
+        // lwe overrides Next and can open a recommendation without calling its parent.
+        // Intercept before that override as well as the base Next/Previous handlers.
+        for ((owner, name, forward) in listOf(
+            Triple("Laogu;", "hD", 1), Triple("Laogu;", "it", 0), Triple("Llwe;", "hD", 1)
+        )) {
+            method(owner, name, emptyList(), "V").addInstructions(0, """
                 const/4 v0, $forward
                 invoke-static {p0, v0}, $EXTENSION->onManualNavigation(Ljava/lang/Object;Z)Z
                 move-result v0

@@ -13,6 +13,7 @@ import app.morphe.patcher.apk.ApkUtils.applyTo
 import app.morphe.patcher.dex.SdkDexVerifier
 import app.morphe.patcher.patch.bytecodePatch
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -44,22 +45,45 @@ fun main(arguments: Array<String>) {
             check(fill >= 0 && attach > fill) {
                 "An empty native store would become visible before local rows were loaded"
             }
-            val transport = mutableClassDefBy("Laogu;")
-            for ((name, callback, original) in listOf(
+            val controls = listOf(
                 Triple("hD", "onManualNavigation", "Lanug;->c()V"),
                 Triple("it", "onManualNavigation", "Lanug;->d()V"),
                 Triple("d", "onTransportUpdate", "Laogu;->g()V"),
                 Triple("f", "nextEnabled", "Laogt;->iR(Z)V"),
                 Triple("g", "previousEnabled", "Laogt;->b(Z)V")
-            )) {
-                val references = transport.methods.single { it.name == name }
+            )
+            for ((owner, methods) in listOf(
+                "Laogu;" to controls,
+                "Llwe;" to listOf(Triple("hD", "onManualNavigation", "Laogu;->hD()V"))
+            )) for ((name, callback, original) in methods) {
+                val references = mutableClassDefBy(owner).methods.single { it.name == name }
                     .implementation!!.instructions.mapNotNull {
                         ((it as? ReferenceInstruction)?.reference as? MethodReference)?.toString()
                     }
                 val hook = references.indexOfFirst { it.contains("NativeQueuePatch;->$callback(") }
                 check(hook >= 0 && references.indexOf(original) > hook) {
-                    "Overlay $name must consult the local queue before its original delegate"
+                    "Overlay $owner->$name must consult the local queue before its original delegate"
                 }
+            }
+            // The stock overlay factory supplies a composite to both possible handlers.
+            // A test restricted to hooks in aogu misses the actual registration path.
+            val factory = mutableClassDefBy("Lmzp;").methods.single { it.name == "l" }
+            check(factory.parameterTypes[2] == "Laogr;")
+            val registration = mutableClassDefBy("Lmxy;").methods.single { it.name == "c" }
+            val capture = registration.implementation!!.instructions.first()
+            check((capture as ReferenceInstruction).reference.toString().endsWith(
+                "NativeQueuePatch;->onTransportReady(Ljava/lang/Object;)V")) {
+                "Queue ownership must be captured at the actual overlay registration point"
+            }
+            check((capture as RegisterRangeInstruction).startRegister ==
+                    registration.implementation!!.registerCount - 1) {
+                "Overlay registration must capture the handler argument, not the controls wrapper"
+            }
+            val filter = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
+                .methods.single { it.name == "isPlayerTransport" }
+                .implementation!!.instructions.first() as ReferenceInstruction
+            check(filter.reference.toString() == "Laogu;") {
+                "Overlay ownership must accept base and subclass handlers regardless of controls wrapper"
             }
             val manual = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
                 .methods.single { it.name == "navigateQueue" }
@@ -71,7 +95,7 @@ fun main(arguments: Array<String>) {
             check(commit >= 0 && load > commit && manual.count { it == manual[load] } == 1) {
                 "Manual navigation must commit a queue descriptor before loading it once"
             }
-            println("Verified dispatcher guard, populated-before-attach store, and manual overlay controls")
+            println("Verified playback guard, populated store, composite overlay registration, and both Next implementations")
         }
     }
     Patcher(PatcherConfig(input, workspace, verifier = SdkDexVerifier(File(sdk)))).use { patcher ->

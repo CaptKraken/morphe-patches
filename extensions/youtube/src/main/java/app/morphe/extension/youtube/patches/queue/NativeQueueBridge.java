@@ -27,7 +27,7 @@ public final class NativeQueueBridge {
     public static void restoreBackend(Object navigator, Object backend) {}
     public static void refreshPanel(Object controller, Object response) {}
     public static void openPanel(Object controller) {}
-    public static boolean isOverlayTransport(Object transport) { return false; }
+    public static boolean isPlayerTransport(Object transport) { return false; }
     public static void refreshTransport(Object transport) {}
     public static boolean canNavigateQueue(Object navigator, boolean next) { return false; }
     public static boolean navigateQueue(Object transport, Object navigator, boolean next) { return false; }

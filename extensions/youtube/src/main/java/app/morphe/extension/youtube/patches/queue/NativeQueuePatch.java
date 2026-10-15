@@ -40,7 +40,8 @@ public final class NativeQueuePatch {
             Collections.newSetFromMap(new WeakHashMap<>()));
     private static volatile WeakReference<Object> controller = new WeakReference<>(null);
     private static volatile WeakReference<Object> navigator = new WeakReference<>(null);
-    private static volatile WeakReference<Object> overlayTransport = new WeakReference<>(null);
+    private static final Set<Object> overlayTransports = Collections.synchronizedSet(
+            Collections.newSetFromMap(new WeakHashMap<>()));
     private static volatile Object response;
     private static volatile Object playbackDescriptor;
     private static Object originalPanel;
@@ -147,23 +148,33 @@ public final class NativeQueuePatch {
     }
 
     public static void onTransportReady(Object transport) {
-        if (!isOverlayTransport(transport)) return;
-        overlayTransport = new WeakReference<>(transport);
+        // Called where the overlay actually registers a handler. Its controls may be
+        // wrapped in a composite controller, and several overlay instances can coexist.
+        if (!isPlayerTransport(transport)) return;
+        overlayTransports.add(transport);
+        Logger.printDebug(() -> "Local queue registered player overlay transport");
         if (active()) Utils.runOnMainThreadDelayed(NativeQueuePatch::refreshTransportControls, 0);
     }
 
     private static boolean ownsTransport(Object transport) {
+        return active() && overlayTransports.contains(transport);
+    }
+
+    private static Object localNavigation() {
         Object navigation = navigator.get();
-        return active() && transport == overlayTransport.get() && navigation != null
-                && backendOwner.get() == navigation;
+        return navigation != null && backendOwner.get() == navigation ? navigation : null;
     }
 
     public static boolean nextEnabled(boolean original, Object transport) {
-        return ownsTransport(transport) ? canNavigateQueue(navigator.get(), true) : original;
+        if (!ownsTransport(transport)) return original;
+        Object navigation = localNavigation();
+        return navigation != null && canNavigateQueue(navigation, true);
     }
 
     public static boolean previousEnabled(boolean original, Object transport) {
-        return ownsTransport(transport) ? canNavigateQueue(navigator.get(), false) : original;
+        if (!ownsTransport(transport)) return original;
+        Object navigation = localNavigation();
+        return navigation != null && canNavigateQueue(navigation, false);
     }
 
     public static boolean onTransportUpdate(Object transport) {
@@ -177,8 +188,11 @@ public final class NativeQueuePatch {
     public static synchronized boolean onManualNavigation(Object transport, boolean next) {
         if (!ownsTransport(transport)) return false;
         if (QueueEditScope.active()) return true;
-        Object navigation = navigator.get();
+        Object navigation = localNavigation();
         try {
+            if (navigation == null) {
+                throw new IllegalStateException("Local queue navigator is not attached");
+            }
             boolean available = canNavigateQueue(navigation, next);
             Logger.printInfo(() -> "Local queue manual " + (next ? "next" : "previous")
                     + ", available=" + available);
@@ -195,8 +209,11 @@ public final class NativeQueuePatch {
     }
 
     private static void refreshTransportControls() {
-        Object transport = overlayTransport.get();
-        if (transport != null) refreshTransport(transport);
+        Object[] transports;
+        synchronized (overlayTransports) {
+            transports = overlayTransports.toArray();
+        }
+        for (Object transport : transports) refreshTransport(transport);
     }
 
     public static boolean isLocalEntry(String entryId) {
