@@ -241,10 +241,14 @@ public final class NativeQueuePatch {
 
     /** Observe committed watch responses rather than prefetched player metadata. */
     public static synchronized void onResponse(Object sourceNavigator, Object watchResponse) {
-        // Other navigators can receive empty responses during playback transitions.
-        // They must not replace the navigator attached to the current queue.
-        if (watchResponse == null) return;
+        // Empty responses and callbacks from our own refresh must not claim another
+        // navigator before the queue can be attached to it.
+        if (watchResponse == null || publishing) return;
         try {
+            String playlistId = responsePlaylist(watchResponse);
+            String videoId = responseVideo(watchResponse);
+            boolean hasPlaylistId = playlistId != null && !playlistId.isEmpty();
+            if (!hasPlaylistId && !LocalQueue.isVideoId(videoId)) return;
             watchNavigator = new WeakReference<>(sourceNavigator);
             if (watchResponse != currentWatchResponse) {
                 if (currentWatchResponse != null && owns(responsePanel(currentWatchResponse))) {
@@ -256,17 +260,14 @@ public final class NativeQueuePatch {
                 originalPanel = responsePanel(watchResponse);
                 originalNavigation = responseNavigation(watchResponse);
             }
-            if (!active() || publishing) return;
-            String playlistId = responsePlaylist(watchResponse);
-            String videoId = responseVideo(watchResponse);
-            if (playlistId != null && !playlistId.isEmpty()) {
+            if (!active()) return;
+            if (hasPlaylistId) {
                 // An explicitly opened account playlist retains its native ownership.
                 queue.clear();
                 restoreNavigation();
                 refreshFullscreenButton();
                 return;
             }
-            if (!LocalQueue.isVideoId(videoId)) return;
             if (!queue.followPlayback(videoId, titleFor(videoId))) return;
             queue.updateDetails(videoId, details.get(videoId));
             QueueMetadata.fetch(videoId);
