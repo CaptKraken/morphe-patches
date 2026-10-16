@@ -22,15 +22,15 @@ public final class QueueTitles {
         this.capacity = capacity;
     }
 
-    public synchronized Title get(String video) { return titles.get(video); }
+    public synchronized Title get(String videoId) { return titles.get(videoId); }
 
-    public synchronized Title put(String video, String text, Source source) {
-        Title old = titles.get(video);
-        if (video == null || video.isEmpty() || text == null || text.isBlank()
-                || text.equals(video) || source == Source.PLACEHOLDER) return old;
+    public synchronized Title put(String videoId, String text, Source source) {
+        Title old = titles.get(videoId);
+        if (videoId == null || videoId.isEmpty() || text == null || text.isBlank()
+                || text.equals(videoId) || source == Source.PLACEHOLDER) return old;
         if (old != null && old.source().ordinal() > source.ordinal()) return old;
         Title title = new Title(text, source);
-        titles.put(video, title);
+        titles.put(videoId, title);
         while (titles.size() > capacity) titles.remove(titles.keySet().iterator().next());
         return title;
     }

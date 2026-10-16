@@ -13,32 +13,34 @@ import java.util.Set;
 
 /** Only accept structured video metadata for the exact requested ID, never nearby results. */
 public final class DetailsResponse {
+    private static final int MAX_JSON_DEPTH = 40;
+
     private static final Set<String> VIDEO_RENDERERS = Set.of(
             "videoWithContextRenderer", "videoRenderer", "compactVideoRenderer");
     private DetailsResponse() {}
 
-    public static QueueDetails.Info find(Object json, String video) {
-        return find(json, video, 0);
+    public static QueueDetails.Info find(Object json, String videoId) {
+        return find(json, videoId, 0);
     }
 
-    private static QueueDetails.Info find(Object node, String video, int depth) {
-        if (depth > 40) return null;
+    private static QueueDetails.Info find(Object node, String videoId, int depth) {
+        if (depth > MAX_JSON_DEPTH) return null;
         QueueDetails.Info result = null;
         if (node instanceof Map<?, ?> map) {
             for (Map.Entry<?, ?> entry : map.entrySet()) {
                 QueueDetails.Info candidate;
                 if (VIDEO_RENDERERS.contains(entry.getKey()) && entry.getValue() instanceof Map<?, ?> renderer) {
-                    candidate = video.equals(renderer.get("videoId")) ? QueueDetails.Info.of(
+                    candidate = videoId.equals(renderer.get("videoId")) ? QueueDetails.Info.of(
                             first(text(renderer.get("shortBylineText")), text(renderer.get("longBylineText")),
                                     text(renderer.get("ownerText"))),
                             first(text(renderer.get("shortViewCountText")), text(renderer.get("viewCountText"))),
                             text(renderer.get("publishedTimeText")), duration(renderer), QueueTitles.Source.NETWORK) : null;
-                } else candidate = find(entry.getValue(), video, depth + 1);
+                } else candidate = find(entry.getValue(), videoId, depth + 1);
                 if (candidate != null && !candidate.empty()) result = result == null ? candidate : result.merge(candidate);
             }
         } else if (node instanceof List<?> list) {
             for (Object item : list) {
-                QueueDetails.Info candidate = find(item, video, depth + 1);
+                QueueDetails.Info candidate = find(item, videoId, depth + 1);
                 if (candidate != null && !candidate.empty()) result = result == null ? candidate : result.merge(candidate);
             }
         }

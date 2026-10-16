@@ -31,18 +31,21 @@ import app.morphe.extension.youtube.patches.utils.requests.ChannelSearchRoutes;
 
 /** Same unauthenticated localized video-ID lookup used by the original-title support. */
 final class QueueDetailsRequest {
+    private static final int CONNECTION_TIMEOUT_MILLISECONDS = 5 * 1000;
+    private static final int MAX_JSON_DEPTH = 40;
+
     private static final Route.CompiledRoute ROUTE = new Route(Route.Method.POST,
             "search?prettyPrint=false&fields=contents.sectionListRenderer.contents").compile();
     private static final Set<String> pending = ConcurrentHashMap.newKeySet();
 
-    static void fetch(String video) {
-        LocalQueue.Entry entry = NativeQueuePatch.detailsEntry(video);
+    static void fetch(String videoId) {
+        LocalQueue.Entry entry = NativeQueuePatch.detailsEntry(videoId);
         if (entry == null || !pending.add(entry.id())) return;
-        attempt(video, entry.id(), Locale.getDefault(), 0);
+        attempt(videoId, entry.id(), Locale.getDefault(), 0);
     }
 
-    private static void attempt(String video, String entryId, Locale locale, int attempt) {
-        LocalQueue.Entry entry = NativeQueuePatch.detailsEntry(video);
+    private static void attempt(String videoId, String entryId, Locale locale, int attempt) {
+        LocalQueue.Entry entry = NativeQueuePatch.detailsEntry(videoId);
         if (entry == null || !entry.id().equals(entryId)) {
             finish(entryId);
             return;
@@ -53,27 +56,27 @@ final class QueueDetailsRequest {
             boolean finished = false;
             try {
                 connection = ChannelSearchRoutes.getConnection(ROUTE);
-                connection.setConnectTimeout(5000);
-                connection.setReadTimeout(5000);
-                byte[] body = ChannelSearchRoutes.createVideoSearchBody(video, locale);
+                connection.setConnectTimeout(CONNECTION_TIMEOUT_MILLISECONDS);
+                connection.setReadTimeout(CONNECTION_TIMEOUT_MILLISECONDS);
+                byte[] body = ChannelSearchRoutes.createVideoSearchBody(videoId, locale);
                 connection.setFixedLengthStreamingMode(body.length);
                 try (var stream = connection.getOutputStream()) { stream.write(body); }
                 status = connection.getResponseCode();
                 if (status == Requester.HTTP_STATUS_CODE_SUCCESS) {
                     QueueDetails.Info info = DetailsResponse.find(jsonValue(
-                            Requester.parseJSONObject(connection), 0), video);
-                    if (info != null) NativeQueuePatch.updateDetails(entryId, video, info);
+                            Requester.parseJSONObject(connection), 0), videoId);
+                    if (info != null) NativeQueuePatch.updateDetails(entryId, videoId, info);
                     // A valid response without this ID is not a transient error (e.g. unlisted).
                     finished = true;
                 }
             } catch (Exception ex) {
-                Logger.printDebug(() -> "Local queue details unavailable for " + video, ex);
+                Logger.printDebug(() -> "Local queue details unavailable for " + videoId, ex);
             } finally {
                 if (connection != null) connection.disconnect();
             }
             long delay = finished ? -1 : MetadataRetry.delayMillis(attempt, status);
             if (delay >= 0) {
-                Utils.runOnMainThreadDelayed(() -> attempt(video, entryId, locale, attempt + 1), delay);
+                Utils.runOnMainThreadDelayed(() -> attempt(videoId, entryId, locale, attempt + 1), delay);
             } else finish(entryId);
             return null;
         });
@@ -82,7 +85,7 @@ final class QueueDetailsRequest {
     private static void finish(String entryId) { pending.remove(entryId); }
 
     private static Object jsonValue(Object value, int depth) {
-        if (depth > 40) return null;
+        if (depth > MAX_JSON_DEPTH) return null;
         if (value instanceof JSONObject object) {
             Map<String, Object> fields = new HashMap<>();
             for (Iterator<String> keys = object.keys(); keys.hasNext();) {

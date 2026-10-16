@@ -15,6 +15,7 @@ import app.morphe.patcher.util.proxy.mutableTypes.MutableClass
 import app.morphe.patcher.util.proxy.mutableTypes.MutableField.Companion.toMutable
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
+import app.morphe.patches.youtube.layout.buttons.action.QuickActionsElementSyntheticFingerprint
 import app.morphe.util.cloneParameters
 import app.morphe.util.findFreeRegister
 import app.morphe.util.findInstructionIndicesReversedOrThrow
@@ -25,10 +26,8 @@ import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.WideLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
-import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 import com.android.tools.smali.dexlib2.immutable.ImmutableField
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodParameter
@@ -54,21 +53,19 @@ internal class NativeQueueHooks(
         installFullscreenButton()
     }
 
-    private fun installFullscreenButton() {
-        val bind = target(native.fullscreenControlsBind)
-        val instructions = bind.implementation!!.instructions.toList()
-        // Resolve the position again: the shared quick-actions margin hook may already be present.
-        val resourceIndex = instructions.indexOfFirst {
-            (it as? WideLiteralInstruction)?.wideLiteral == native.fullscreenActionsId
+    private fun installFullscreenButton() = with(context) {
+        // Refresh cached indexes after any earlier changes to this shared method.
+        QuickActionsElementSyntheticFingerprint.clearMatch()
+        QuickActionsElementSyntheticFingerprint.let { fingerprint ->
+            val bindMethod = fingerprint.method
+            check(bindMethod.toString() == native.fullscreenControlsBind.toString()) {
+                "Native queue: fullscreen controls binding changed after discovery"
+            }
+            val checkCastIndex = fingerprint.instructionMatches.last().index
+            val containerRegister = bindMethod.getInstruction<OneRegisterInstruction>(checkCastIndex).registerA
+            bindMethod.addInstructions(checkCastIndex + 1,
+                "invoke-static/range {v$containerRegister .. v$containerRegister}, $NATIVE_QUEUE_EXTENSION->onFullscreenControlsBound(Landroid/view/ViewGroup;)V")
         }
-        check(resourceIndex >= 0) { "Native queue: fullscreen actions container not found" }
-        val castIndex = (resourceIndex + 1 until minOf(resourceIndex + 11, instructions.size)).single {
-            instructions[it].opcode == Opcode.CHECK_CAST &&
-                ((instructions[it] as ReferenceInstruction).reference as TypeReference).type == "Landroid/view/ViewGroup;"
-        }
-        val register = (instructions[castIndex] as OneRegisterInstruction).registerA
-        bind.addInstructions(castIndex + 1,
-            "invoke-static/range {v$register .. v$register}, $NATIVE_QUEUE_EXTENSION->onFullscreenControlsBound(Landroid/view/ViewGroup;)V")
     }
 
     private fun target(reference: MethodReference) = with(context) { reference.getMutableMethod() }

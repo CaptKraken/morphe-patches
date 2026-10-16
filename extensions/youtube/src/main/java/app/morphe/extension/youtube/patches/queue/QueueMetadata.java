@@ -21,17 +21,19 @@ import app.morphe.extension.youtube.patches.queue.model.MetadataRetry;
 
 /** Public metadata only. No authentication, playlist creation, or playlist edit requests. */
 final class QueueMetadata {
+    private static final int CONNECTION_TIMEOUT_MILLISECONDS = 5 * 1000;
+
     private static final Set<String> pending = ConcurrentHashMap.newKeySet();
 
-    static void fetch(String video) {
-        QueueDetailsRequest.fetch(video);
-        LocalQueue.Entry entry = NativeQueuePatch.metadataEntry(video);
+    static void fetch(String videoId) {
+        QueueDetailsRequest.fetch(videoId);
+        LocalQueue.Entry entry = NativeQueuePatch.metadataEntry(videoId);
         if (entry == null || !pending.add(entry.id())) return;
-        attempt(video, entry.id(), 0);
+        attempt(videoId, entry.id(), 0);
     }
 
-    private static void attempt(String video, String entryId, int attempt) {
-        LocalQueue.Entry entry = NativeQueuePatch.metadataEntry(video);
+    private static void attempt(String videoId, String entryId, int attempt) {
+        LocalQueue.Entry entry = NativeQueuePatch.metadataEntry(videoId);
         if (entry == null || !entry.id().equals(entryId)) {
             pending.remove(entryId);
             return;
@@ -42,29 +44,29 @@ final class QueueMetadata {
             boolean resolved = false;
             try {
                 connection = Requester.openConnection("https://www.youtube.com/oembed?format=json&url="
-                        + Uri.encode("https://www.youtube.com/watch?v=" + video));
-                connection.setConnectTimeout(5000);
-                connection.setReadTimeout(5000);
+                        + Uri.encode("https://www.youtube.com/watch?v=" + videoId));
+                connection.setConnectTimeout(CONNECTION_TIMEOUT_MILLISECONDS);
+                connection.setReadTimeout(CONNECTION_TIMEOUT_MILLISECONDS);
                 status = connection.getResponseCode();
                 if (status == Requester.HTTP_STATUS_CODE_SUCCESS) {
                     String title = Requester.parseJSONObject(connection).optString("title");
-                    if (!title.isBlank() && !title.equals(video)) {
-                        NativeQueuePatch.updateMetadata(entryId, video, title);
+                    if (!title.isBlank() && !title.equals(videoId)) {
+                        NativeQueuePatch.updateMetadata(entryId, videoId, title);
                         resolved = true;
                     }
                 }
             } catch (Exception ex) {
-                Logger.printDebug(() -> "Local queue metadata unavailable for " + video, ex);
+                Logger.printDebug(() -> "Local queue metadata unavailable for " + videoId, ex);
             } finally {
                 if (connection != null) connection.disconnect();
             }
             long delay = resolved ? -1 : MetadataRetry.delayMillis(attempt, status);
             if (delay >= 0) {
                 int code = status;
-                Logger.printDebug(() -> "Retrying local queue title for " + video
+                Logger.printDebug(() -> "Retrying local queue title for " + videoId
                         + ", status=" + code + ", attempt=" + (attempt + 2));
                 // Schedule without blocking the UI or occupying a background worker while waiting.
-                Utils.runOnMainThreadDelayed(() -> attempt(video, entryId, attempt + 1), delay);
+                Utils.runOnMainThreadDelayed(() -> attempt(videoId, entryId, attempt + 1), delay);
             } else {
                 pending.remove(entryId);
             }

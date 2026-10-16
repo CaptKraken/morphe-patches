@@ -45,8 +45,6 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     }
 
     val fullscreenControlsBind = QuickActionsElementSyntheticFingerprint.sourceMethod
-    val fullscreenActionsId = (QuickActionsElementSyntheticFingerprint.matches.first().instruction
-            as WideLiteralInstruction).wideLiteral
 
     private fun methods(type: String) = context.classDefByOrNull(type)?.methods?.toList().orEmpty()
     private fun method(type: String, parameters: List<String>, result: String,
@@ -140,8 +138,8 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
             it.references<MethodReference>().any { call -> call.name == "parseFrom" }
     }.requireSingle("entity key protobuf decoder").returnType
     private val keyFormat = schema(keyPayload).field(5)
-    private val videoKeyEncoder = methods(keyType).filter { m ->
-        m.implementation?.instructions?.toList().orEmpty().zipWithNext().any { (load, store) ->
+    private val videoKeyEncoder = methods(keyType).filter { method ->
+        method.implementation?.instructions?.toList().orEmpty().zipWithNext().any { (load, store) ->
             (load as? WideLiteralInstruction)?.wideLiteral == 1L && store.opcode == Opcode.IPUT &&
                 (store as ReferenceInstruction).reference.toString() == keyFormat.toString()
         }
@@ -154,8 +152,8 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
         name = "<init>", parameters = listOf("Ljava/lang/String;", voteType, "Z"),
     ).sourceMethod
     val voteEventType = voteEventConstructor.definingClass
-    val ratingBind = Fingerprint(parameters = listOf(ratingButtonType), returnType = "V", custom = { m, c ->
-        c.fields.any { it.type == voteEventType } && m.implementation?.instructions?.firstOrNull()?.opcode == Opcode.INVOKE_SUPER
+    val ratingBind = Fingerprint(parameters = listOf(ratingButtonType), returnType = "V", custom = { method, classDef ->
+        classDef.fields.any { it.type == voteEventType } && method.implementation?.instructions?.firstOrNull()?.opcode == Opcode.INVOKE_SUPER
     }).sourceMethod
     val ratingPresenterType = ratingBind.definingClass
     val ratingSuperBind = ratingBind.references<MethodReference>().first()
@@ -196,8 +194,8 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val formattedText = Fingerprint(parameters = listOf(textType), returnType = "Landroid/text/Spanned;").sourceMethod
 
     // The legacy count renderer uses the same rating target schema as native toggle buttons.
-    val legacyRating = Fingerprint(parameters = listOf(voteType, "L"), returnType = "V", custom = { m, _ ->
-        m.references<MethodReference>().any { it.name == "getQuantityString" }
+    val legacyRating = Fingerprint(parameters = listOf(voteType, "L"), returnType = "V", custom = { method, _ ->
+        method.references<MethodReference>().any { it.name == "getQuantityString" }
     }).sourceMethod
     val extensionBuilderType = legacyRating.parameterTypes[1].toString()
     val builderType = context.classDefBy(extensionBuilderType).superclass!!
@@ -239,7 +237,7 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val descriptorEndpoint = field(descriptorType, endpointType)
     private val descriptorPayload = context.classDefBy(descriptorType).fields.filter {
         it.type != endpointType && !AccessFlags.STATIC.isSet(it.accessFlags) &&
-            context.classDefByOrNull(it.type)?.methods?.any { m -> m.name == "dynamicMethod" } == true
+            context.classDefByOrNull(it.type)?.methods?.any { method -> method.name == "dynamicMethod" } == true
     }.requireSingle("descriptor payload")
     private val descriptorVideoField = schema(descriptorPayload.type).field(1)
     val descriptorVideo = method(descriptorType, emptyList(), "Ljava/lang/String;") {
@@ -273,9 +271,9 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val nextIntent = intent("NEXT")
     val previousIntent = intent("PREVIOUS")
     private fun availability(intent: FieldReference) = Fingerprint(parameters = emptyList(), returnType = "V",
-        custom = { m, _ -> AccessFlags.PRIVATE.isSet(m.accessFlags) &&
-            m.references<FieldReference>().any { it.toString() == intent.toString() } &&
-            m.fields(Opcode.IGET_BOOLEAN).isNotEmpty()
+        custom = { method, _ -> AccessFlags.PRIVATE.isSet(method.accessFlags) &&
+            method.references<FieldReference>().any { it.toString() == intent.toString() } &&
+            method.fields(Opcode.IGET_BOOLEAN).isNotEmpty()
         }).sourceMethod
     val refreshNext = availability(nextIntent)
     val refreshPrevious = availability(previousIntent)
@@ -289,7 +287,7 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val transportEvents = field(transportType, transportConstructor.parameterTypes[3].toString())
     val loadDescriptor = method(transportPlayer.type, listOf(descriptorType), "V")
     private fun transportHandler(intent: FieldReference) = method(transportType, emptyList(), "V") {
-        !AccessFlags.PRIVATE.isSet(it.accessFlags) && it.references<FieldReference>().any { f -> f.toString() == intent.toString() }
+        !AccessFlags.PRIVATE.isSet(it.accessFlags) && it.references<FieldReference>().any { field -> field.toString() == intent.toString() }
     }
     val next = transportHandler(nextIntent)
     val previous = transportHandler(previousIntent)
@@ -299,14 +297,14 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
         .requireSingle("Previous analytics event")
     val manualHandlers = listOf(next to 1, previous to 0) + with(context) {
         Fingerprint(name = next.name, parameters = emptyList(), returnType = "V",
-            custom = { _, c -> c.superclass == transportType }).matchAll(1..1).map { it.originalMethod to 1 }
+            custom = { _, classDef -> classDef.superclass == transportType }).matchAll(1..1).map { it.originalMethod to 1 }
     }
     val transportUpdate = method(transportType, emptyList(), "V") { it.calls(refreshNext) && it.calls(refreshPrevious) }
     private val transportInterface = context.classDefBy(transportType).interfaces.filter { type ->
         methods(type).any { it.name == next.name && it.parameterTypes.isEmpty() }
     }.requireSingle("player transport interface")
-    val registerTransport = Fingerprint(parameters = listOf(transportInterface), returnType = "V", custom = { m, _ ->
-        m.references<MethodReference>().any { it.definingClass == "Ljava/util/List;" && it.name == "add" }
+    val registerTransport = Fingerprint(parameters = listOf(transportInterface), returnType = "V", custom = { method, _ ->
+        method.references<MethodReference>().any { it.definingClass == "Ljava/util/List;" && it.name == "add" }
     }).sourceMethod
 
     val shuffle = QueueShuffleFingerprint.sourceMethod
@@ -379,8 +377,8 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val moveEventType = gestureCasts.filter { type -> methods(type).any {
         it.name == "<init>" && it.parameterTypes.size == 4 && it.parameterTypes.takeLast(2) == listOf("I", "I")
     } }.requireSingle("playlist move event")
-    val eventItems = context.classDefBy(moveEventType).fields.filter { f ->
-        context.classDefBy(adapterType).fields.any { it.type == f.type } && f.type != "I"
+    val eventItems = context.classDefBy(moveEventType).fields.filter { field ->
+        context.classDefBy(adapterType).fields.any { it.type == field.type } && field.type != "I"
     }.requireSingle("move event source")
     val adapterItems = gestures.fields(Opcode.IGET_OBJECT, eventItems.type)
         .filter { it.definingClass == adapterType }.requireSingle("editable adapter items")
@@ -397,7 +395,7 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val rowPresenterType = QueueRowFingerprint.sourceClass.type
     val rowBind = methods(rowPresenterType).filter {
         it.parameterTypes.size == 2 && it.parameterTypes[1] == "Ljava/lang/Object;" &&
-            it.returnType == "V" && it.references<FieldReference>().any { f -> f.toString() == entryId.toString() }
+            it.returnType == "V" && it.references<FieldReference>().any { field -> field.toString() == entryId.toString() }
     }.requireSingle("native row binding")
     val rowModelType = rowBind.references<TypeReference>().map { it.type }.filter { type ->
         context.classDefByOrNull(type)?.fields?.count() == 1 && context.classDefBy(type).fields.single().type == rowType

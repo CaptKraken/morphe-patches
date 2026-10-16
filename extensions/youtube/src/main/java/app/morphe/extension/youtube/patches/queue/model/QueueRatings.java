@@ -12,7 +12,12 @@ import java.util.Objects;
 
 /** Initial native rating states only. The host owns voting, authentication and rollback. */
 public final class QueueRatings {
-    public static final int UNKNOWN = -1, LIKE = 0, DISLIKE = 1, NEUTRAL = 2;
+    public static final int UNKNOWN = -1;
+    public static final int LIKE = 0;
+    public static final int DISLIKE = 1;
+    public static final int NEUTRAL = 2;
+
+    private static final int MAX_CACHE_ENTRIES = 200;
     public record State(String entityKey, int status) {}
     public record Labels(String like, String unlike, String dislike, String undoDislike) {}
     private final LinkedHashMap<String, Integer> states = new LinkedHashMap<>(32, .75f, true);
@@ -28,11 +33,11 @@ public final class QueueRatings {
         return changed;
     }
 
-    public synchronized void remember(String video, int status) {
-        if (video == null || !video.matches("[A-Za-z0-9_-]{11}") || status < LIKE || status > NEUTRAL) return;
-        states.put(video, status);
-        while (states.size() > 200) states.remove(states.keySet().iterator().next());
+    public synchronized void remember(String videoId, int status) {
+        if (videoId == null || !videoId.matches("[A-Za-z0-9_-]{11}") || status < LIKE || status > NEUTRAL) return;
+        states.put(videoId, status);
+        while (states.size() > MAX_CACHE_ENTRIES) states.remove(states.keySet().iterator().next());
     }
 
-    public synchronized int get(String video) { return states.getOrDefault(video, UNKNOWN); }
+    public synchronized int get(String videoId) { return states.getOrDefault(videoId, UNKNOWN); }
 }

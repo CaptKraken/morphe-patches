@@ -48,8 +48,10 @@ import app.morphe.extension.youtube.shared.PlayerType;
 /** Experimental session queue, rendered and navigated by YouTube's playlist implementation. */
 @SuppressWarnings("unused")
 public final class NativeQueuePatch {
+    private static final int TITLE_CACHE_CAPACITY = 200;
+
     private static final LocalQueue queue = new LocalQueue();
-    private static final QueueTitles titles = new QueueTitles(200);
+    private static final QueueTitles titles = new QueueTitles(TITLE_CACHE_CAPACITY);
     private static final QueueDetails details = new QueueDetails();
     private static final QueueRatings ratings = new QueueRatings();
     private static final QueueFlyout flyout = new QueueFlyout();

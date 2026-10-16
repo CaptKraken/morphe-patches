@@ -28,23 +28,23 @@ import app.morphe.extension.youtube.settings.Settings;
 final class QueueFullscreenButton implements View.OnClickListener {
     // A button owns its listener; the registry must not keep an old player/activity alive.
     private static final List<WeakReference<QueueFullscreenButton>> buttons = new ArrayList<>();
-    private final ViewGroup actions;
+    private final ViewGroup actionsContainer;
     private final View button;
-    private final int width;
-    private int originalEndMargin;
-    private boolean reserved;
+    private final int buttonSizePx;
+    private int originalEndMarginPx;
+    private boolean spaceReserved;
 
-    static void bind(ViewGroup actions, boolean active) {
+    static void bind(ViewGroup actionsContainer, boolean active) {
         buttons.removeIf(reference -> reference.get() == null);
         for (WeakReference<QueueFullscreenButton> reference : buttons) {
             QueueFullscreenButton entry = reference.get();
-            if (entry != null && entry.actions == actions) {
+            if (entry != null && entry.actionsContainer == actionsContainer) {
                 entry.update(active);
                 return;
             }
         }
-        if (!(actions.getParent() instanceof FrameLayout parent)) return;
-        QueueFullscreenButton entry = new QueueFullscreenButton(actions, parent);
+        if (!(actionsContainer.getParent() instanceof FrameLayout parent)) return;
+        QueueFullscreenButton entry = new QueueFullscreenButton(actionsContainer, parent);
         buttons.add(new WeakReference<>(entry));
         entry.update(active);
     }
@@ -57,10 +57,10 @@ final class QueueFullscreenButton implements View.OnClickListener {
         }
     }
 
-    private QueueFullscreenButton(ViewGroup actions, FrameLayout parent) {
-        this.actions = actions;
-        width = Math.round(48 * actions.getResources().getDisplayMetrics().density);
-        button = LayoutInflater.from(actions.getContext()).inflate(ResourceUtils.getIdentifier(
+    private QueueFullscreenButton(ViewGroup actionsContainer, FrameLayout parent) {
+        this.actionsContainer = actionsContainer;
+        buttonSizePx = ResourceUtils.getDimensionPixelSize("controls_overlay_action_button_size");
+        button = LayoutInflater.from(actionsContainer.getContext()).inflate(ResourceUtils.getIdentifier(
                 ResourceType.LAYOUT, "fullscreen_engagement_action_bar_button"), parent, false);
         ImageView icon = button.findViewById(ResourceUtils.getIdentifier(ResourceType.ID, "button_icon"));
         icon.setImageResource(ResourceUtils.getIdentifier(
@@ -73,18 +73,19 @@ final class QueueFullscreenButton implements View.OnClickListener {
         button.setContentDescription(str("morphe_local_queue_title"));
         button.setOnClickListener(this);
         button.setVisibility(View.GONE);
-        parent.addView(button, new FrameLayout.LayoutParams(width, width, Gravity.END | Gravity.CENTER_VERTICAL));
+        parent.addView(button, new FrameLayout.LayoutParams(
+                buttonSizePx, buttonSizePx, Gravity.END | Gravity.CENTER_VERTICAL));
     }
 
     private void update(boolean active) {
         boolean visible = active && !Settings.HIDE_QUICK_ACTIONS.get()
                 && !Settings.HIDE_QUICK_ACTIONS_PLAYLIST_BUTTON.get();
-        if (!(actions.getLayoutParams() instanceof ViewGroup.MarginLayoutParams params)) return;
-        if (visible != reserved) {
-            if (visible) originalEndMargin = params.getMarginEnd();
-            params.setMarginEnd(visible ? originalEndMargin + width : originalEndMargin);
-            actions.setLayoutParams(params);
-            reserved = visible;
+        if (!(actionsContainer.getLayoutParams() instanceof ViewGroup.MarginLayoutParams params)) return;
+        if (visible != spaceReserved) {
+            if (visible) originalEndMarginPx = params.getMarginEnd();
+            params.setMarginEnd(visible ? originalEndMarginPx + buttonSizePx : originalEndMarginPx);
+            actionsContainer.setLayoutParams(params);
+            spaceReserved = visible;
         }
         // The native parent retains control of orientation, controls visibility and animation.
         button.setVisibility(visible ? View.VISIBLE : View.GONE);
