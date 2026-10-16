@@ -48,6 +48,8 @@ public final class NativeQueueBridge {
     public static void refreshPanel(Object playlistController, Object watchResponse) {}
     public static void openPanel(Object playlistController) {}
     public static boolean isPlayerTransport(Object transport) { return false; }
+    public static Object playerNavigator(Object transport) { return null; }
+    public static Object navigatorResponse(Object watchNavigator) { return null; }
     public static void refreshTransport(Object transport) {}
     public static boolean canNavigateQueue(Object watchNavigator, boolean next) { return false; }
     public static boolean navigateQueue(Object transport, Object watchNavigator, boolean next) { return false; }

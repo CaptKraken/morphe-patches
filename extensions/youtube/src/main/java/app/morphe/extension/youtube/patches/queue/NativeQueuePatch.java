@@ -244,6 +244,16 @@ public final class NativeQueuePatch {
         // Empty responses and callbacks from our own refresh must not claim another
         // navigator before the queue can be attached to it.
         if (watchResponse == null || publishing) return;
+        if (active() && !overlayTransports.snapshot().isEmpty() && !isCurrentNavigator(sourceNavigator)) {
+            // A replacement can receive a cached response inside its constructor, before
+            // the player installs it. Check ownership after that native handoff completes.
+            Utils.runOnMainThreadDelayed(() -> {
+                if (isCurrentNavigator(sourceNavigator) && navigatorResponse(sourceNavigator) == watchResponse) {
+                    onResponse(sourceNavigator, watchResponse);
+                }
+            }, 0);
+            return;
+        }
         try {
             String playlistId = responsePlaylist(watchResponse);
             String videoId = responseVideo(watchResponse);
@@ -334,6 +344,25 @@ public final class NativeQueuePatch {
         return navigation != null && backendOwner.get() == navigation ? navigation : null;
     }
 
+    private static boolean isCurrentNavigator(Object navigation) {
+        if (navigation == null) return false;
+        for (Object transport : overlayTransports.snapshot()) {
+            if (playerNavigator(transport) == navigation) return true;
+        }
+        return false;
+    }
+
+    /** The player's live navigator is authoritative; response subscribers may already be retired. */
+    private static boolean synchronizeNavigation(Object navigation) {
+        if (navigation == null) return false;
+        if (navigation != watchNavigator.get() || navigation != backendOwner.get()) {
+            Object response = navigatorResponse(navigation);
+            if (response == null) return false;
+            onResponse(navigation, response);
+        }
+        return navigation == localNavigation();
+    }
+
     public static synchronized void onQueueHeader(Object header) {
         if (!active() || !owns(headerPanel(header))) return;
         queueHeaders.add(header);
@@ -351,14 +380,18 @@ public final class NativeQueuePatch {
 
     /** Native header clicks retain their own listeners; only this queue's mode changes are local. */
     public static synchronized boolean onRepeatRequested(Object sourceNavigator, int mode) {
-        if (!active() || localNavigation() != sourceNavigator) return false;
+        if (!active() || !isCurrentNavigator(sourceNavigator)) return false;
+        synchronizeNavigation(sourceNavigator);
+        if (!active()) return false;
         queue.setRepeatMode(mode);
         refreshQueuePlayback();
         return true;
     }
 
     public static synchronized boolean onShuffleRequested(Object sourceNavigator, boolean enabled) {
-        if (!active() || localNavigation() != sourceNavigator) return false;
+        if (!active() || !isCurrentNavigator(sourceNavigator)) return false;
+        synchronizeNavigation(sourceNavigator);
+        if (!active()) return false;
         queue.setShuffled(enabled);
         refreshQueuePlayback();
         return true;
@@ -366,7 +399,7 @@ public final class NativeQueuePatch {
 
     private static void applyPlaybackModes() {
         Object navigation = localNavigation();
-        if (!active() || navigation == null) return;
+        if (!active() || !isCurrentNavigator(navigation)) return;
         LocalQueue.Snapshot snapshot = queue.snapshot();
         boolean reset = navigationRevision != snapshot.orderRevision()
                 || (snapshot.shuffled() && !navigationShuffled);
@@ -390,18 +423,19 @@ public final class NativeQueuePatch {
 
     public static boolean nextEnabled(boolean original, Object transport) {
         if (!ownsTransport(transport)) return original;
-        Object navigation = localNavigation();
-        return navigation != null && canNavigateQueue(navigation, true);
+        Object navigation = playerNavigator(transport);
+        return navigation != null && navigation == localNavigation() && canNavigateQueue(navigation, true);
     }
 
     public static boolean previousEnabled(boolean original, Object transport) {
         if (!ownsTransport(transport)) return original;
-        Object navigation = localNavigation();
-        return navigation != null && canNavigateQueue(navigation, false);
+        Object navigation = playerNavigator(transport);
+        return navigation != null && navigation == localNavigation() && canNavigateQueue(navigation, false);
     }
 
-    public static boolean onTransportUpdate(Object transport) {
+    public static synchronized boolean onTransportUpdate(Object transport) {
         if (!ownsTransport(transport)) return false;
+        if (!publishing && !QueueEditScope.active()) synchronizeNavigation(playerNavigator(transport));
         // The original update skips controls that still have watch-response delegates.
         refreshTransport(transport);
         return true;
@@ -411,11 +445,11 @@ public final class NativeQueuePatch {
     public static synchronized boolean onManualNavigation(Object transport, boolean next) {
         if (!ownsTransport(transport)) return false;
         if (QueueEditScope.active()) return true;
-        Object navigation = localNavigation();
+        Object navigation = playerNavigator(transport);
         try {
-            if (navigation == null) {
-                throw new IllegalStateException("Local queue navigator is not attached");
-            }
+            // A player replacement without a response is still loading. Consume the tap
+            // without committing against its disposed predecessor or a recommendation.
+            if (!synchronizeNavigation(navigation)) return true;
             boolean available = canNavigateQueue(navigation, next);
             Logger.printInfo(() -> "Local queue manual " + (next ? "next" : "previous")
                     + ", available=" + available);

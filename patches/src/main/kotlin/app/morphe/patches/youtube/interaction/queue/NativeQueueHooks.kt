@@ -398,6 +398,36 @@ internal class NativeQueueHooks(
             instance-of v0, p0, ${native.transportType}
             return v0
         """)
+        val sequenceNavigator = field(native.sequenceNavigator)
+        val legacyNavigatorOwner = field(native.legacyNavigatorOwner)
+        val legacySequence = field(native.legacySequence)
+        val legacyNavigator = field(native.legacyNavigator)
+        getter("navigatorResponse", native.navigatorResponse)
+        bridge("playerNavigator", """
+            check-cast p0, ${native.transportType}
+            iget-object v0, p0, $transportPlayer
+            instance-of v1, v0, ${native.sequencePlayer}
+            if-eqz v1, :legacy
+            check-cast v0, ${native.sequencePlayer}
+            iget-object v0, v0, $sequenceNavigator
+            return-object v0
+            :legacy
+            instance-of v1, v0, ${native.legacyPlayer}
+            if-eqz v1, :missing
+            check-cast v0, ${native.legacyPlayer}
+            iget-object v0, v0, $legacyNavigatorOwner
+            iget-object v0, v0, $legacySequence
+            instance-of v1, v0, ${native.legacyNavigator.definingClass}
+            if-eqz v1, :missing
+            check-cast v0, ${native.legacyNavigator.definingClass}
+            iget-object v0, v0, $legacyNavigator
+            instance-of v1, v0, ${native.navigatorType}
+            if-eqz v1, :missing
+            return-object v0
+            :missing
+            const/4 v0, 0x0
+            return-object v0
+        """)
         bridge("canNavigateQueue", """
             check-cast p0, ${native.navigatorType}
             if-eqz p1, :previous

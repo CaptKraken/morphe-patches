@@ -439,6 +439,16 @@ internal class QueueLoadDescriptorFingerprint(playerType: String, descriptorType
     returnType = "V",
 )
 
+internal object QueueSequencePlayerFingerprint : Fingerprint(
+    returnType = "V",
+    filters = listOf(string("Watch Page unable to start playback, ")),
+)
+
+internal object QueueLegacyPlayerFingerprint : Fingerprint(
+    returnType = "V",
+    filters = listOf(string("Initializing a PlaybackSequencer in loaderNavigator, but it does not exist")),
+)
+
 internal class QueueTransportContractFingerprint(next: MethodReference) : Fingerprint(
     name = next.name,
     parameters = emptyList(),

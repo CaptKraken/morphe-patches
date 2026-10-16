@@ -441,6 +441,26 @@ fun main(arguments: Array<String>) {
             check(filter.reference.toString() == "Laogu;") {
                 "Overlay ownership must accept base and subclass handlers regardless of controls wrapper"
             }
+            val playerNavigator = bridge.methods.single { it.name == "playerNavigator" }
+                .implementation!!.instructions.filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
+            check(listOf("Laogu;->b:Laowt;", "Lnik;->b:Lniq;", "Laowp;->f:Lboai;",
+                "Lboai;->a:Ljava/lang/Object;", "Laove;->b:Laovn;").all { it in playerNavigator }) {
+                "Queue navigation must resolve the live navigator in both native playback implementations"
+            }
+            check(bridge.methods.single { it.name == "navigatorResponse" }.implementation!!.instructions
+                .filterIsInstance<ReferenceInstruction>().any { it.reference.toString() == "Lniq;->a:Lahwk;" }) {
+                "A replacement navigator must be attached using its own response"
+            }
+            check(runtimeReferences("onManualNavigation").any { it.contains("NativeQueueBridge;->playerNavigator(") } &&
+                runtimeReferences("onManualNavigation").any { it.contains("->synchronizeNavigation(") } &&
+                runtimeReferences("onResponse").any { it.contains("->isCurrentNavigator(") }) {
+                "Manual navigation must synchronize the player's navigator and retired responses cannot claim ownership"
+            }
+            for (modeRequest in listOf("onShuffleRequested", "onRepeatRequested")) {
+                check(runtimeReferences(modeRequest).any { it.contains("->isCurrentNavigator(") }) {
+                    "Mode requests must follow the current native player instead of a retired response subscriber"
+                }
+            }
             val manual = mutableClassDefBy("Lapp/morphe/extension/youtube/patches/queue/NativeQueueBridge;")
                 .methods.single { it.name == "navigateQueue" }
                 .implementation!!.instructions.mapNotNull {

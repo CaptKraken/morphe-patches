@@ -280,6 +280,22 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val transportPlayer = field(transportType, transportConstructor.parameterTypes[1].toString())
     val transportEvents = field(transportType, transportConstructor.parameterTypes[3].toString())
     val loadDescriptor = QueueLoadDescriptorFingerprint(transportPlayer.type, descriptorType).sourceMethod
+    // Both native playback paths replace the navigator independently of response delivery.
+    // Follow their live fields, rather than treating the last response subscriber as current.
+    val sequencePlayer = QueueSequencePlayerFingerprint.sourceMethod.definingClass
+    val sequenceNavigator = field(sequencePlayer, navigatorType)
+    private val legacyLoad = QueueLegacyPlayerFingerprint.sourceMethod
+    val legacyPlayer = legacyLoad.definingClass
+    private val legacySequenceCast = legacyLoad.implementation!!.instructions.toList().withIndex().filter {
+        val type = it.value.getReference<TypeReference>()?.type
+        it.value.opcode == Opcode.CHECK_CAST && type != null &&
+            context.classDefBy(type).fields.any { member -> member.type == backend.type }
+    }.requireSingle("legacy playback sequence")
+    val legacySequence = queueSourceField(legacyLoad, legacySequenceCast.index,
+        (legacySequenceCast.value as OneRegisterInstruction).registerA)
+    val legacyNavigatorOwner = field(legacyPlayer, legacySequence.definingClass)
+    val legacyNavigator = field(legacySequenceCast.value.getReference<TypeReference>()!!.type, backend.type)
+    val navigatorResponse = field(navigatorType, responseType)
     val next = queueTransportHandlerFingerprint(transportType, nextIntent).sourceMethod
     val previous = queueTransportHandlerFingerprint(transportType, previousIntent).sourceMethod
     val nextEvent = next.implementation!!.instructions.mapNotNull { it.getReference<MethodReference>() }.filter { it.definingClass == transportEvents.type }
