@@ -18,6 +18,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.WideLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
+import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.nio.file.Files
@@ -112,6 +113,28 @@ fun main(arguments: Array<String>) {
             check(playlistGuard >= 0 && nativeMenu > playlistGuard &&
                 queueMenu.take(nativeMenu).any { it.contains("Settings;->QUEUE_ADD_FLYOUT_MENU:") }) {
                 "Native menu dispatch must retain the shared playlist and Add menu guards"
+            }
+            val menuBind = references(utils.type, "onFlyoutListBound")
+            val originalBind = menuBind.indexOfFirst { it.contains("AddToQueuePatch;->onListBound(") }
+            val localBind = menuBind.indexOfFirst { it.contains("NativeQueuePatch;->onFlyoutListBound(") }
+            check(originalBind >= 0 && localBind > originalBind) {
+                "Grouping must run after the original Add to queue badge handling"
+            }
+            check(runtimeReferences("onFlyoutListBound").any { it.contains("NativeQueuePatch;->isPatchIncluded(") } &&
+                runtimeReferences("onFlyoutListBound").any { it.contains("QueueFlyout;->replaces(") }) {
+                "Only selected Native Queue may hide rows with successful, eligible replacements"
+            }
+            check(runtimeReferences("hideReplacedFlyoutButton").any { it.contains("Utils;->hideViewByLayoutParams(") } &&
+                runtimeReferences("hideReplacedFlyoutButton").any { it.contains("View;->addOnAttachStateChangeListener(") }) {
+                "Hidden duplicates must collapse without removing native rows and register recycling cleanup"
+            }
+            val listenerType = runtime.methods.single { it.name == "hideReplacedFlyoutButton" }
+                .implementation!!.instructions.filterIsInstance<ReferenceInstruction>()
+                .first { it.opcode == Opcode.NEW_INSTANCE }.reference as TypeReference
+            val restoreMenuRow = references(listenerType.type, "onViewDetachedFromWindow")
+            check(listOf("->removeOnAttachStateChangeListener(", "->setLayoutParams(", "->setVisibility(")
+                .all { call -> restoreMenuRow.any { it.contains(call) } }) {
+                "Detached native rows must restore their layout/visibility and release the cleanup listener"
             }
             check(references("Lapp/morphe/extension/youtube/patches/utils/PlaylistPatch;", "prepareDialogBuilder")
                 .any { it.endsWith("NativeQueuePatch;->showOrStartQueue(Ljava/lang/String;)V") }) {

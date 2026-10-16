@@ -12,6 +12,7 @@ import static app.morphe.extension.youtube.patches.queue.NativeQueueBridge.*;
 
 import android.graphics.drawable.Drawable;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.PopupMenu;
 
 import java.lang.ref.WeakReference;
@@ -36,6 +37,7 @@ import app.morphe.extension.youtube.patches.queue.model.QueueRatings;
 import app.morphe.extension.youtube.patches.queue.model.PlaylistPanel;
 import app.morphe.extension.youtube.patches.queue.model.QueueEditScope;
 import app.morphe.extension.youtube.patches.queue.model.QueuePanels;
+import app.morphe.extension.youtube.patches.queue.model.QueueFlyout;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.ProtoNode;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
@@ -49,6 +51,7 @@ public final class NativeQueuePatch {
     private static final QueueTitles titles = new QueueTitles(200);
     private static final QueueDetails details = new QueueDetails();
     private static final QueueRatings ratings = new QueueRatings();
+    private static final QueueFlyout flyout = new QueueFlyout();
     private static final Set<Object> ownedRatingButtons = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
     // Old panels can still emit events after a refresh. Consume their edit events as well.
@@ -728,26 +731,59 @@ public final class NativeQueuePatch {
     public static int addFlyoutButtons(Object panel, int index, String video, Drawable icon) {
         if (!Settings.QUEUE_ADD_FLYOUT_MENU.get() || video.isEmpty()) return index;
         QueueTitles.Title title = titleFor(video);
-        if (!hasOverriddenFlyoutButton("QUEUE_PLAY_NEXT")) {
-            index = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_next"),
-                    v -> enqueue(video, title, true), index);
-        }
-        if (!hasOverriddenFlyoutButton("QUEUE_PLAY_LAST")) {
-            index = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_last"),
-                    v -> enqueue(video, title, false), index);
-        }
+        int nextIndex = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_next"),
+                v -> enqueue(video, title, true), index);
+        boolean addedNext = nextIndex > index;
+        if (addedNext) index = nextIndex;
+        nextIndex = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_last"),
+                v -> enqueue(video, title, false), index);
+        boolean addedLast = nextIndex > index;
+        if (addedLast) index = nextIndex;
+        flyout.remember(panel, video, addedNext, addedLast);
         if (active()) {
-            index = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_clear"),
+            nextIndex = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_clear"),
                     v -> { clear(); FlyoutUtils.dismissFlyout(); }, index);
+            if (nextIndex > index) index = nextIndex;
         }
         return index;
     }
 
-    private static boolean hasOverriddenFlyoutButton(String name) {
-        if (!Settings.QUEUE_OVERRIDE_FLYOUT_MENU.get() || FlyoutUtils.getFlyoutVideoId().isEmpty()) return false;
+    /** Keep local actions together above the divider; preserve native rows when not replaced. */
+    public static void onFlyoutListBound(Object panel, ViewGroup itemList) {
+        if (!isPatchIncluded()) return;
         for (var button : FlyoutUtils.getVisibleFlyoutButtons()) {
-            if (name.equals(button.first)) return true;
+            if (!flyout.replaces(panel, FlyoutUtils.getFlyoutVideoId(), FlyoutUtils.getFlyoutPlaylistId(),
+                    Settings.QUEUE_ADD_FLYOUT_MENU.get(), Settings.QUEUE_OVERRIDE_FLYOUT_MENU.get(),
+                    button.first)) continue;
+            int index = button.second - 1;
+            if (index < 0 || index >= itemList.getChildCount()) continue;
+            hideReplacedFlyoutButton(itemList.getChildAt(index));
         }
-        return false;
+    }
+
+    private static void hideReplacedFlyoutButton(View row) {
+        ViewGroup.LayoutParams params = row.getLayoutParams();
+        if (params == null || row.getVisibility() != View.VISIBLE) return;
+        int width = params.width;
+        int height = params.height;
+        row.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View view) {}
+
+            @Override
+            public void onViewDetachedFromWindow(View view) {
+                view.removeOnAttachStateChangeListener(this);
+                // Menu views may be recycled for another video or different settings.
+                ViewGroup.LayoutParams current = view.getLayoutParams();
+                if (current != null && current.width == 0 && current.height == 0) {
+                    current.width = width;
+                    current.height = height;
+                    view.setLayoutParams(current);
+                    if (view.getVisibility() == View.GONE) view.setVisibility(View.VISIBLE);
+                }
+            }
+        });
+        Utils.hideViewByLayoutParams(row);
+        row.setVisibility(View.GONE);
     }
 }

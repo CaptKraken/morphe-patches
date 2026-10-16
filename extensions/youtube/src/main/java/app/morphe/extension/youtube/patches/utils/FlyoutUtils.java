@@ -608,6 +608,7 @@ public final class FlyoutUtils {
 
             copyListItemTypeface(itemList);
             AddToQueuePatch.onListBound(itemList);
+            NativeQueuePatch.onFlyoutListBound(flyoutPanel, itemList);
 
         } catch (Exception ex) {
             Logger.printException(() -> "onFlyoutListBound failure", ex);
