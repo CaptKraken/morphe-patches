@@ -239,11 +239,13 @@ public final class NativeQueuePatch {
         }
     }
 
-    /** Called only from the active watch navigator, not from prefetched player responses. */
+    /** Observe committed watch responses rather than prefetched player metadata. */
     public static synchronized void onResponse(Object sourceNavigator, Object watchResponse) {
+        // Other navigators can receive empty responses during playback transitions.
+        // They must not replace the navigator attached to the current queue.
+        if (watchResponse == null) return;
         try {
             watchNavigator = new WeakReference<>(sourceNavigator);
-            if (watchResponse == null) return;
             if (watchResponse != currentWatchResponse) {
                 if (currentWatchResponse != null && owns(responsePanel(currentWatchResponse))) {
                     // Watch responses can be cached and reused after the queue is gone.
