@@ -85,6 +85,14 @@ fun main(arguments: Array<String>) {
                 } && reset.none { it.contains("->publish(") || it.contains("->refreshPanel(") || it.contains("->openVideoIntent") }) {
                 "Player close must clear the queue and stale native references without refreshing or reopening a closed player"
             }
+            check(reset.none { it.startsWith("$runtimeType->overlayTransports:") }) {
+                "Player close must retain weak overlay registrations: reused controls do not register again"
+            }
+            val transportOwnership = runtimeReferences("ownsTransport")
+            check(transportOwnership.any { it == "$runtimeType->active()Z" } &&
+                transportOwnership.any { it == "Ljava/util/Set;->contains(Ljava/lang/Object;)Z" }) {
+                "Retained overlay handlers must intercept navigation only while a temporary queue is active"
+            }
             check(runtimeReferences("onRowBound").any { it.contains("LocalQueue;->canRemove(") }) {
                 "Playing rows must not offer the custom Remove menu"
             }

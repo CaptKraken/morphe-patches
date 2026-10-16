@@ -64,6 +64,8 @@ public final class NativeQueuePatch {
     private static final QueuePanels panelRevisions = new QueuePanels();
     private static volatile WeakReference<Object> playlistController = new WeakReference<>(null);
     private static volatile WeakReference<Object> watchNavigator = new WeakReference<>(null);
+    // YouTube can reuse the overlay after closing the player. Its handlers register only
+    // when the controls are created, so retain them weakly across queue sessions.
     private static final Set<Object> overlayTransports = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
     private static final Set<Object> queueHeaders = Collections.synchronizedSet(
@@ -627,7 +629,6 @@ public final class NativeQueuePatch {
             backendOwner = new WeakReference<>(null);
             navigationRevision = -1;
             navigationShuffled = false;
-            overlayTransports.clear();
             queueHeaders.clear();
             ownedRatingButtons.clear();
         }
