@@ -1,19 +1,21 @@
-# Native Queue — preview 18
+# Native Queue — preview 19
 
-Independent experimental fork by CaptKraken, based on [Morphe Patches](https://github.com/MorpheApp/morphe-patches). This is not an official upstream release. Original attribution, [LICENSE](LICENSE) and [NOTICE](NOTICE) are retained, including the upstream notices embedded in the bundle.
+Independent experimental fork by CaptKraken, based on [Morphe Patches](https://github.com/MorpheApp/morphe-patches). This is not an official upstream release. Original attribution, [LICENSE](LICENSE) and [NOTICE](NOTICE) are retained, including upstream notices embedded in the bundle.
 
-Download [native-queue-21.20.405-preview18.mpp](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-queue-preview/native-queue-21.20.405-preview18.mpp).
+Download [native-queue-21.20.405-preview19.mpp](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-queue-preview/native-queue-21.20.405-preview19.mpp).
 
-Native temporary queue (experimental) now follows upstream's default-selection convention: removing its explicit default=false override inherits default=true from the patch API. Manager may retain an existing saved selection; reset the selection to defaults or select the patch manually in that case. This changes initial patch selection, not the behavior of an already patched app.
+This preview restores Play next, Play last, and Clear temporary queue as contiguous added rows above the menu divider. Clear appears only while a temporary queue is active. When native queue actions are overridden, each original row is hidden only after its corresponding local replacement was successfully added to that same menu and video context. Partial/failed additions retain the native fallback actions. The original rows remain in their parent; their layout and visibility are restored when they detach so recycled views are not left hidden.
 
-All extension resources are byte-identical to preview 17. Its runtime fixes remain included. The reported split menu grouping also remains: a reused native Play next row can appear below the divider while added Play last/Clear rows appear above it. Grouping has not been changed in this preview.
+The original Add to queue override handling is unchanged. If added queue rows are disabled, existing overridden native queue actions remain visible and functional. If overriding is disabled, YouTube's original rows remain visible with their original behavior alongside the separate added local actions. When Native Queue is unselected, the new grouping callback returns without changing any views. Account-playlist menus and unrelated native actions are not hidden.
 
-Disable the preceding preview source, import this file in Morphe Manager, and select **Native Queue** alone as the source for YouTube. Patch the untouched YouTube 21.20.405 APK. Keep **Override feed flyout queue button** enabled if needed.
+The default-selection change from preview 18 remains: Native temporary queue (experimental) inherits the patch API's default=true. Manager may retain saved selections; reset the selection to defaults or select the patch manually if needed. Other preview 17 runtime fixes remain included.
 
-Built from source commit `c5abed3e70089c2fd70c7d15b9e206d90bfcb0f9` on `feature/youtube-native-queue`. Only the default-selection override was removed from source. Preview branding is applied to artifact metadata; the contribution source retains upstream project metadata, README and notices.
+Disable the preceding preview source, import this file in Morphe Manager, and select **Native Queue** alone as the source for YouTube. Patch an untouched YouTube 21.20.405 APK. Enable **Override feed flyout queue button** and the setting that adds queue rows to test the unified local group.
 
-Validation: the compiled patch object's default property was verified as true. All 60 queue tests passed, with 63 passing tests overall and 5 unrelated Jam APK tests skipped. The Android bundle build passed and contains classes.dex. Compared with preview 17, only the manifest and compiled patch definition/class DEX changed; all embedded extension resources are identical. This metadata-only update did not rerun full APK application checks. Preview 17 passed standalone, combined-patch and Native Queue-unselected APK/SDK verification. No Android device or emulator is attached. Only 21.20.405 is advertised.
+Built from source commit `403c67bf93057bed40777f0687524a49ec65e7da` on `feature/youtube-native-queue`. Preview branding is applied only to artifact metadata; contribution-source metadata, README and notices remain unchanged. Additional combination/isolation harnesses and development notes remain outside the source checkout.
 
-SHA256: `e660aa05282d81f3d57e1d9c27911d50fb9d1586f3bc51a5cc7b58e041cffb0c`
+Validation: all 66 queue tests passed, with 69 passing tests overall and 5 unrelated Jam APK tests skipped. New menu tests cover both settings, successful/partial/failed additions, panel identity/reuse, video and playlist guards, and unrelated actions. The resource checker validated 90,681 strings. Stock 21.20.405 APK application, DEX/cross-DEX verification and resource compilation passed standalone, alongside six related patches, and with Native Queue unselected. APK assertions verify the original Add to queue binding remains before local grouping, selected-patch/success guards survive shrinking, and hidden rows register cleanup that restores layout/visibility and releases its listener. Earlier repeat/shuffle test hooks survived the combined installation. The final Android bundle contains classes.dex. No Android device or emulator is attached, so actual menu appearance and repeated open/close/recycling still need phone testing. Only 21.20.405 is advertised.
+
+SHA256: `8f0e61374b4807079872b2b262d3d4658e33e2002c99a19bf3912577e7cdde70`
 
 Older preview files are superseded. This branch distributes experimental builds; source development is on `feature/youtube-native-queue`.
