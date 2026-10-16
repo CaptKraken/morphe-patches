@@ -156,6 +156,11 @@ public final class LocalQueue {
         return false;
     }
 
+    /** A drag belongs to the order shown by its source panel, including its queue session. */
+    public synchronized boolean move(long expectedRevision, int from, int to) {
+        return expectedRevision == orderRevision && move(from, to);
+    }
+
     public synchronized boolean move(int from, int to) {
         if (from < 0 || from >= entries.size() || to < 0 || to >= entries.size()) return false;
         if (from == to) return true;

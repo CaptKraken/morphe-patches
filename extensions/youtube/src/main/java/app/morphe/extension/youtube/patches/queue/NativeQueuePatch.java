@@ -35,6 +35,7 @@ import app.morphe.extension.youtube.patches.queue.model.QueueDetails;
 import app.morphe.extension.youtube.patches.queue.model.QueueRatings;
 import app.morphe.extension.youtube.patches.queue.model.PlaylistPanel;
 import app.morphe.extension.youtube.patches.queue.model.QueueEditScope;
+import app.morphe.extension.youtube.patches.queue.model.QueuePanels;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.ProtoNode;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
@@ -53,6 +54,7 @@ public final class NativeQueuePatch {
     // Old panels can still emit events after a refresh. Consume their edit events as well.
     private static final Set<Object> ownedPanels = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
+    private static final QueuePanels panelRevisions = new QueuePanels();
     private static volatile WeakReference<Object> controller = new WeakReference<>(null);
     private static volatile WeakReference<Object> navigator = new WeakReference<>(null);
     private static final Set<Object> overlayTransports = Collections.synchronizedSet(
@@ -73,7 +75,7 @@ public final class NativeQueuePatch {
     public static boolean isPatchIncluded() { return false; }
 
     public static boolean owns(Object panel) {
-        return panel != null && ownedPanels.contains(panel);
+        return panelRevisions.revision(panel) != null || panel != null && ownedPanels.contains(panel);
     }
 
     private static boolean active() { return !queue.isEmpty(); }
@@ -171,6 +173,7 @@ public final class NativeQueuePatch {
                 str("morphe_local_queue_save")));
         if (panel == null) throw new IllegalStateException("Native playlist parser unavailable");
         ownedPanels.add(panel);
+        panelRevisions.remember(panel, snapshot.orderRevision());
         ownedRatingButtons.addAll(panelRatingButtons(panel));
         return panel;
     }
@@ -470,10 +473,16 @@ public final class NativeQueuePatch {
 
     /** Intercept before the host schedules browse/edit_playlist. Account panels fall through. */
     public static synchronized boolean onGesture(Object adapter, Object event, int operation) {
-        if (operation < 0 || !owns(adapterPanel(adapter))) return false;
+        Object panel = adapterPanel(adapter);
+        if (operation < 0 || !owns(panel)) return false;
         try {
             if (operation == 0 && isMoveForAdapter(adapter, event)) {
-                queue.move(moveFrom(event), moveTo(event));
+                // Consume stale events without applying their indices to a newer order/session.
+                Long revision = panelRevisions.revision(panel);
+                if (revision != null && queue.move(revision, moveFrom(event), moveTo(event))) {
+                    // One drag can emit several moves before RecyclerView finishes dispatching.
+                    panelRevisions.remember(panel, queue.snapshot().orderRevision());
+                }
             } else if (operation == 1) {
                 String id = removedEntry(event);
                 Utils.runOnMainThreadDelayed(() -> remove(id), 0);
@@ -492,6 +501,11 @@ public final class NativeQueuePatch {
     }
 
     public static boolean enqueue(String video, QueueTitles.Title capturedTitle, boolean playNext) {
+        return enqueue(video, capturedTitle, playNext, false);
+    }
+
+    private static boolean enqueue(String video, QueueTitles.Title capturedTitle, boolean playNext,
+                                   boolean showPanel) {
         if (!isPatchIncluded()) return false;
         Utils.runOnMainThread(() -> {
             try {
@@ -533,6 +547,7 @@ public final class NativeQueuePatch {
                         LoadVideoPatch.openVideoIntentWithInternalContext(video);
                     } else {
                         if (!publish()) return;
+                        if (showPanel) openPanel(controller.get());
                     }
                 }
                 QueueMetadata.fetch(video);
@@ -664,6 +679,15 @@ public final class NativeQueuePatch {
         if (publish()) openPanel(controller.get());
     }
 
+    /** The player queue action can start a queue with the currently playing video. */
+    public static void showOrStartQueue(String currentVideoId) {
+        if (active() || currentVideoId == null || currentVideoId.isEmpty()) {
+            showQueue();
+        } else {
+            enqueue(currentVideoId, titleFor(currentVideoId), false, true);
+        }
+    }
+
     static synchronized LocalQueue.Entry metadataEntry(String video) {
         QueueTitles.Title known = titleFor(video);
         if (known != null && known.source().ordinal() >= QueueTitles.Source.PLAYER.ordinal()) return null;
@@ -704,14 +728,26 @@ public final class NativeQueuePatch {
     public static int addFlyoutButtons(Object panel, int index, String video, Drawable icon) {
         if (!Settings.QUEUE_ADD_FLYOUT_MENU.get() || video.isEmpty()) return index;
         QueueTitles.Title title = titleFor(video);
-        index = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_next"),
-                v -> enqueue(video, title, true), index);
-        index = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_last"),
-                v -> enqueue(video, title, false), index);
+        if (!hasOverriddenFlyoutButton("QUEUE_PLAY_NEXT")) {
+            index = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_next"),
+                    v -> enqueue(video, title, true), index);
+        }
+        if (!hasOverriddenFlyoutButton("QUEUE_PLAY_LAST")) {
+            index = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_last"),
+                    v -> enqueue(video, title, false), index);
+        }
         if (active()) {
             index = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_clear"),
                     v -> { clear(); FlyoutUtils.dismissFlyout(); }, index);
         }
         return index;
+    }
+
+    private static boolean hasOverriddenFlyoutButton(String name) {
+        if (!Settings.QUEUE_OVERRIDE_FLYOUT_MENU.get() || FlyoutUtils.getFlyoutVideoId().isEmpty()) return false;
+        for (var button : FlyoutUtils.getVisibleFlyoutButtons()) {
+            if (name.equals(button.first)) return true;
+        }
+        return false;
     }
 }

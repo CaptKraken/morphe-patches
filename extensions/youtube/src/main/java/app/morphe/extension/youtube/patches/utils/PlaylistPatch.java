@@ -86,7 +86,7 @@ public class PlaylistPatch {
         Utils.verifyOnMainThread();
 
         if (app.morphe.extension.youtube.patches.queue.NativeQueuePatch.isPatchIncluded()) {
-            app.morphe.extension.youtube.patches.queue.NativeQueuePatch.showQueue();
+            app.morphe.extension.youtube.patches.queue.NativeQueuePatch.showOrStartQueue(currentVideoId);
             return;
         }
 

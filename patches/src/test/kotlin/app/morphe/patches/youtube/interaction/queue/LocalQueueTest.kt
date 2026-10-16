@@ -18,6 +18,40 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertTrue
 
 class LocalQueueTest {
+    @Test fun `drag revisions reject edits from an older order or closed player session`() {
+        val queue = LocalQueue()
+        listOf("a", "b", "c").forEach { queue.add(it, it, false) }
+        val oldPanel = queue.snapshot()
+        queue.add("d", "d", false)
+        val changed = queue.snapshot()
+        assertFalse(queue.move(oldPanel.orderRevision(), 0, 2))
+        assertEquals(changed, queue.snapshot())
+        queue.clear()
+        listOf("a", "b", "c").forEach { queue.add(it, it, false) }
+        val reopened = queue.snapshot()
+        assertFalse(queue.move(oldPanel.orderRevision(), 0, 2))
+        assertEquals(reopened, queue.snapshot())
+    }
+
+    @Test fun `drag survives metadata and playback refreshes and accepts successive native moves`() {
+        val queue = LocalQueue()
+        listOf("a", "b", "c").forEach { queue.add(it, it, false) }
+        val panel = queue.snapshot()
+        queue.updateTitle("a", "Resolved title")
+        queue.select("b", null)
+        queue.setRepeatMode(1)
+        queue.setShuffled(true)
+        assertTrue(queue.move(panel.orderRevision(), 0, 1))
+        val moved = queue.snapshot()
+        assertFalse(queue.move(panel.orderRevision(), 1, 2))
+        assertEquals(moved, queue.snapshot())
+        assertTrue(queue.move(moved.orderRevision(), 1, 2))
+        assertEquals(listOf("b", "c", "a"), queue.snapshot().entries().map { it.videoId() })
+        assertEquals("b", queue.snapshot().current().videoId())
+        assertEquals(1, queue.snapshot().repeatMode())
+        assertTrue(queue.snapshot().shuffled())
+    }
+
     @Test fun `native playback modes preserve selection and survive queue edits`() {
         val queue = LocalQueue()
         listOf("a", "b", "c").forEach { queue.add(it, it, false) }

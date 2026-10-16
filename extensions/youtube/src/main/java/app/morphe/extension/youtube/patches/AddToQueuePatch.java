@@ -46,13 +46,13 @@ public final class AddToQueuePatch {
     }
 
     public static int addFlyoutButton(Object flyoutPanel, int index, String videoId) {
-        if (NativeQueuePatch.isPatchIncluded()) {
-            return NativeQueuePatch.addFlyoutButtons(flyoutPanel, index, videoId, queueButtonDrawable);
-        }
         if (!isPatchIncluded() || !Settings.QUEUE_ADD_FLYOUT_MENU.get() ||
                 !FlyoutUtils.getFlyoutPlaylistId().isEmpty() ||
                 videoId.isEmpty()) {
             return index;
+        }
+        if (NativeQueuePatch.isPatchIncluded()) {
+            return NativeQueuePatch.addFlyoutButtons(flyoutPanel, index, videoId, queueButtonDrawable);
         }
 
         return FlyoutUtils.addFlyoutButton(

@@ -8,10 +8,15 @@
 package app.morphe.patches.youtube.interaction.queue
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
+import app.morphe.patcher.util.proxy.mutableTypes.MutableClass
 import app.morphe.patcher.util.proxy.mutableTypes.MutableField.Companion.toMutable
+import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
+import app.morphe.util.cloneParameters
+import app.morphe.util.findFreeRegister
 import app.morphe.util.findInstructionIndicesReversedOrThrow
 import app.morphe.util.getMutableMethod
 import com.android.tools.smali.dexlib2.AccessFlags
@@ -582,29 +587,9 @@ internal class NativeQueueHooks(
             Triple(native.repeatForward, "I", "onRepeatRequested"),
             Triple(native.shuffleForward, "Z", "onShuffleRequested")
         )) {
-            // Give these forwarding methods a spare result register; v0 originally aliases p0.
-            val repeating = parameter == "I"
-            val delegate = field(if (repeating) native.repeatDelegate else native.shuffleDelegate)
-            val forward = if (repeating) native.repeatCall else native.shuffleCall
-            val target = target(member)
-            val name = target.name
-            val owner = context.mutableClassDefBy(native.navigatorType)
-            owner.methods.remove(target)
-            owner.methods.add(ImmutableMethod(
-                native.navigatorType, name, target.parameters, target.returnType, target.accessFlags,
-                target.annotations, target.hiddenApiRestrictions, MutableMethodImplementation(3)
-            ).toMutable().apply {
-                addInstructions(0, """
-                    invoke-static {p0, p1}, $NATIVE_QUEUE_EXTENSION->$callback(Ljava/lang/Object;$parameter)Z
-                    move-result v0
-                    if-eqz v0, :original
-                    return-void
-                    :original
-                    iget-object v0, p0, $delegate
-                    invoke-interface {v0, p1}, $forward
-                    return-void
-                """)
-            })
+            interceptQueuePlaybackMode(
+                context.mutableClassDefBy(native.navigatorType), target(member), parameter, callback
+            )
         }
     }
 
@@ -822,4 +807,24 @@ internal class NativeQueueHooks(
             move-result v$switchRegister
         """)
     }
+}
+
+/** Keep the original forwarding body, including hooks installed by other patches. */
+internal fun interceptQueuePlaybackMode(
+    owner: MutableClass,
+    target: MutableMethod,
+    parameter: String,
+    callback: String,
+) {
+    var method = target
+    if (method.implementation!!.registerCount <= 2) method = method.cloneParameters(owner)
+    val freeRegister = method.findFreeRegister(0)
+    method.addInstructionsWithLabels(0, """
+        invoke-static {p0, p1}, $NATIVE_QUEUE_EXTENSION->$callback(Ljava/lang/Object;$parameter)Z
+        move-result v$freeRegister
+        if-eqz v$freeRegister, :original
+        return-void
+        :original
+        nop
+    """)
 }

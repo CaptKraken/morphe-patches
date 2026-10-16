@@ -106,6 +106,20 @@ fun main(arguments: Array<String>) {
             fun references(owner: String, name: String) = mutableClassDefBy(owner).methods
                 .single { it.name == name }.implementation!!.instructions
                 .filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
+            val queueMenu = references("Lapp/morphe/extension/youtube/patches/AddToQueuePatch;", "addFlyoutButton")
+            val playlistGuard = queueMenu.indexOfFirst { it.contains("FlyoutUtils;->getFlyoutPlaylistId(") }
+            val nativeMenu = queueMenu.indexOfFirst { it.contains("NativeQueuePatch;->addFlyoutButtons(") }
+            check(playlistGuard >= 0 && nativeMenu > playlistGuard &&
+                queueMenu.take(nativeMenu).any { it.contains("Settings;->QUEUE_ADD_FLYOUT_MENU:") }) {
+                "Native menu dispatch must retain the shared playlist and Add menu guards"
+            }
+            check(references("Lapp/morphe/extension/youtube/patches/utils/PlaylistPatch;", "prepareDialogBuilder")
+                .any { it.endsWith("NativeQueuePatch;->showOrStartQueue(Ljava/lang/String;)V") }) {
+                "The player queue action must pass its current video so an empty queue can be started"
+            }
+            check(runtimeReferences("onGesture").any { it.endsWith("LocalQueue;->move(JII)Z") }) {
+                "Native drag events must validate the source panel's order revision"
+            }
             val ratingBind = references("Lozb;", "k")
             for (owner in listOf("Laajo;", "Laajk;")) {
                 val account = mutableClassDefBy(owner).methods.single { it.name == "h" }
