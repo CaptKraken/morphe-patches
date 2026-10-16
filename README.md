@@ -1,21 +1,25 @@
-# Native Queue — preview 20
+# Native Queue — preview 21
 
 Independent experimental fork by CaptKraken, based on [Morphe Patches](https://github.com/MorpheApp/morphe-patches). This is not an official upstream release. Original attribution, [LICENSE](LICENSE) and [NOTICE](NOTICE) are retained, including upstream notices embedded in the bundle.
 
-Download [native-queue-21.20.405-preview20.mpp](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-queue-preview/native-queue-21.20.405-preview20.mpp).
+Download [native-queue-21.20.405-preview21.mpp](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-queue-preview/native-queue-21.20.405-preview21.mpp).
 
-The player settings menu now omits Play next and Play last when its video is already in the temporary queue. Clear temporary queue remains available. Feed menu additions, their grouping and the existing override setting retain their behavior.
+This preview completes the branch convention cleanup: clearer video-ID/controller/navigator names, one local-entry namespace and video-ID validator, named buffer/retry limits, and removal of unused discovery references. Queue titles now call Restore original titles' existing marker-removal helper instead of copying its private marker format. The helper's implementation is unchanged. Existing queue UI, navigation, editing, ratings, saving, modes, flyout grouping and fullscreen entry remain included.
 
-An active temporary queue now has a fullscreen playlist entry using YouTube's button layout and normal list/play-arrow icon. It opens the existing native playlist panel through its native entry click handler. The entry reserves space beside the server-provided quick actions, respects Hide quick actions and Hide playlist button, and leaves native orientation/visibility animations in control. Clearing or closing the queue, or opening an account playlist, hides the entry and restores the reserved margin. The registry holds weak references to avoid retaining old player views.
+Disable the preceding preview source, import this file in Morphe Manager, and select **Native Queue** alone as the source for YouTube. Patch an untouched YouTube **21.20.405** APK. Manager may retain saved selections; select Native temporary queue (experimental) manually if necessary.
 
-Disable the preceding preview source, import this file in Morphe Manager, and select **Native Queue** alone as the source for YouTube. Patch an untouched YouTube **21.20.405** APK. The patch retains default selection from preview 18. Manager may retain saved selections; select Native temporary queue (experimental) manually if needed.
+Phone checks: verify titles with Restore original titles enabled and disabled, feed and gear menus, next/previous, reorder/removal, repeat/shuffle, ratings, Save playlist and the fullscreen side-panel entry. Check that closing the player resets the queue and opening a normal account playlist restores native behavior. Actual UI and account operations still require device testing; no Android device or emulator is attached in this environment.
 
-Phone checks: with a queue active, the gear menu should show Clear without redundant Next/Last additions. Enter fullscreen, show controls, and tap the list/play-arrow icon beside More videos; the queue should open in the native side panel. Check that clearing/closing the queue removes this entry, account playlists retain their original entry, and the fullscreen hide settings still apply. Actual appearance, tapping and rotation need device testing; no Android device or emulator is attached in this environment.
+Built from source commit `39237da8f7a5fb09a39e6005cbbaee8a13778863` on `feature/youtube-native-queue`. Preview branding is applied only to artifact metadata; source project metadata and notices remain unchanged.
 
-Built from source commit `c2c96d7725de986bc8616004cd9ba83651131958` on `feature/youtube-native-queue`. Preview branding is applied only to artifact metadata; source metadata, README and notices remain unchanged. Research and distribution notes stay outside the contribution source checkout.
+Validation: all 68 queue tests passed (71 passing tests overall; 5 unrelated Jam APK tests skipped), and 90,681 strings passed the resource checker. Stock APK application, Android DEX/cross-DEX verification and resource compilation passed in standalone, combined and unselected modes. The combined mode applies seven related patches and verifies preservation of existing repeat/shuffle hooks, the quick-actions margin hook and shifted fingerprint indexes. The unselected mode verifies original native controls and the persistent queue path. APK assertions verify shared title-marker removal survives extension shrinking. The final Android bundle contains classes.dex.
 
-Validation: 67 queue tests passed, with 70 passing tests overall and 5 unrelated Jam APK tests skipped. The string checker validated 90,681 strings. Stock APK application, Android DEX/cross-DEX verification and resource compilation passed standalone, with seven related optional patches, and with Native Queue unselected. APK checks cover the fullscreen bind location, native panel opener, hide-setting references, queue teardown refresh and player-menu eligibility after extension shrinking. The combination retains the existing quick-actions margin hook and earlier repeat/shuffle test hooks. The unselected check installs no Native Queue fullscreen hook. The final bundle contains Android classes.dex. Only 21.20.405 is advertised.
+All three APK validation modes now live in the committed test setup and share the existing assertion suite. With a stock APK and the configured SDK, run:
 
-SHA256: `2382832ef5b39f8079ce6a11aeb5dedae031395ce6bb81f770cc8f6af985bbcc`
+```sh
+./gradlew :patches:validateNativeQueue :patches:validateNativeQueueCompatibility :patches:validateWithoutNativeQueue -PqueueApk=/absolute/path/youtube.apk
+```
+
+SHA256: `ab500cedf9307c3063bd7d98231bbe480d0c8cb7cf317146b857e85df7b5553f`
 
 Older preview files are superseded. This branch distributes experimental builds; source development is on `feature/youtube-native-queue`.
