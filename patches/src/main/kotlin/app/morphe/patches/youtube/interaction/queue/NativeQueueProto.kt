@@ -11,11 +11,9 @@ import app.morphe.patcher.patch.PatchException
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.ClassDef
 import com.android.tools.smali.dexlib2.iface.Method
-import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OffsetInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.SwitchPayload
 import com.android.tools.smali.dexlib2.iface.instruction.ThreeRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
@@ -25,10 +23,12 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
 import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 
-/** Constants in generated protobuf initializers, read without loading any Android classes. */
-internal fun Method.constantCalls(name: String): List<List<Any?>> {
+internal data class QueueConstantCall(val arguments: List<Any?>, var storedField: FieldReference? = null)
+
+/** Constants and result stores in generated initializers, read without loading Android classes. */
+internal fun Method.constantCalls(name: String): List<QueueConstantCall> {
     val registers = mutableMapOf<Int, Any?>()
-    val calls = mutableListOf<List<Any?>>()
+    val calls = mutableListOf<QueueConstantCall>()
     val code = implementation!!.instructions.toList()
     val offsets = code.runningFold(0) { offset, instruction -> offset + instruction.codeUnits }
     val byOffset = offsets.withIndex().associate { it.value to it.index }
@@ -51,6 +51,8 @@ internal fun Method.constantCalls(name: String): List<List<Any?>> {
             instruction.opcode.name.startsWith("const") && instruction is WideLiteralInstruction ->
                 registers[one!!.registerA] = instruction.wideLiteral.toInt()
             instruction.opcode == Opcode.SGET_OBJECT -> registers[one!!.registerA] = reference
+            instruction.opcode == Opcode.SPUT_OBJECT ->
+                (registers[one!!.registerA] as? QueueConstantCall)?.storedField = reference as FieldReference
             instruction.opcode == Opcode.NEW_ARRAY ->
                 registers[two!!.registerA] = arrayOfNulls<Any>(registers[two.registerB] as Int)
             instruction.opcode == Opcode.APUT_OBJECT -> {
@@ -63,19 +65,22 @@ internal fun Method.constantCalls(name: String): List<List<Any?>> {
             instruction.opcode.name.startsWith("move-result") -> registers[one!!.registerA] = result
             instruction.opcode.name.startsWith("move") && two != null ->
                 registers[two.registerA] = registers[two.registerB]
+            instruction.opcode == Opcode.CHECK_CAST -> Unit
+            // An unsupported write invalidates its previous constant. Keeping the old value
+            // could bind an unrelated extension or decode the wrong schema without failing.
+            instruction.opcode.setsRegister() && one != null -> registers.remove(one.registerA)
         }
         if (reference is MethodReference) {
             // BUILD_MESSAGE_INFO is ordinal 2 in Protobuf Lite's MethodToInvoke enum.
             result = if (this.name == "dynamicMethod" && reference.name == "ordinal") 2 else null
             if (reference.name == name) {
-                val arguments = when (instruction) {
-                    is FiveRegisterInstruction -> listOf(instruction.registerC, instruction.registerD,
-                        instruction.registerE, instruction.registerF, instruction.registerG).take(instruction.registerCount)
-                    is RegisterRangeInstruction ->
-                        (instruction.startRegister until instruction.startRegister + instruction.registerCount).toList()
-                    else -> throw PatchException("Unsupported native protobuf invocation: $reference")
+                val arguments = queueInvokeRegisters(instruction).map { register ->
+                    val value = registers[register]
+                    if (value is Array<*>) value.copyOf() else value
                 }
-                calls += arguments.map { registers[it] }
+                val call = QueueConstantCall(arguments)
+                calls += call
+                result = call
             }
         }
         when (instruction.opcode) {
@@ -123,7 +128,7 @@ internal class NativeQueueProto(private val owner: ClassDef) {
 
     private val members: Map<Int, Member> = run {
         val info = owner.methods.single { it.name == "dynamicMethod" }
-            .constantCalls("newMessageInfo").single()
+            .constantCalls("newMessageInfo").single().arguments
         val encoded = info[1] as String
         val objects = info[2] as Array<*>
         var cursor = 0

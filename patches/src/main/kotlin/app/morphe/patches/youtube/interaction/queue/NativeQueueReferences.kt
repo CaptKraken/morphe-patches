@@ -18,16 +18,22 @@ import app.morphe.patches.youtube.video.information.PlayerInitFingerprint
 import app.morphe.patches.youtube.video.information.getChannelNameFingerprint
 import app.morphe.patches.youtube.video.information.getVideoTitleFingerprint
 import app.morphe.patches.youtube.video.videoid.VideoIdFingerprint
-import app.morphe.util.matchSingle
 import app.morphe.util.findFieldFromToString
+import app.morphe.util.matchSingle
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.Method
+import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.Instruction
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.WideLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.TypeReference
+import com.android.tools.smali.dexlib2.util.MethodUtil
 
 /** Resolve the complete host contract before changing any of its methods or field access. */
 internal class NativeQueueReferences(private val context: BytecodePatchContext) {
@@ -62,22 +68,18 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     private fun Method.fields(opcode: Opcode, type: String? = null) = implementation!!.instructions
         .filter { it.opcode == opcode }.map { (it as ReferenceInstruction).reference as FieldReference }
         .filter { type == null || it.type == type }.distinct()
-    private fun Method.hasLiteral(value: Long) = implementation?.instructions?.toList().orEmpty().any {
-        (it as? WideLiteralInstruction)?.wideLiteral == value
-    }
     private fun Method.calls(reference: MethodReference) = references<MethodReference>().any {
         it.toString() == reference.toString()
     }
     private fun schema(type: String) = NativeQueueProto(context.classDefBy(type))
     private fun extension(fingerprint: Fingerprint, number: Int): Triple<String, String, FieldReference> {
         val initializer = fingerprint.sourceMethod
-        val args = initializer.constantCalls("newSingularGeneratedExtension")
-            .filter { it[4] == number }.requireSingle("protobuf extension $number")
-        val instructions = initializer.implementation!!.instructions.toList()
-        val start = instructions.indexOfFirst { (it as? WideLiteralInstruction)?.wideLiteral == number.toLong() }
-        val stored = instructions.drop(start + 1).first { it.opcode == Opcode.SPUT_OBJECT }
+        val call = initializer.constantCalls("newSingularGeneratedExtension")
+            .filter { it.arguments[4] == number }.requireSingle("protobuf extension $number")
+        val args = call.arguments
+        val stored = call.storedField ?: throw PatchException("Native queue: protobuf extension $number is not stored")
         return Triple((args[0] as FieldReference).type, (args[6] as TypeReference).type,
-            (stored as ReferenceInstruction).reference as FieldReference)
+            stored)
     }
 
     private val panelExtension = extension(QueuePanelExtensionFingerprint, 50631000)
@@ -148,15 +150,10 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
         it.calls(videoKeyEncoder)
     }
 
-    val voteEventConstructor = Fingerprint(
-        name = "<init>", parameters = listOf("Ljava/lang/String;", voteType, "Z"),
-    ).sourceMethod
+    val voteEventConstructor = queueVoteEventConstructorFingerprint(voteType).sourceMethod
     val voteEventType = voteEventConstructor.definingClass
-    val ratingBind = Fingerprint(parameters = listOf(ratingButtonType), returnType = "V", custom = { method, classDef ->
-        classDef.fields.any { it.type == voteEventType } && method.implementation?.instructions?.firstOrNull()?.opcode == Opcode.INVOKE_SUPER
-    }).sourceMethod
+    val ratingBind = queueRatingBindFingerprint(ratingButtonType, voteEventType).sourceMethod
     val ratingPresenterType = ratingBind.definingClass
-    val ratingSuperBind = ratingBind.references<MethodReference>().first()
     // Its native cleanup unregisters from the same event bus. Match the inverse add/remove
     // operations through the bus implementation rather than pinning its short method names.
     private val ratingCleanup = method(ratingPresenterType, emptyList(), "V") {
@@ -191,12 +188,10 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val historyViews = historySchema.field(5)
     val historyAge = historySchema.field(23)
     val textType = historyTitle.type
-    val formattedText = Fingerprint(parameters = listOf(textType), returnType = "Landroid/text/Spanned;").sourceMethod
+    val formattedText = queueFormattedTextFingerprint(textType).sourceMethod
 
     // The legacy count renderer uses the same rating target schema as native toggle buttons.
-    val legacyRating = Fingerprint(parameters = listOf(voteType, "L"), returnType = "V", custom = { method, _ ->
-        method.references<MethodReference>().any { it.name == "getQuantityString" }
-    }).sourceMethod
+    val legacyRating = queueLegacyRatingFingerprint(voteType).sourceMethod
     val extensionBuilderType = legacyRating.parameterTypes[1].toString()
     val builderType = context.classDefBy(extensionBuilderType).superclass!!
     val builderInstance = context.classDefBy(builderType).fields.filter { it.name == "instance" }
@@ -243,69 +238,81 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val descriptorVideo = method(descriptorType, emptyList(), "Ljava/lang/String;") {
         it.references<FieldReference>().any { ref -> ref.toString() == descriptorVideoField.toString() }
     }
-    val panelRefresh = method(controllerType, listOf(responseType), "V")
-    private val responseStrings = panelRefresh.fields(Opcode.IGET_OBJECT, "Ljava/lang/String;")
-        .filter { it.definingClass == responseType }.also { check(it.size == 2) }
-    val responseVideo = responseStrings[0]
-    val responsePlaylist = responseStrings[1]
-    val bindHeader = methods(headerType).filter {
-        it.parameterTypes.size == 3 && it.parameterTypes[0] == panelType && it.parameterTypes[2] == "I" && it.returnType == "V"
-    }.requireSingle("native header bind")
+    val panelRefresh = queuePanelRefreshFingerprint(controllerType, responseType, responsePanel).sourceMethod
+    private val modelCreationFingerprint = queueModelCreationFingerprint(modelType)
+    private val modelCreation = modelCreationFingerprint.sourceMethod
+    private fun responseIdentity(modelField: FieldReference): FieldReference {
+        // Follow the labeled model field through its constructor and builder back to the
+        // watch response. An unrelated String read or reordered assignment cannot swap IDs.
+        val constructor = queueConstructorAssignmentFingerprint(modelField).sourceMethod
+        val parameter = queueConstructorParameter(constructor, modelField)
+        val creation = modelCreationFingerprint.matches.single()
+        val call = creation.instruction as ReferenceInstruction
+        val signature = call.reference as MethodReference
+        val argument = 1 + signature.parameterTypes.take(parameter).sumOf { if (it in listOf("J", "D")) 2 else 1 }
+        val builderField = queueSourceField(modelCreation, creation.index,
+            queueInvokeRegisters(creation.instruction)[argument])
+        val identityFingerprint = queueResponseIdentityFingerprint(controllerType, responseType, builderField)
+        val refresh = identityFingerprint.sourceMethod
+        check(refresh.toString() == panelRefresh.toString()) { "Native queue identity builder differs from panel refresh" }
+        val store = identityFingerprint.matches.single()
+        val source = queueSourceField(refresh, store.index, (store.instruction as TwoRegisterInstruction).registerA)
+        check(source.definingClass == responseType && source.type == "Ljava/lang/String;") {
+            "Native queue identity must come from the committed watch response"
+        }
+        return source
+    }
+    val responseVideo = responseIdentity(modelVideo)
+    val responsePlaylist = responseIdentity(modelPlaylist)
+    val bindHeader = queueHeaderBindFingerprint(headerType, panelType).sourceMethod
     val responseNavigation = field(responseType, bindHeader.parameterTypes[1].toString())
 
-    private fun initializedField(method: Method, predicate: (ReferenceInstruction) -> Boolean): FieldReference {
-        val code = method.implementation!!.instructions.toList()
-        val start = code.indexOfFirst { it is ReferenceInstruction && predicate(it) }
-        if (start < 0) throw PatchException("Native queue initializer anchor missing: $method")
-        return code.drop(start + 1).filter { it.opcode == Opcode.SPUT_OBJECT }
-            .first().let { (it as ReferenceInstruction).reference as FieldReference }
-    }
     private fun intent(kind: String): FieldReference {
-        val enumField = initializedField(NavigationIntentEnumFingerprint.sourceMethod) {
-            (it.reference as? com.android.tools.smali.dexlib2.iface.reference.StringReference)?.string == kind
+        val enumType = NavigationIntentEnumFingerprint.sourceClass.type
+        val enumFingerprint = queueNavigationEnumValueFingerprint(enumType, kind)
+        enumFingerprint.sourceMethod
+        val enumMatches = enumFingerprint.matches
+        val enumArguments = queueInvokeRegisters(enumMatches[1].instruction)
+        check(enumArguments[1] == (enumMatches[0].instruction as OneRegisterInstruction).registerA &&
+            enumArguments[0] == (enumMatches[2].instruction as OneRegisterInstruction).registerA) {
+            "Native queue: navigation enum must store the instance constructed with $kind"
         }
-        return initializedField(methods(intentType).single { it.name == "<clinit>" }) {
-            it.reference.toString() == enumField.toString()
+        val enumField = (enumMatches[2].instruction as ReferenceInstruction).reference as FieldReference
+        val intentFingerprint = queueNavigationIntentFingerprint(intentType, enumField)
+        intentFingerprint.sourceMethod
+        val intentMatches = intentFingerprint.matches
+        val intentArguments = queueInvokeRegisters(intentMatches[1].instruction)
+        check(intentArguments[1] == (intentMatches[0].instruction as OneRegisterInstruction).registerA &&
+            intentArguments[0] == (intentMatches[2].instruction as OneRegisterInstruction).registerA) {
+            "Native queue: intent must wrap the $kind enum instance"
         }
+        return (intentMatches[2].instruction as ReferenceInstruction).reference as FieldReference
     }
     val nextIntent = intent("NEXT")
     val previousIntent = intent("PREVIOUS")
-    private fun availability(intent: FieldReference) = Fingerprint(parameters = emptyList(), returnType = "V",
-        custom = { method, _ -> AccessFlags.PRIVATE.isSet(method.accessFlags) &&
-            method.references<FieldReference>().any { it.toString() == intent.toString() } &&
-            method.fields(Opcode.IGET_BOOLEAN).isNotEmpty()
-        }).sourceMethod
-    val refreshNext = availability(nextIntent)
-    val refreshPrevious = availability(previousIntent)
+    private val nextAvailability = queueTransportAvailabilityFingerprint(nextIntent)
+    private val previousAvailability = queueTransportAvailabilityFingerprint(previousIntent)
+    val refreshNext = nextAvailability.sourceMethod
+    val refreshPrevious = previousAvailability.sourceMethod
     val transportType = refreshNext.definingClass.also {
         check(it == refreshPrevious.definingClass) { "Native transport availability owners differ" }
     }
-    val nextEnabled = refreshNext.fields(Opcode.IGET_BOOLEAN).requireSingle("Next enabled flag")
-    val previousEnabled = refreshPrevious.fields(Opcode.IGET_BOOLEAN).requireSingle("Previous enabled flag")
     private val transportConstructor = constructor(transportType, 4)
     val transportPlayer = field(transportType, transportConstructor.parameterTypes[1].toString())
     val transportEvents = field(transportType, transportConstructor.parameterTypes[3].toString())
     val loadDescriptor = method(transportPlayer.type, listOf(descriptorType), "V")
-    private fun transportHandler(intent: FieldReference) = method(transportType, emptyList(), "V") {
-        !AccessFlags.PRIVATE.isSet(it.accessFlags) && it.references<FieldReference>().any { field -> field.toString() == intent.toString() }
-    }
-    val next = transportHandler(nextIntent)
-    val previous = transportHandler(previousIntent)
+    val next = queueTransportHandlerFingerprint(transportType, nextIntent).sourceMethod
+    val previous = queueTransportHandlerFingerprint(transportType, previousIntent).sourceMethod
     val nextEvent = next.references<MethodReference>().filter { it.definingClass == transportEvents.type }
         .requireSingle("Next analytics event")
     val previousEvent = previous.references<MethodReference>().filter { it.definingClass == transportEvents.type }
         .requireSingle("Previous analytics event")
-    val manualHandlers = listOf(next to 1, previous to 0) + with(context) {
-        Fingerprint(name = next.name, parameters = emptyList(), returnType = "V",
-            custom = { _, classDef -> classDef.superclass == transportType }).matchAll(1..1).map { it.originalMethod to 1 }
-    }
-    val transportUpdate = method(transportType, emptyList(), "V") { it.calls(refreshNext) && it.calls(refreshPrevious) }
+    val manualHandlers = listOf(next to 1, previous to 0, queueNextOverrideFingerprint(next).sourceMethod to 1)
+    val transportUpdate = queueTransportUpdateFingerprint(refreshPrevious, refreshNext).sourceMethod
     private val transportInterface = context.classDefBy(transportType).interfaces.filter { type ->
         methods(type).any { it.name == next.name && it.parameterTypes.isEmpty() }
     }.requireSingle("player transport interface")
-    val registerTransport = Fingerprint(parameters = listOf(transportInterface), returnType = "V", custom = { method, _ ->
-        method.references<MethodReference>().any { it.definingClass == "Ljava/util/List;" && it.name == "add" }
-    }).sourceMethod
+    val registerTransport = queueTransportRegistrationFingerprint(transportInterface).sourceMethod
 
     val shuffle = QueueShuffleFingerprint.sourceMethod
     val shuffleType = shuffle.definingClass
@@ -323,10 +330,8 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val backendConstructor = constructor(backendType, 2)
     val dispatcher = field(managerType, backendConstructor.parameterTypes[1].toString())
     val nativeQueue = field(backendType, backendConstructor.parameterTypes[0].toString())
-    val shuffledArrays = context.classDefBy(shuffleType).fields.filter { it.type == "[I" }
+    val shuffleMappings = context.classDefBy(shuffleType).fields.filter { it.type == "[I" }
         .toList().also { check(it.size == 2) { "Native shuffle must have successor and predecessor arrays" } }
-    val shuffledNext = shuffledArrays[0]
-    val shuffledPrevious = shuffledArrays[1]
     // The inherited populate implementation owns the storage interface; both sibling
     // manager methods take it, but only the actual switch performs a playback dispatch.
     private val populateType = context.classDefBy(context.classDefBy(shuffleType).superclass!!).superclass!!
@@ -350,18 +355,27 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val updateHeader = method(headerType, listOf("I", "Z"), "V")
     val shuffleButton = updateHeader.fields(Opcode.IGET_OBJECT, "Landroid/widget/ImageView;")
         .requireSingle("header shuffle view")
-    private val headerListeners = methods(headerType).filter { it.parameterTypes.isEmpty() && it.returnType == "V" }
-        .filter { it.references<MethodReference>().count { call -> call.name == "setOnClickListener" } == 2 }
-        .requireSingle("header listener binding").fields(Opcode.IGET_OBJECT, "Landroid/view/View\$OnClickListener;")
-        .also { check(it.size == 2) }
-    val repeatClick = headerListeners[0]
-    val shuffleClick = headerListeners[1]
-    // Bind writes the repeat-all, repeat-one and shuffle capabilities before the hide-controls
-    // flag. All three capabilities are enabled together for our locally owned panel.
-    val headerCapabilities = bindHeader.fields(Opcode.IPUT_BOOLEAN).also { check(it.size == 4) }.take(3)
-    val repeatAll = headerCapabilities[0]
-    val repeatOne = headerCapabilities[1]
-    val shuffleAllowed = headerCapabilities[2]
+    private fun headerListener(view: FieldReference): FieldReference {
+        val fingerprint = queueHeaderListenerFingerprint(view)
+        fingerprint.sourceMethod
+        val matches = fingerprint.matches
+        val receiver = matches[0].instruction as TwoRegisterInstruction
+        val listener = matches[1].instruction as TwoRegisterInstruction
+        val call = queueInvokeRegisters(matches[2].instruction)
+        check(call == listOf(receiver.registerA, listener.registerA)) { "Native header listener targets a different view" }
+        return (listener as ReferenceInstruction).reference as FieldReference
+    }
+    val repeatClick = headerListener(repeatButton)
+    val shuffleClick = headerListener(shuffleButton)
+    private val hiddenControlsFingerprint = queueHiddenHeaderControlsFingerprint(headerType, panelType)
+    private val hiddenControls = hiddenControlsFingerprint.sourceMethod.let {
+        check(it.toString() == bindHeader.toString()) { "Native hide-controls flag differs from header bind" }
+        (hiddenControlsFingerprint.matches.last().instruction as ReferenceInstruction).reference as FieldReference
+    }
+    // All three capabilities are enabled together. Their write order is irrelevant;
+    // exclude the hide-controls flag by its panel-field source instead of by position.
+    val headerCapabilities = bindHeader.fields(Opcode.IPUT_BOOLEAN).filter { it.toString() != hiddenControls.toString() }
+        .also { check(it.size == 3) { "Native header must expose three playback capabilities" } }
 
     val adapterType = context.classDefBy(controllerType).fields.map { it.type }.filter { type ->
         context.classDefByOrNull(type)?.fields?.any { it.type == panelType } == true &&
@@ -378,9 +392,9 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     }.requireSingle("move event source")
     val adapterItems = gestures.fields(Opcode.IGET_OBJECT, eventItems.type)
         .filter { it.definingClass == adapterType }.requireSingle("editable adapter items")
-    private val moveCoordinates = constructor(moveEventType, 4).fields(Opcode.IPUT, "I").also { check(it.size == 2) }
-    val moveFrom = moveCoordinates[0]
-    val moveTo = moveCoordinates[1]
+    private val moveConstructor = constructor(moveEventType, 4)
+    val moveFrom = queueConstructorField(moveConstructor, 2)
+    val moveTo = queueConstructorField(moveConstructor, 3)
     val removalType = gestureCasts.filter { type ->
         context.classDefByOrNull(type)?.fields?.count() == 1 && context.classDefBy(type).fields.single().type == "Ljava/lang/Object;"
     }.requireSingle("hide enclosing row event")
@@ -389,18 +403,19 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val rowStyle = rowFactory.fields(Opcode.IGET, "I").filter { it.definingClass == adapterType }
         .requireSingle("native row style")
     val rowPresenterType = QueueRowFingerprint.sourceClass.type
-    val rowBind = methods(rowPresenterType).filter {
-        it.parameterTypes.size == 2 && it.parameterTypes[1] == "Ljava/lang/Object;" &&
-            it.returnType == "V" && it.references<FieldReference>().any { field -> field.toString() == entryId.toString() }
-    }.requireSingle("native row binding")
+    private val rowBindFingerprint = queueRowBindFingerprint(rowPresenterType, entryId)
+    val rowBind = rowBindFingerprint.sourceMethod
     val rowModelType = rowBind.references<TypeReference>().map { it.type }.filter { type ->
         context.classDefByOrNull(type)?.fields?.count() == 1 && context.classDefBy(type).fields.single().type == rowType
     }.requireSingle("native row wrapper")
     val wrapper = field(rowModelType, rowType)
-    private val rowCode = rowBind.implementation!!.instructions.toList()
-    private val entryRead = rowCode.indexOfFirst { (it as? ReferenceInstruction)?.reference.toString() == entryId.toString() }
-    val rowEntry = rowCode.drop(entryRead + 1).first { it.opcode == Opcode.IPUT_OBJECT }
-        .let { (it as ReferenceInstruction).reference as FieldReference }
+    val rowEntry = rowBindFingerprint.matches.last().let { store ->
+        val read = rowBindFingerprint.matches.first().instruction as TwoRegisterInstruction
+        check((store.instruction as TwoRegisterInstruction).registerA == read.registerA) {
+            "Native row entry must retain the ID read from its row model"
+        }
+        (store.instruction as ReferenceInstruction).reference as FieldReference
+    }
     val rowView = methods(rowPresenterType).filter { it.parameterTypes.isEmpty() && it.returnType == "Landroid/view/View;" }
         .flatMap { it.fields(Opcode.IGET_OBJECT) }.distinct().requireSingle("row root view")
     val editableRow = QueueEditableRowFingerprint.sourceMethod
@@ -410,11 +425,56 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val identityFields = contextUpdate.fields(Opcode.IPUT_OBJECT, "Ljava/lang/String;")
         .filter { it.definingClass == controllerType }.also { check(it.size == 3) }
     val descriptorUpdate = method(controllerType, listOf(descriptorType), "V")
-    val visibility = method(controllerType, emptyList(), "V") { it.hasLiteral(105291) }
-    val visibilityGate = visibility.references<MethodReference>().first {
-        it.parameterTypes.isEmpty() && it.returnType == "Z"
+    val visibility = queuePanelVisibilityFingerprint(controllerType).sourceMethod
+}
+
+/** Trace a constructor/model assignment through register moves; never guess from field order. */
+internal fun queueSourceField(method: Method, before: Int, register: Int): FieldReference {
+    var source = register
+    val code = method.implementation!!.instructions.toList()
+    for (index in before - 1 downTo 0) {
+        val instruction = code[index]
+        if (!instruction.opcode.setsRegister() || (instruction as? OneRegisterInstruction)?.registerA != source) continue
+        when (instruction.opcode) {
+            Opcode.IGET_OBJECT -> return (instruction as ReferenceInstruction).reference as FieldReference
+            Opcode.MOVE_OBJECT, Opcode.MOVE_OBJECT_FROM16, Opcode.MOVE_OBJECT_16 ->
+                source = (instruction as TwoRegisterInstruction).registerB
+            Opcode.CHECK_CAST -> Unit
+            else -> throw PatchException("Native queue: assignment source overwritten in $method")
+        }
     }
-    val navigatorGate = navigatorRefresh.references<MethodReference>().filter {
-        it.parameterTypes == listOf("J", "Z") && it.returnType == "Z"
-    }.requireSingle("queue navigator feature gate")
+    throw PatchException("Native queue: assignment source is not a field in $method")
+}
+
+internal fun queueInvokeRegisters(instruction: Instruction): List<Int> = when (instruction) {
+    is FiveRegisterInstruction -> listOf(instruction.registerC, instruction.registerD, instruction.registerE,
+        instruction.registerF, instruction.registerG).take(instruction.registerCount)
+    is RegisterRangeInstruction ->
+        (instruction.startRegister until instruction.startRegister + instruction.registerCount).toList()
+    else -> throw PatchException("Native queue: expected a method invocation")
+}
+
+internal fun queueConstructorParameter(constructor: Method, field: FieldReference): Int {
+    val firstRegister = constructor.implementation!!.registerCount - MethodUtil.getParameterRegisterCount(constructor)
+    val store = constructor.implementation!!.instructions.filterIsInstance<TwoRegisterInstruction>().single {
+        (it as? ReferenceInstruction)?.reference.toString() == field.toString() &&
+            it.opcode in listOf(Opcode.IPUT_OBJECT, Opcode.IPUT, Opcode.IPUT_BOOLEAN)
+    }
+    check(store.registerB == firstRegister) { "Native queue constructor field belongs to another receiver" }
+    var register = firstRegister + 1
+    for ((index, type) in constructor.parameterTypes.withIndex()) {
+        if (register == store.registerA) return index
+        register += if (type in listOf("J", "D")) 2 else 1
+    }
+    throw PatchException("Native queue: field is not assigned from a constructor parameter: $field")
+}
+
+internal fun queueConstructorField(constructor: Method, parameter: Int): FieldReference {
+    val receiver = constructor.implementation!!.registerCount - MethodUtil.getParameterRegisterCount(constructor)
+    val register = receiver + 1 + constructor.parameterTypes.take(parameter).sumOf { if (it in listOf("J", "D")) 2 else 1 }
+    return constructor.implementation!!.instructions.filterIsInstance<TwoRegisterInstruction>()
+        .filter { it.opcode in listOf(Opcode.IPUT_OBJECT, Opcode.IPUT, Opcode.IPUT_BOOLEAN) &&
+            it.registerA == register && it.registerB == receiver }
+        .map { (it as ReferenceInstruction).reference as FieldReference }
+        .distinctBy { it.toString() }.single()
 }

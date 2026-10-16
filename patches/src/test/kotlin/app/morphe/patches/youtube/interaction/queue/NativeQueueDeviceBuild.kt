@@ -90,8 +90,19 @@ fun main(arguments: Array<String>) {
             }
             val transportOwnership = runtimeReferences("ownsTransport")
             check(transportOwnership.any { it == "$runtimeType->active()Z" } &&
-                transportOwnership.any { it == "Ljava/util/Set;->contains(Ljava/lang/Object;)Z" }) {
+                transportOwnership.any { it.endsWith("WeakIdentitySet;->contains(Ljava/lang/Object;)Z") }) {
                 "Retained overlay handlers must intercept navigation only while a temporary queue is active"
+            }
+            check(runtimeReferences("owns").any { it.contains("QueuePanels;->revision(") } &&
+                runtimeReferences("owns").none { it.contains("WeakHashMap") || it.contains("->contains(") }) {
+                "Panel ownership must use exact registered identities without an equality-based fallback"
+            }
+            check(runtime.methods.filter { it.name == "enqueue" }.any { method ->
+                method.implementation!!.instructions.filterIsInstance<ReferenceInstruction>().any {
+                    it.reference.toString().endsWith("LocalQueue;->isVideoId(Ljava/lang/String;)Z")
+                }
+            }) {
+                "Native queue insertion must reject malformed video IDs before scheduling an edit"
             }
             check(runtimeReferences("onRowBound").any { it.contains("LocalQueue;->canRemove(") }) {
                 "Playing rows must not offer the custom Remove menu"
@@ -142,6 +153,21 @@ fun main(arguments: Array<String>) {
             fun references(owner: String, name: String) = mutableClassDefBy(owner).methods
                 .single { it.name == name }.implementation!!.instructions
                 .filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
+            check("Lahwk;->b:Ljava/lang/String;" in references(bridge.type, "responseVideo") &&
+                "Lahwk;->c:Ljava/lang/String;" in references(bridge.type, "responsePlaylist")) {
+                "Queue response IDs must retain their labeled video/playlist roles"
+            }
+            val headerCapabilities = references(bridge.type, "enableHeaderControls")
+                .filter { it.startsWith("Lppo;->") && it.endsWith(":Z") }.toSet()
+            check(headerCapabilities == setOf("Lppo;->m:Z", "Lppo;->n:Z", "Lppo;->w:Z")) {
+                "Enable repeat/shuffle capabilities without setting the native hide-controls flag"
+            }
+            val headerListeners = references(bridge.type, "enableHeaderControls")
+                .filter { it.endsWith(":Landroid/view/View\$OnClickListener;") }
+            check(headerListeners == listOf("Lppo;->u:Landroid/view/View\$OnClickListener;",
+                "Lppo;->v:Landroid/view/View\$OnClickListener;")) {
+                "Repeat and shuffle must retain the listener installed on each native view"
+            }
             val fullscreenBind = mutableClassDefBy("Lmvj;").methods.single { it.name == "a" }
                 .implementation!!.instructions.toList()
             val fullscreenHook = fullscreenBind.indexOfFirst {
@@ -248,6 +274,15 @@ fun main(arguments: Array<String>) {
                 check(references(owner, name).any { it.contains("NativeQueuePatch;->$callback(") }) {
                     "Initial and live native rating states must reach the queue cache"
                 }
+            }
+            val voteConstructor = mutableClassDefBy("Ljkb;").methods.single { it.name == "<init>" }
+                .implementation!!.instructions.toList()
+            val voteInitialization = voteConstructor.indexOfFirst {
+                (it as? ReferenceInstruction)?.reference.toString() == "Ljava/lang/Object;-><init>()V"
+            }
+            check((voteConstructor[voteInitialization + 1] as ReferenceInstruction).reference.toString()
+                .contains("NativeQueuePatch;->onVoteEvent(")) {
+                "The vote callback must follow native constructor initialization even after earlier edits"
             }
             check("Lacpz;->f(Ljava/lang/Object;)V" in references(bridge.type, "registerRatingEvents"))
             val models = references(bridge.type, "panelRatingButtons")
@@ -482,6 +517,17 @@ private fun combinedQueuePatch() = bytecodePatch(name = "Native Queue with relat
         fullscreenBind.addInstructions(0, "nop")
         for (reference in listOf(originalReferences.repeatForward, originalReferences.shuffleForward)) {
             reference.getMutableMethod().addInstructions(0, "invoke-static {p0}, $marker")
+        }
+        // Unrelated reads and a shifted constructor must not change the resolved native
+        // contract or move hooks away from their semantic instruction anchors.
+        originalReferences.voteEventConstructor.getMutableMethod().addInstructions(0, "nop")
+        originalReferences.panelRefresh.getMutableMethod().addInstructions(0, """
+            iget-object v0, p1, ${originalReferences.responsePlaylist}
+        """)
+        with(queueHeaderListenerFingerprint(originalReferences.repeatButton)) {
+            originalMethod.getMutableMethod().addInstructions(0, """
+                iget-object v0, p0, ${originalReferences.shuffleClick}
+            """)
         }
         // Discovery as well as installation must tolerate the earlier patches' hooks.
         val references = NativeQueueReferences(this)

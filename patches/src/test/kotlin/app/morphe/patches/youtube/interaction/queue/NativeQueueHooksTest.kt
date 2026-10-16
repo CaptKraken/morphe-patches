@@ -25,6 +25,40 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class NativeQueueHooksTest {
+    @Test fun `manual controls preserve the receiver and earlier hooks with or without locals`() {
+        for (registers in listOf(1, 3)) {
+            for (forward in 0..1) {
+                val type = "Ltest/Transport;"
+                val method = ImmutableMethod(type, "navigate", emptyList(), "V", AccessFlags.PUBLIC.value,
+                    null, null, MutableMethodImplementation(registers)).toMutable()
+                method.addInstructions(0, """
+                    invoke-static {p0}, Ltest/OtherPatch;->observe(Ljava/lang/Object;)V
+                    invoke-virtual {p0}, $type->original()V
+                    return-void
+                """)
+                val original = method.implementation!!.instructions.toList()
+                val owner = ImmutableClassDef(type, AccessFlags.PUBLIC.value, "Ljava/lang/Object;", emptyList(),
+                    null, null, emptyList(), listOf(method)).toMutable()
+                interceptQueueManualNavigation(owner, owner.methods.single(), forward)
+                val implementation = owner.methods.single().implementation!!
+                val code = implementation.instructions.toList()
+                val receiver = implementation.registerCount - 1
+                val result = (code.first() as OneRegisterInstruction).registerA
+                val call = code[1] as FiveRegisterInstruction
+                assertTrue(result < receiver, "Direction/result must not overwrite the player transport")
+                assertEquals(receiver, call.registerC)
+                assertEquals(result, call.registerD)
+                assertEquals(Opcode.IF_EQZ, code[3].opcode)
+                assertEquals(code[3].codeUnits + code[4].codeUnits, (code[3] as OffsetInstruction).codeOffset)
+                val preserved = code.takeLast(original.size)
+                assertEquals(original.map { it.opcode }, preserved.map { it.opcode })
+                assertEquals(original.filterIsInstance<ReferenceInstruction>().map { it.reference.toString() },
+                    preserved.filterIsInstance<ReferenceInstruction>().map { it.reference.toString() })
+                assertEquals(registers - 1, (preserved.first() as FiveRegisterInstruction).registerC)
+            }
+        }
+    }
+
     @Test fun `mode hooks preserve forwarding bodies when parameter registers need cloning`() {
         verifyForwarders(2)
     }

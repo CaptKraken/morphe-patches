@@ -7,16 +7,19 @@
 
 package app.morphe.patches.youtube.interaction.queue
 
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.PatchException
+import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
 import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.immutable.ImmutableClassDef
 import com.android.tools.smali.dexlib2.immutable.ImmutableField
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodImplementation
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction11x
-import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction22t
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21c
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction22c
+import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction22t
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction23x
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction31i
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction35c
@@ -116,7 +119,42 @@ class NativeQueueProtoTest {
         )
         val method = ImmutableMethod(owner, "dynamicMethod", emptyList(), "I", 0,
             null, null, ImmutableMethodImplementation(8, code, null, null))
-        assertEquals(listOf(listOf(1)), method.constantCalls("probe"))
+        assertEquals(listOf(listOf(1)), method.constantCalls("probe").map { it.arguments })
+    }
+
+    @Test fun `extension result follows moves to its store and ignores unrelated static writes`() {
+        val method = ImmutableMethod(owner, "<clinit>", emptyList(), "V", 8,
+            null, null, MutableMethodImplementation(3)).toMutable()
+        method.addInstructions(0, """
+            const/4 v0, 0x1
+            invoke-static {v0}, Ltest/Proto;->extension(I)Ljava/lang/Object;
+            move-result-object v0
+            const/4 v1, 0x0
+            sput-object v1, $owner->unrelated:Ljava/lang/Object;
+            move-object v2, v0
+            sput-object v2, $owner->actual:Ljava/lang/Object;
+            return-void
+        """)
+        val call = method.constantCalls("extension").single()
+        assertEquals(listOf(1), call.arguments)
+        assertEquals("actual", call.storedField!!.name)
+    }
+
+    @Test fun `an unsupported write cannot reuse a stale constant or extension result`() {
+        val method = ImmutableMethod(owner, "<clinit>", emptyList(), "V", 8,
+            null, null, MutableMethodImplementation(2)).toMutable()
+        method.addInstructions(0, """
+            const/4 v0, 0x1
+            iget v0, v1, Ltest/Input;->unknown:I
+            invoke-static {v0}, Ltest/Proto;->extension(I)Ljava/lang/Object;
+            move-result-object v0
+            iget-object v0, v1, Ltest/Input;->replacement:Ljava/lang/Object;
+            sput-object v0, $owner->unrelated:Ljava/lang/Object;
+            return-void
+        """)
+        val call = method.constantCalls("extension").single()
+        assertEquals(listOf(null), call.arguments)
+        assertEquals(null, call.storedField)
     }
 
 }

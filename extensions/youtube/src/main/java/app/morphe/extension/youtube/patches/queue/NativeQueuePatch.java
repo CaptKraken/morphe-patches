@@ -17,12 +17,9 @@ import android.widget.PopupMenu;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.WeakHashMap;
 
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.ResourceType;
@@ -40,6 +37,7 @@ import app.morphe.extension.youtube.patches.queue.model.QueueFlyout;
 import app.morphe.extension.youtube.patches.queue.model.QueuePanels;
 import app.morphe.extension.youtube.patches.queue.model.QueueRatings;
 import app.morphe.extension.youtube.patches.queue.model.QueueTitles;
+import app.morphe.extension.youtube.patches.queue.model.WeakIdentitySet;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.ProtoNode;
 import app.morphe.extension.youtube.settings.Settings;
@@ -56,20 +54,14 @@ public final class NativeQueuePatch {
     private static final QueueDetails details = new QueueDetails();
     private static final QueueRatings ratings = new QueueRatings();
     private static final QueueFlyout flyout = new QueueFlyout();
-    private static final Set<Object> ownedRatingButtons = Collections.synchronizedSet(
-            Collections.newSetFromMap(new WeakHashMap<>()));
-    // Old panels can still emit events after a refresh. Consume their edit events as well.
-    private static final Set<Object> ownedPanels = Collections.synchronizedSet(
-            Collections.newSetFromMap(new WeakHashMap<>()));
+    private static final WeakIdentitySet<Object> ownedRatingButtons = new WeakIdentitySet<>();
     private static final QueuePanels panelRevisions = new QueuePanels();
     private static volatile WeakReference<Object> playlistController = new WeakReference<>(null);
     private static volatile WeakReference<Object> watchNavigator = new WeakReference<>(null);
     // YouTube can reuse the overlay after closing the player. Its handlers register only
     // when the controls are created, so retain them weakly across queue sessions.
-    private static final Set<Object> overlayTransports = Collections.synchronizedSet(
-            Collections.newSetFromMap(new WeakHashMap<>()));
-    private static final Set<Object> queueHeaders = Collections.synchronizedSet(
-            Collections.newSetFromMap(new WeakHashMap<>()));
+    private static final WeakIdentitySet<Object> overlayTransports = new WeakIdentitySet<>();
+    private static final WeakIdentitySet<Object> queueHeaders = new WeakIdentitySet<>();
     private static volatile Object currentWatchResponse;
     private static volatile Object playbackDescriptor;
     private static Object originalPanel;
@@ -84,7 +76,7 @@ public final class NativeQueuePatch {
     public static boolean isPatchIncluded() { return false; }
 
     public static boolean owns(Object panel) {
-        return panelRevisions.revision(panel) != null || panel != null && ownedPanels.contains(panel);
+        return panelRevisions.revision(panel) != null;
     }
 
     private static boolean active() { return !queue.isEmpty(); }
@@ -198,16 +190,15 @@ public final class NativeQueuePatch {
                         str("morphe_local_queue_dislike"), str("morphe_local_queue_undo_dislike")),
                 str("morphe_local_queue_save")));
         if (panel == null) throw new IllegalStateException("Native playlist parser unavailable");
-        ownedPanels.add(panel);
         panelRevisions.remember(panel, snapshot.orderRevision());
-        ownedRatingButtons.addAll(panelRatingButtons(panel));
+        for (Object button : panelRatingButtons(panel)) ownedRatingButtons.add(button);
         return panel;
     }
 
     public static void onRatingPresenter(Object presenter, Object ratingButtonModel) {
         if (!ownedRatingButtons.contains(ratingButtonModel)) return;
         // Native entity subscriptions handle current state and rollback. Legacy rating paths
-        // also emit jkb events; retain that native subscription for these local presenters.
+        // also emit vote events; retain that native subscription for these local presenters.
         registerRatingEvents(presenter);
     }
 
@@ -386,9 +377,7 @@ public final class NativeQueuePatch {
         if (!active() || isClosedPlayer(PlayerType.getCurrent().name())) return;
         try {
             QueueEditScope.run(NativeQueuePatch::applyPlaybackModes);
-            Object[] headers;
-            synchronized (queueHeaders) { headers = queueHeaders.toArray(); }
-            for (Object header : headers) onQueueHeader(header);
+            for (Object header : queueHeaders.snapshot()) onQueueHeader(header);
             refreshTransportControls();
         } catch (Exception ex) {
             Logger.printException(() -> "Local queue playback mode update failed", ex);
@@ -440,11 +429,7 @@ public final class NativeQueuePatch {
     }
 
     private static void refreshTransportControls() {
-        Object[] transports;
-        synchronized (overlayTransports) {
-            transports = overlayTransports.toArray();
-        }
-        for (Object transport : transports) refreshTransport(transport);
+        for (Object transport : overlayTransports.snapshot()) refreshTransport(transport);
     }
 
     public static boolean isLocalEntry(String entryId) {
@@ -534,7 +519,7 @@ public final class NativeQueuePatch {
 
     private static boolean enqueue(String videoId, QueueTitles.Title capturedTitle, boolean playNext,
                                    boolean showPanel) {
-        if (!isPatchIncluded()) return false;
+        if (!isPatchIncluded() || !LocalQueue.isVideoId(videoId)) return false;
         Utils.runOnMainThread(() -> {
             try {
                 synchronized (NativeQueuePatch.class) {
@@ -552,7 +537,7 @@ public final class NativeQueuePatch {
                         Object navigation = watchNavigator.get();
                         if (navigation == null) throw new IllegalStateException("Watch navigator unavailable");
                         String current = responseVideo(currentResponse);
-                        if (current != null && !current.isEmpty()) {
+                        if (LocalQueue.isVideoId(current)) {
                             queue.add(current, titleFor(current), false);
                             queue.updateDetails(current, details.get(current));
                             QueueMetadata.fetch(current);

@@ -24,7 +24,6 @@ import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
@@ -187,7 +186,11 @@ internal class NativeQueueHooks(
             "invoke-static/range {p0 .. p0}, $NATIVE_QUEUE_EXTENSION->onEntityRating(Ljava/lang/Object;)V")
         target(native.legacyRating).addInstructions(0,
             "invoke-static/range {p1 .. p2}, $NATIVE_QUEUE_EXTENSION->onLegacyRating(Ljava/lang/Object;Ljava/lang/Object;)V")
-        target(native.voteEventConstructor).addInstructions(1,
+        val voteConstructor = target(native.voteEventConstructor)
+        val voteInitialization = with(context) {
+            queueVoteEventConstructorFingerprint(native.voteType).match(voteConstructor).instructionMatches.single()
+        }
+        voteConstructor.addInstructions(voteInitialization.index + 1,
             "invoke-static/range {p1 .. p2}, $NATIVE_QUEUE_EXTENSION->onVoteEvent(Ljava/lang/String;Ljava/lang/Object;)V")
 
         // Register only the native button models that belong to our parsed panels. The host
@@ -244,10 +247,12 @@ internal class NativeQueueHooks(
             return-void
         """)
         val ratingBind = target(native.ratingBind)
-        check((ratingBind.implementation!!.instructions.first() as? ReferenceInstruction)?.reference
-            .toString() == native.ratingSuperBind.toString()) { "Native rating presenter initialization changed" }
-        ratingBind.addInstructions(1,
-            "invoke-static/range {p0 .. p1}, $NATIVE_QUEUE_EXTENSION->onRatingPresenter(Ljava/lang/Object;Ljava/lang/Object;)V")
+        with(context) {
+            val fingerprint = queueRatingBindFingerprint(native.ratingButtonType, native.voteEventType)
+            val match = fingerprint.match(ratingBind)
+            ratingBind.addInstructions(match.instructionMatches.single().index + 1,
+                "invoke-static/range {p0 .. p1}, $NATIVE_QUEUE_EXTENSION->onRatingPresenter(Ljava/lang/Object;Ljava/lang/Object;)V")
+        }
     }
 
     private fun installMetadata() {
@@ -375,10 +380,10 @@ internal class NativeQueueHooks(
     }
 
     private fun installTransport() {
-        // The overlay has watch-response-specific Next/Previous delegates (apfj/apfk).
+        // The overlay has watch-response-specific Next/Previous delegates.
         // Those can remain attached even after the playback queue is replaced. Scope the
         // override to handlers actually registered with the overlay. The controls field
-        // is normally an composite, rather than the overlay itself.
+        // is normally a composite, rather than the overlay itself.
         val transportPlayer = field(native.transportPlayer)
         val transportEvents = field(native.transportEvents)
         val nextIntent = field(native.nextIntent)
@@ -440,19 +445,19 @@ internal class NativeQueueHooks(
 
         val refreshNext = target(native.refreshNext)
         val refreshPrevious = target(native.refreshPrevious)
-        for ((target, enabledFlag, callback) in listOf(
-            Triple(refreshNext, field(native.nextEnabled), "nextEnabled"),
-            Triple(refreshPrevious, field(native.previousEnabled), "previousEnabled")
+        for ((target, intent, callback) in listOf(
+            Triple(refreshNext, native.nextIntent, "nextEnabled"),
+            Triple(refreshPrevious, native.previousIntent, "previousEnabled")
         )) {
-            val flagIndex = target.implementation!!.instructions.indexOfFirst {
-                (it as? ReferenceInstruction)?.reference.toString() == enabledFlag
+            val matches = with(context) { queueTransportAvailabilityFingerprint(intent).match(target).instructionMatches }
+            val flag = matches[3].instruction as TwoRegisterInstruction
+            val compare = matches[4].instruction as TwoRegisterInstruction
+            check((compare.registerA == flag.registerA) != (compare.registerB == flag.registerA)) {
+                "Native transport comparison must use its stored availability flag exactly once"
             }
-            check(flagIndex >= 0) { "Overlay transport availability gate missing" }
-            val oldFlag = target.getInstruction<TwoRegisterInstruction>(flagIndex).registerA
-            val compare = target.getInstruction<TwoRegisterInstruction>(flagIndex + 1)
-            val result = if (compare.registerA == oldFlag) compare.registerB else compare.registerA
+            val result = if (compare.registerA == flag.registerA) compare.registerB else compare.registerA
             // Insert after the branch merge, so both native delegate and fallback use this.
-            target.addInstructions(flagIndex + 1, """
+            target.addInstructions(matches[4].index, """
                 invoke-static {v$result, p0}, $NATIVE_QUEUE_EXTENSION->$callback(ZLjava/lang/Object;)Z
                 move-result v$result
             """)
@@ -475,10 +480,15 @@ internal class NativeQueueHooks(
         """)
         target(native.registerTransport).addInstructions(0,
             "invoke-static/range {p1 .. p1}, $NATIVE_QUEUE_EXTENSION->onTransportReady(Ljava/lang/Object;)V")
-        target(native.transportUpdate).addInstructions(0, """
+        var transportUpdate = target(native.transportUpdate)
+        if (transportUpdate.implementation!!.registerCount <= 1) {
+            transportUpdate = transportUpdate.cloneParameters(context.mutableClassDefBy(native.transportType))
+        }
+        val updateResult = transportUpdate.findFreeRegister(0)
+        transportUpdate.addInstructionsWithLabels(0, """
             invoke-static {p0}, $NATIVE_QUEUE_EXTENSION->onTransportUpdate(Ljava/lang/Object;)Z
-            move-result v0
-            if-eqz v0, :original
+            move-result v$updateResult
+            if-eqz v$updateResult, :original
             return-void
             :original
             nop
@@ -486,15 +496,7 @@ internal class NativeQueueHooks(
         // The subclass overrides Next and can open a recommendation without calling its parent.
         // Intercept before that override as well as the base Next/Previous handlers.
         for ((handler, forward) in native.manualHandlers) {
-            target(handler).addInstructions(0, """
-                const/4 v0, $forward
-                invoke-static {p0, v0}, $NATIVE_QUEUE_EXTENSION->onManualNavigation(Ljava/lang/Object;Z)Z
-                move-result v0
-                if-eqz v0, :original
-                return-void
-                :original
-                nop
-            """)
+            interceptQueueManualNavigation(context.mutableClassDefBy(handler.definingClass), target(handler), forward)
         }
     }
 
@@ -578,8 +580,7 @@ internal class NativeQueueHooks(
         // Reuse the host's random successor/predecessor mapping. Invalidate it only when
         // row order changes or shuffle is newly enabled, never for selection/title updates.
         val nativeQueue = field(native.nativeQueue)
-        val shuffledNext = field(native.shuffledNext, true)
-        val shuffledPrevious = field(native.shuffledPrevious, true)
+        val shuffleMappings = native.shuffleMappings.map { field(it, true) }
         val shuffle = target(native.shuffle)
         val repeat = target(native.repeat)
         bridge("setPlaybackModes", """
@@ -591,8 +592,7 @@ internal class NativeQueueHooks(
             if-eqz p3, :apply
             const/4 v2, 0x0
             invoke-virtual {v1, v2}, $shuffle
-            iput-object v2, v1, $shuffledNext
-            iput-object v2, v1, $shuffledPrevious
+            ${shuffleMappings.joinToString("\n") { "iput-object v2, v1, $it" }}
             :apply
             invoke-virtual {v1, p2}, $shuffle
             invoke-virtual {v0, p1}, $repeat
@@ -618,9 +618,7 @@ internal class NativeQueueHooks(
         val shuffleButton = field(native.shuffleButton)
         val repeatClick = field(native.repeatClick)
         val shuffleClick = field(native.shuffleClick)
-        val repeatAll = field(native.repeatAll, true)
-        val repeatOne = field(native.repeatOne, true)
-        val shuffleAllowed = field(native.shuffleAllowed, true)
+        val capabilities = native.headerCapabilities.map { field(it, true) }
         val updateHeader = target(native.updateHeader)
         bridge("enableHeaderControls", """
             check-cast p0, ${native.headerType}
@@ -632,9 +630,7 @@ internal class NativeQueueHooks(
             iget-object v2, p0, $shuffleButton
             invoke-virtual {v2, v0}, Landroid/view/View;->setVisibility(I)V
             const/4 v0, 0x1
-            iput-boolean v0, p0, $repeatAll
-            iput-boolean v0, p0, $repeatOne
-            iput-boolean v0, p0, $shuffleAllowed
+            ${capabilities.joinToString("\n") { "iput-boolean v0, p0, $it" }}
             invoke-virtual {v1, v0}, Landroid/view/View;->setEnabled(Z)V
             invoke-virtual {v2, v0}, Landroid/view/View;->setEnabled(Z)V
             iget-object v0, p0, $repeatClick
@@ -755,13 +751,11 @@ internal class NativeQueueHooks(
 
         // Use the editable compact native row. Other density variants do not implement drag.
         val rowFactory = target(native.rowFactory)
-        val rowStyleField = field(native.rowStyle)
-        val styleIndex = rowFactory.implementation!!.instructions.indexOfFirst {
-            (it as? ReferenceInstruction)?.reference.toString() == rowStyleField
+        val styleMatch = with(context) {
+            queueRowStyleFingerprint(native.adapterType, native.rowStyle).match(rowFactory).instructionMatches.single()
         }
-        check(styleIndex >= 0) { "Native row style selection missing" }
-        val styleRegister = rowFactory.getInstruction<TwoRegisterInstruction>(styleIndex).registerA
-        rowFactory.addInstructions(styleIndex + 1, """
+        val styleRegister = (styleMatch.instruction as TwoRegisterInstruction).registerA
+        rowFactory.addInstructions(styleMatch.index + 1, """
             invoke-static {v$styleRegister, p0}, $NATIVE_QUEUE_EXTENSION->rowStyle(ILjava/lang/Object;)I
             move-result v$styleRegister
         """)
@@ -801,27 +795,40 @@ internal class NativeQueueHooks(
         """)
 
         val visibility = target(native.visibility)
-        val flagIndex = visibility.implementation!!.instructions.indexOfFirst {
-            val reference = (it as? ReferenceInstruction)?.reference as? MethodReference
-            reference?.toString() == native.visibilityGate.toString()
+        val visibilityResult = with(context) {
+            queuePanelVisibilityFingerprint(native.controllerType).match(visibility).instructionMatches[1]
         }
-        check(flagIndex >= 0) { "Native playlist visibility gate missing" }
-        val flagRegister = visibility.getInstruction<OneRegisterInstruction>(flagIndex + 1).registerA
-        visibility.addInstructions(flagIndex + 2, """
+        val flagRegister = (visibilityResult.instruction as OneRegisterInstruction).registerA
+        visibility.addInstructions(visibilityResult.index + 1, """
             invoke-static {v$flagRegister, p0}, $NATIVE_QUEUE_EXTENSION->allowPanel(ZLjava/lang/Object;)Z
             move-result v$flagRegister
         """)
-        val switchIndex = navigatorRefresh.implementation!!.instructions.indexOfFirst {
-            val reference = (it as? ReferenceInstruction)?.reference as? MethodReference
-            reference?.toString() == native.navigatorGate.toString()
+        val navigatorResult = with(context) {
+            queueNavigatorGateFingerprint(native.navigatorType, native.responseType)
+                .match(navigatorRefresh).instructionMatches.last()
         }
-        check(switchIndex >= 0) { "Native queue navigator switch missing" }
-        val switchRegister = navigatorRefresh.getInstruction<OneRegisterInstruction>(switchIndex + 1).registerA
-        navigatorRefresh.addInstructions(switchIndex + 2, """
+        val switchRegister = (navigatorResult.instruction as OneRegisterInstruction).registerA
+        navigatorRefresh.addInstructions(navigatorResult.index + 1, """
             invoke-static {v$switchRegister, p1}, $NATIVE_QUEUE_EXTENSION->allowNavigator(ZLjava/lang/Object;)Z
             move-result v$switchRegister
         """)
     }
+}
+
+/** Preserve the receiver even when a native handler has no local registers. */
+internal fun interceptQueueManualNavigation(owner: MutableClass, target: MutableMethod, forward: Int) {
+    var method = target
+    if (method.implementation!!.registerCount <= 1) method = method.cloneParameters(owner)
+    val freeRegister = method.findFreeRegister(0)
+    method.addInstructionsWithLabels(0, """
+        const/4 v$freeRegister, $forward
+        invoke-static {p0, v$freeRegister}, $NATIVE_QUEUE_EXTENSION->onManualNavigation(Ljava/lang/Object;Z)Z
+        move-result v$freeRegister
+        if-eqz v$freeRegister, :original
+        return-void
+        :original
+        nop
+    """)
 }
 
 /** Keep the original forwarding body, including hooks installed by other patches. */
