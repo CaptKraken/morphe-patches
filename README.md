@@ -1,27 +1,27 @@
-# Native Queue — preview 27
+# Native Queue — preview 28
 
 Independent experimental fork by CaptKraken, based on [Morphe Patches](https://github.com/MorpheApp/morphe-patches). This is not an official upstream release. Original attribution, [LICENSE](LICENSE) and [NOTICE](NOTICE) are retained, including upstream notices embedded in the bundle.
 
-Download [native-queue-21.20.405-preview27.mpp](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-queue-preview/native-queue-21.20.405-preview27.mpp).
+Download [native-queue-21.20.405-preview28.mpp](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-queue-preview/native-queue-21.20.405-preview28.mpp).
 
-This preview addresses two remaining response-ownership failures missed by preview 26. A nonempty callback during a local panel refresh, or a response without a valid video ID or account playlist ID, could replace the current navigator and watch response before returning without attaching the queue. Subsequent local Shuffle-off requests were rejected because the navigator references no longer matched. Response validation and the local-refresh guard now run before ownership updates. Opening an account playlist still clears/releases the local queue.
+This preview addresses a reproduced false error during automatic queue refreshes. Player metadata can arrive before replacement native views bind. The model retains that metadata, but a refresh previously displayed “Could not update queue” solely because its weak navigator/controller reference was unavailable. Automatic metadata, account-state, and playback callbacks now defer that unavailable-UI case. The next native panel bind renders the retained model. Explicit queue actions still report unavailable UI, and actual refresh exceptions still log/show errors.
 
-A direct lifecycle regression starts from consistent ownership and fails against preview-26 source. It passes against this source across six null/refresh/invalid-response cases with the first and last items selected; Shuffle-off and Repeat-off remain accepted, and entries/selection are preserved. Valid response replacement and account-playlist handoff also pass. The probe executes the actual extension handlers and queue model with native-access and Android UI test doubles. This establishes code defects, not which callback triggers the reported intermittent failure on a phone.
+The captured log contains Next followed by a new video loading, then the generic toast without a queue exception, and subsequent Next actions that load videos. This is consistent with the reproduced background-refresh failure. It does not by itself prove which non-exception branch emitted that particular toast. Two low-volume info messages now distinguish explicit unavailable-UI requests from native navigation returning no playback descriptor. They occur on failure paths; no per-frame or broad navigation tracing was added.
 
-Generated standalone APK comparison against preview 26 changes only NativeQueuePatch.onResponse and PatchInfo.PATCH_TIME. The other ten DEX files are byte-identical; native navigation, repeat/shuffle hooks and UI implementations are unchanged.
+A before/after JVM regression through the actual metadata handler reproduces the old generic toast with no exception. The corrected handler retains metadata silently while native UI references are absent; the next panel bind encodes it. Explicit Show Queue with unavailable UI, real background refresh exceptions, and native null-commit errors still report failures. Successful navigation stays quiet. Native/UI/scheduler access uses test doubles; actual extension handlers and queue models execute unchanged. The preceding first/last-item response-ownership regression also passes.
 
 Disable the preceding preview source, import this file in Morphe Manager, and select **Native Queue** alone as the source for YouTube. Patch an untouched YouTube **21.20.405** APK. Manager may retain saved selections; ensure Native temporary queue (experimental) is selected.
 
 Phone checks:
 
-- Start a queue with at least three videos and select the last item. While it is still playing, toggle Shuffle on/off repeatedly and cycle Repeat back to off. Confirm the icons change each time.
-- With both modes off at the last item, Previous should return to the preceding queue item; Next should be unavailable at the actual queue boundary. Neither error toast should appear.
-- Repeat after reaching the last item through player Next and through automatic playback. Compare portrait/fullscreen and expanded/collapsed queue views.
-- Close the player and start another queue without restarting YouTube. Opening a normal account playlist should release the local queue and retain normal native controls.
+- Use player Next/Previous repeatedly while titles/channel/statistics are arriving. Confirm each requested video plays, metadata appears, and transitions do not produce a false queue-update toast.
+- Check portrait/fullscreen and transitions through PiP. Confirm queue selection follows playback and native Next/Previous still respect queue boundaries.
+- Retest Shuffle/Repeat on and off, including while the last item is still playing.
+- If a toast remains, capture the fresh log: real failures now identify either unavailable navigator/controller references, a missing native playback descriptor, or a caught exception.
 
-Validation: all **77 queue tests passed**, the before/after lifecycle regression passed, resource formatting passed for **90,681 strings**, and standalone, seven-related-patch combined, and Native Queue-unselected APK validation passed with Android SDK DEX/cross-DEX verification and resource compilation. The Android `.mpp` bundle was built. No Android device or emulator is attached; the user's last-item report concerns a video still playing, so completion cleanup remains a separate hypothesis rather than an established cause.
+Validation: all **77 queue tests passed**, the before/after background-refresh regression and earlier ownership regression passed, resource formatting passed for **90,681 strings**, and standalone, seven-related-patch combined, and Native Queue-unselected APK validation passed with Android SDK DEX/cross-DEX verification and resource compilation. The Android `.mpp` bundle was built. No Android device or emulator is attached.
 
-Built from source commit [`eda633f6b8c7da821c97cd0b9eab3d647ff351a9`](https://github.com/CaptKraken/morphe-patches/commit/eda633f6b8c7da821c97cd0b9eab3d647ff351a9) on `feature/youtube-native-queue`. Preview branding changes only artifact metadata; source metadata and notices remain unchanged.
+Built from source commit [`ace040b394576fed23469bd1f579a85f46e2af82`](https://github.com/CaptKraken/morphe-patches/commit/ace040b394576fed23469bd1f579a85f46e2af82) on `feature/youtube-native-queue`. Preview branding changes only artifact metadata; source metadata and notices remain unchanged.
 
 Reproduce with the configured JDK and Android SDK:
 
@@ -29,6 +29,6 @@ Reproduce with the configured JDK and Android SDK:
 ./gradlew :patches:test :patches:checkStringResources :patches:validateNativeQueue :patches:validateNativeQueueCompatibility :patches:validateWithoutNativeQueue :patches:buildAndroid -PqueueApk=/absolute/path/youtube.apk
 ```
 
-SHA256: `ba9b2e658647821c893db7ac822e0288d4fff2d1076216603853bd57e626de74`
+SHA256: `d3538db193d19242d00fd824edccd8de1436637a8091f1d5d73cd6d361f13ca3`
 
 Older preview files are superseded. This branch distributes experimental builds; source development is on `feature/youtube-native-queue`.
