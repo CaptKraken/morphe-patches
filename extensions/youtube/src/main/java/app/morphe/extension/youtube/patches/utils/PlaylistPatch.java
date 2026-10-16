@@ -40,6 +40,7 @@ import app.morphe.extension.shared.ui.Dim;
 import app.morphe.extension.shared.ui.SheetBottomDialog;
 import app.morphe.extension.youtube.patches.LoadVideoPatch;
 import app.morphe.extension.youtube.patches.VideoInformation;
+import app.morphe.extension.youtube.patches.queue.NativeQueuePatch;
 import app.morphe.extension.youtube.patches.utils.requests.CreatePlaylistRequest;
 import app.morphe.extension.youtube.patches.utils.requests.EditPlaylistRequest;
 import app.morphe.extension.youtube.patches.utils.requests.GetPlaylistItemsRequest;
@@ -85,8 +86,8 @@ public class PlaylistPatch {
     public static void prepareDialogBuilder(Context context, String currentVideoId) {
         Utils.verifyOnMainThread();
 
-        if (app.morphe.extension.youtube.patches.queue.NativeQueuePatch.isPatchIncluded()) {
-            app.morphe.extension.youtube.patches.queue.NativeQueuePatch.showOrStartQueue(currentVideoId);
+        if (NativeQueuePatch.isPatchIncluded()) {
+            NativeQueuePatch.showOrStartQueue(currentVideoId);
             return;
         }
 
@@ -120,7 +121,7 @@ public class PlaylistPatch {
      * Invoked by extension.
      */
     public static void syncIfNeeded() {
-        if (app.morphe.extension.youtube.patches.queue.NativeQueuePatch.isPatchIncluded()) return;
+        if (NativeQueuePatch.isPatchIncluded()) return;
         if (!playlistId.isEmpty() && !syncStarted && !AuthUtils.isNotLoggedIn()) {
             syncStarted = true;
             syncPlaylistItems();

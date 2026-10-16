@@ -343,10 +343,6 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
     val shuffleForward = method(navigatorType, listOf("Z"), "V") {
         it.references<MethodReference>().any { call -> call.name == shuffle.name }
     }
-    val repeatDelegate = repeatForward.fields(Opcode.IGET_OBJECT).requireSingle("repeat delegate")
-    val shuffleDelegate = shuffleForward.fields(Opcode.IGET_OBJECT).requireSingle("shuffle delegate")
-    val repeatCall = repeatForward.references<MethodReference>().requireSingle("repeat forwarding call")
-    val shuffleCall = shuffleForward.references<MethodReference>().requireSingle("shuffle forwarding call")
 
     val headerPanel = field(headerType, panelType)
     val headerRoot = field(headerType, "Landroid/view/View;")

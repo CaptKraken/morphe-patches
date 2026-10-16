@@ -101,27 +101,27 @@ public final class PlaylistPanel {
         return panel.bytes();
     }
 
-    private static Wire ratingButton(String video, QueueRatings.State state, boolean like,
+    private static Wire ratingButton(String videoId, QueueRatings.State state, boolean like,
                                      QueueRatings.Labels labels) {
         int status = like ? QueueRatings.LIKE : QueueRatings.DISLIKE;
         Wire button = new Wire().number(3, state.status() == status ? 1 : 0)
                 .message(5, new Wire().number(1, like ? 160 : 51)) // Native LIKE / DISLIKE.
                 .message(8, new Wire().number(1, like ? 301 : 302)) // Native selected icons.
-                .message(7, ratingEndpoint(video, status))
-                .message(10, ratingEndpoint(video, QueueRatings.NEUTRAL))
+                .message(7, ratingEndpoint(videoId, status))
+                .message(10, ratingEndpoint(videoId, QueueRatings.NEUTRAL))
                 .message(19, new Wire().message(1, new Wire().text(2, like ? labels.like() : labels.dislike())))
                 .message(20, new Wire().message(1, new Wire().text(2, like ? labels.unlike() : labels.undoDislike())));
-        Wire presenter = new Wire().message(17, new Wire().text(1, video)) // Video target; no playlist target.
+        Wire presenter = new Wire().message(17, new Wire().text(1, videoId)) // Video target; no playlist target.
                 .number(like ? 20 : 21, 1)
                 .message(26, new Wire().message(79971800, button))
                 .text(27, state.entityKey());
         return new Wire().message(124608045, presenter);
     }
 
-    private static Wire ratingEndpoint(String video, int status) {
+    private static Wire ratingEndpoint(String videoId, int status) {
         // Native LikeCommand, which performs sign-in, account-scoped state updates and requests.
         return new Wire().message(63158558, new Wire().number(1, status)
-                .message(2, new Wire().text(1, video)));
+                .message(2, new Wire().text(1, videoId)));
     }
 
     private static final class Wire {

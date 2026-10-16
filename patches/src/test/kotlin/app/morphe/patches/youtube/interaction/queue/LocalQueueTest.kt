@@ -18,6 +18,18 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertTrue
 
 class LocalQueueTest {
+    @Test fun `video validation and local entry recognition use the queue identity contract`() {
+        assertTrue(LocalQueue.isVideoId("aB0_12-xyZ9"))
+        for (videoId in listOf(null, "", "short", "abcdefghijkx", "abcdefghij!")) {
+            assertFalse(LocalQueue.isVideoId(videoId))
+        }
+        val queue = LocalQueue()
+        queue.add("abcdefghijk", "Title", false)
+        assertTrue(LocalQueue.isEntryId(queue.snapshot().current().id()))
+        assertFalse(LocalQueue.isEntryId(null))
+        assertFalse(LocalQueue.isEntryId("server-entry"))
+    }
+
     @Test fun `drag revisions reject edits from an older order or closed player session`() {
         val queue = LocalQueue()
         listOf("a", "b", "c").forEach { queue.add(it, it, false) }

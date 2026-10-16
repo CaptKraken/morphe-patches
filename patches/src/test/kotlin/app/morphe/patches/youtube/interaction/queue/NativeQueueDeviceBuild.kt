@@ -11,28 +11,47 @@ import app.morphe.patcher.Patcher
 import app.morphe.patcher.PatcherConfig
 import app.morphe.patcher.apk.ApkUtils.applyTo
 import app.morphe.patcher.dex.SdkDexVerifier
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.bytecodePatch
+import app.morphe.patches.youtube.interaction.loop.loopVideoPatch
+import app.morphe.patches.youtube.interaction.savetowatchlater.saveToWatchLaterButtonPatch
+import app.morphe.patches.youtube.layout.buttons.action.hideVideoActionButtonsPatch
+import app.morphe.patches.youtube.layout.buttons.overlay.hidePlayerOverlayButtonsPatch
+import app.morphe.patches.youtube.layout.flyout.addToQueuePatch
+import app.morphe.patches.youtube.layout.originaltitles.restoreOriginalTitlesPatch
+import app.morphe.patches.youtube.layout.playlistautoplay.disablePlaylistAutoplayPatch
+import app.morphe.patches.youtube.layout.returnyoutubedislike.returnYouTubeDislikePatch
+import app.morphe.patches.youtube.misc.playertype.playerTypeHookPatch
+import app.morphe.util.getMutableMethod
+import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.Opcode
-import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.WideLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.TypeReference
-import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.nio.file.Files
+import kotlinx.coroutines.runBlocking
 
 /** Reproducible APK application/SDK verification. This does not establish on-device behavior. */
 fun main(arguments: Array<String>) {
-    require(arguments.size in 1..2) { "Usage: NativeQueueDeviceBuildKt <youtube-apk> [unsigned-output]" }
+    require(arguments.size in 1..3) {
+        "Usage: NativeQueueDeviceBuildKt <youtube-apk> [unsigned-output] [standalone|combined|unselected]"
+    }
+    val mode = arguments.getOrNull(2) ?: "standalone"
+    require(mode in setOf("standalone", "combined", "unselected")) { "Unknown queue validation mode: $mode" }
     val input = File(arguments[0]).canonicalFile
     require(input.isFile) { "Input APK missing: $input" }
     val sdk = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
         ?: error("Native queue validation requires an Android SDK for DEX verification")
-    val workspace = Files.createTempDirectory("native-queue-validation").toFile()
-    val regression = bytecodePatch(name = "Verify local queue playback and manual controls", default = false) {
-        dependsOn(nativeQueuePatch)
+    val workspace = Files.createTempDirectory("native-queue-validation-$mode").toFile()
+    val regression = if (mode == "unselected") unselectedQueuePatch() else bytecodePatch(
+        name = "Verify local queue playback and manual controls",
+        default = false,
+    ) {
+        dependsOn(if (mode == "combined") combinedQueuePatch() else nativeQueuePatch)
         execute {
             val runtimeType = "Lapp/morphe/extension/youtube/patches/queue/NativeQueuePatch;"
             val runtime = mutableClassDefBy(runtimeType)
@@ -51,9 +70,17 @@ fun main(arguments: Array<String>) {
                 runtimeReferences("onPlayerMetadata").none { it.contains("LocalQueue;->followPlayback(") }) {
                 "Only committed watch navigation may append videos; prefetched metadata cannot grow the queue"
             }
+            check(runtimeReferences("cleanTitle").any {
+                it.endsWith("RestoreOriginalTitlesPatch;->removeTitleMarker(Ljava/lang/String;)Ljava/lang/String;")
+            } && listOf("cardNode", "onCardMenu", "rememberTitle").all { method ->
+                runtimeReferences(method).any { it.contains("NativeQueuePatch;->cleanTitle(") }
+            }) { "Queue titles must reuse original-title marker removal at every input boundary" }
+            check(runtimeReferences("isLocalEntry").any { it.endsWith("LocalQueue;->isEntryId(Ljava/lang/String;)Z") }) {
+                "Generated and recognized local entry IDs must share one namespace"
+            }
             val reset = runtimeReferences("resetPlayerSession")
             check(reset.any { it.endsWith("LocalQueue;->clear()V") } &&
-                listOf("response", "playbackDescriptor", "controller", "navigator").all { field ->
+                listOf("currentWatchResponse", "playbackDescriptor", "playlistController", "watchNavigator").all { field ->
                     reset.any { it.startsWith("$runtimeType->$field:") }
                 } && reset.none { it.contains("->publish(") || it.contains("->refreshPanel(") || it.contains("->openVideoIntent") }) {
                 "Player close must clear the queue and stale native references without refreshing or reopening a closed player"
@@ -416,12 +443,81 @@ fun main(arguments: Array<String>) {
             }
         }
         val patched = patcher.get()
-        arguments.getOrNull(1)?.let { path ->
+        arguments.getOrNull(1)?.takeIf { it.isNotBlank() }?.let { path ->
             val output = File(path).canonicalFile
             output.parentFile.mkdirs()
             patched.applyTo(output)
             println("Unsigned APK: $output")
         }
-        println("Native queue patch applied and verified with Android SDK tools: $workspace")
+        println("Native queue $mode validation passed with Android SDK tools: $workspace")
+    }
+}
+
+
+private val relatedQueuePatches = arrayOf(
+    saveToWatchLaterButtonPatch,
+    restoreOriginalTitlesPatch,
+    returnYouTubeDislikePatch,
+    disablePlaylistAutoplayPatch,
+    hidePlayerOverlayButtonsPatch,
+    loopVideoPatch,
+    hideVideoActionButtonsPatch,
+)
+
+private fun combinedQueuePatch() = bytecodePatch(name = "Native Queue with related patches", default = false) {
+    dependsOn(addToQueuePatch, playerTypeHookPatch, *relatedQueuePatches)
+    execute {
+        val originalReferences = NativeQueueReferences(this)
+        val marker = "Ljava/util/Objects;->requireNonNull(Ljava/lang/Object;)Ljava/lang/Object;"
+        val fullscreenBind = originalReferences.fullscreenControlsBind.getMutableMethod()
+        // Deliberately invalidate the shared fingerprint's cached instruction indexes.
+        fullscreenBind.addInstructions(0, "nop")
+        for (reference in listOf(originalReferences.repeatForward, originalReferences.shuffleForward)) {
+            reference.getMutableMethod().addInstructions(0, "invoke-static {p0}, $marker")
+        }
+        // Discovery as well as installation must tolerate the earlier patches' hooks.
+        val references = NativeQueueReferences(this)
+        NativeQueueHooks(this, references).install()
+        for (reference in listOf(references.repeatForward, references.shuffleForward)) {
+            check(reference.getMutableMethod().implementation!!.instructions
+                .filterIsInstance<ReferenceInstruction>().any { it.reference.toString() == marker }) {
+                "Native Queue discarded an earlier mode hook"
+            }
+        }
+        check(fullscreenBind.implementation!!.instructions.first().opcode == Opcode.NOP) {
+            "Native Queue discarded an earlier fullscreen-method edit"
+        }
+        check(fullscreenBind.implementation!!.instructions.filterIsInstance<ReferenceInstruction>().any {
+            it.reference.toString().contains("QuickActionsMarginPatch;->setQuickActionsMargin(")
+        }) { "Native Queue discarded the existing quick-actions margin hook" }
+        setExtensionIsPatchIncluded(NATIVE_QUEUE_EXTENSION)
+        println("Verified earlier mode/margin hooks and refreshed fullscreen indexes alongside seven related patches")
+    }
+}
+
+private fun unselectedQueuePatch() = bytecodePatch(name = "Related patches without Native Queue", default = false) {
+    dependsOn(addToQueuePatch, playerTypeHookPatch, *relatedQueuePatches)
+    execute {
+        val runtime = mutableClassDefBy(NATIVE_QUEUE_EXTENSION)
+        val included = runtime.methods.single { it.name == "isPatchIncluded" }.implementation!!.instructions.first()
+        check((included as WideLiteralInstruction).wideLiteral == 0L) {
+            "Native Queue must remain disabled when it is not selected"
+        }
+        fun references(owner: String, name: String) = mutableClassDefBy(owner).methods
+            .single { it.name == name }.implementation!!.instructions.filterIsInstance<ReferenceInstruction>()
+            .map { it.reference.toString() }
+        for ((owner, name) in listOf("Lniq;" to "q", "Lniq;" to "f", "Lmvj;" to "a",
+            "Laogu;" to "hD", "Laogu;" to "it", "Llwe;" to "hD")) {
+            check(references(owner, name).none { it.contains("NativeQueuePatch;") }) {
+                "Unselected Native Queue must not hook native controls"
+            }
+        }
+        check(references("Lapp/morphe/extension/youtube/patches/PlayerTypeHookPatch;", "setPlayerType")
+            .none { it.contains("NativeQueuePatch;") })
+        check(references("Lapp/morphe/extension/youtube/patches/utils/PlaylistPatch;", "prepareDialogBuilder")
+            .any { it.contains("AuthUtils;->isNotLoggedIn(") }) {
+            "The original persistent queue path must remain available"
+        }
+        println("Verified unselected Native Queue retains native controls and the persistent queue path")
     }
 }

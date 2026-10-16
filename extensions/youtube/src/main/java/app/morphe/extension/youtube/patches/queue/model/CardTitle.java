@@ -20,22 +20,21 @@ public final class CardTitle {
     public record Node(String text, List<Node> children) {}
     private record Content(Set<String> videos, Set<String> texts) {}
     private static final Pattern VIDEO_URL = Pattern.compile(
-            "(?:/vi(?:_webp)?/|[?&]v=)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])");
-    private static final Pattern MARKER = Pattern.compile("\\u2060[\\u2061-\\u2064]{33}$");
+            "(?:/vi(?:_webp)?/|[?&]v=)([A-Za-z0-9_-]{" + LocalQueue.VIDEO_ID_LENGTH + "})(?![A-Za-z0-9_-])");
 
     private CardTitle() {}
 
     public static String clean(String text) {
-        return text == null ? "" : MARKER.matcher(text).replaceFirst("").strip();
+        return text == null ? "" : text.strip();
     }
 
-    public static String find(Node root, String video, String label) {
-        if (root == null || video == null || label == null || label.isBlank()) return null;
+    public static String find(Node root, String videoId, String label) {
+        if (root == null || videoId == null || label == null || label.isBlank()) return null;
         Set<String> known = new HashSet<>();
-        known.add(video);
+        known.add(videoId);
         urls(root, known);
         Set<String> found = new LinkedHashSet<>();
-        scope(root, video, clean(label), known, found);
+        scope(root, videoId, clean(label), known, found);
         return found.size() == 1 ? found.iterator().next() : null;
     }
 
@@ -47,7 +46,7 @@ public final class CardTitle {
         for (Node child : node.children()) urls(child, videos);
     }
 
-    private static Content scope(Node node, String video, String label, Set<String> known,
+    private static Content scope(Node node, String videoId, String label, Set<String> known,
                                  Set<String> found) {
         Set<String> videos = new HashSet<>();
         Set<String> texts = new LinkedHashSet<>();
@@ -61,12 +60,12 @@ public final class CardTitle {
         }
         for (Node child : node.children()) {
             Set<String> titles = new LinkedHashSet<>();
-            Content content = scope(child, video, label, known, titles);
+            Content content = scope(child, videoId, label, known, titles);
             videos.addAll(content.videos());
             texts.addAll(content.texts());
             childTitles.add(titles);
         }
-        if (videos.size() == 1 && videos.contains(video)) {
+        if (videos.size() == 1 && videos.contains(videoId)) {
             String title = choose(texts, label);
             if (title != null) found.add(title);
         }

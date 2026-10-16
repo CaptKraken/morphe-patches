@@ -21,10 +21,10 @@ import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.ResourceType;
 import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.shared.Utils;
+import app.morphe.extension.youtube.patches.queue.NativeQueuePatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.PlaylistPatch;
 import app.morphe.extension.youtube.settings.Settings;
-import app.morphe.extension.youtube.patches.queue.NativeQueuePatch;
 
 @SuppressWarnings("unused")
 public final class AddToQueuePatch {

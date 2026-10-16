@@ -16,32 +16,32 @@ import android.view.ViewGroup;
 import android.widget.PopupMenu;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.HashMap;
-import java.util.Map;
 
 import app.morphe.extension.shared.Logger;
-import app.morphe.extension.shared.Utils;
 import app.morphe.extension.shared.ResourceType;
 import app.morphe.extension.shared.ResourceUtils;
+import app.morphe.extension.shared.Utils;
 import app.morphe.extension.youtube.patches.LoadVideoPatch;
-import app.morphe.extension.youtube.patches.queue.model.LocalQueue;
-import app.morphe.extension.youtube.patches.queue.model.CardTitle;
-import app.morphe.extension.youtube.patches.queue.model.QueueTitles;
-import app.morphe.extension.youtube.patches.queue.model.QueueDetails;
-import app.morphe.extension.youtube.patches.queue.model.QueueRatings;
-import app.morphe.extension.youtube.patches.queue.model.PlaylistPanel;
-import app.morphe.extension.youtube.patches.queue.model.QueueEditScope;
-import app.morphe.extension.youtube.patches.queue.model.QueuePanels;
-import app.morphe.extension.youtube.patches.queue.model.QueueFlyout;
-import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.components.PlayerFlyoutMenuComponentsFilter;
-import app.morphe.extension.youtube.patches.utils.ProtoNode;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
+import app.morphe.extension.youtube.patches.queue.model.CardTitle;
+import app.morphe.extension.youtube.patches.queue.model.LocalQueue;
+import app.morphe.extension.youtube.patches.queue.model.PlaylistPanel;
+import app.morphe.extension.youtube.patches.queue.model.QueueDetails;
+import app.morphe.extension.youtube.patches.queue.model.QueueEditScope;
+import app.morphe.extension.youtube.patches.queue.model.QueueFlyout;
+import app.morphe.extension.youtube.patches.queue.model.QueuePanels;
+import app.morphe.extension.youtube.patches.queue.model.QueueRatings;
+import app.morphe.extension.youtube.patches.queue.model.QueueTitles;
+import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
+import app.morphe.extension.youtube.patches.utils.ProtoNode;
 import app.morphe.extension.youtube.settings.Settings;
 import app.morphe.extension.youtube.shared.PlayerType;
 
@@ -49,6 +49,7 @@ import app.morphe.extension.youtube.shared.PlayerType;
 @SuppressWarnings("unused")
 public final class NativeQueuePatch {
     private static final int TITLE_CACHE_CAPACITY = 200;
+    private static final int MAX_CARD_BUFFER_BYTES = 1024 * 1024;
 
     private static final LocalQueue queue = new LocalQueue();
     private static final QueueTitles titles = new QueueTitles(TITLE_CACHE_CAPACITY);
@@ -61,13 +62,13 @@ public final class NativeQueuePatch {
     private static final Set<Object> ownedPanels = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
     private static final QueuePanels panelRevisions = new QueuePanels();
-    private static volatile WeakReference<Object> controller = new WeakReference<>(null);
-    private static volatile WeakReference<Object> navigator = new WeakReference<>(null);
+    private static volatile WeakReference<Object> playlistController = new WeakReference<>(null);
+    private static volatile WeakReference<Object> watchNavigator = new WeakReference<>(null);
     private static final Set<Object> overlayTransports = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
     private static final Set<Object> queueHeaders = Collections.synchronizedSet(
             Collections.newSetFromMap(new WeakHashMap<>()));
-    private static volatile Object response;
+    private static volatile Object currentWatchResponse;
     private static volatile Object playbackDescriptor;
     private static Object originalPanel;
     private static Object originalNavigation;
@@ -99,17 +100,17 @@ public final class NativeQueuePatch {
         Utils.runOnMainThread(() -> QueueFullscreenButton.refresh(active()));
     }
 
-    public static QueueTitles.Title titleFor(String video) { return titles.get(video); }
+    public static QueueTitles.Title titleFor(String videoId) { return titles.get(videoId); }
 
-    private static void rememberTitle(String video, String text, QueueTitles.Source source) {
-        String clean = CardTitle.clean(text);
-        if (video == null || !video.matches("[A-Za-z0-9_-]{11}") || clean.isEmpty()) return;
-        QueueTitles.Title title = titles.put(video,
-                RestoreOriginalTitlesPatch.getTitle(video, clean), source);
+    private static void rememberTitle(String videoId, String text, QueueTitles.Source titleSource) {
+        String clean = cleanTitle(text);
+        if (!LocalQueue.isVideoId(videoId) || clean.isEmpty()) return;
+        QueueTitles.Title title = titles.put(videoId,
+                RestoreOriginalTitlesPatch.getTitle(videoId, clean), titleSource);
         if (title == null) return;
         Utils.runOnMainThreadDelayed(() -> {
             synchronized (NativeQueuePatch.class) {
-                if (queue.updateTitle(video, title)) publish();
+                if (queue.updateTitle(videoId, title)) publish();
             }
         }, 0);
     }
@@ -117,51 +118,55 @@ public final class NativeQueuePatch {
     public static void onPlayerMetadata(Object playerResponse) {
         try {
             // Both values come from the same response, including during transitions/prefetch.
-            String video = playerVideo(playerResponse);
-            rememberTitle(video, playerTitle(playerResponse), QueueTitles.Source.PLAYER);
-            rememberDetails(video, QueueDetails.Info.of(playerChannel(playerResponse), "", "",
+            String videoId = playerVideo(playerResponse);
+            rememberTitle(videoId, playerTitle(playerResponse), QueueTitles.Source.PLAYER);
+            rememberDetails(videoId, QueueDetails.Info.of(playerChannel(playerResponse), "", "",
                     QueueTitles.Source.PLAYER));
         } catch (Exception ex) {
             Logger.printDebug(() -> "Local queue player title unavailable", ex);
         }
     }
 
-    public static void onTypedMenu(String video, Object renderer) {
+    public static void onTypedMenu(String videoId, Object renderer) {
         try {
-            rememberTitle(video, typedMenuTitle(renderer), QueueTitles.Source.CARD);
-            rememberDetails(video, QueueDetails.Info.of(typedMenuChannel(renderer), typedMenuViews(renderer),
+            rememberTitle(videoId, typedMenuTitle(renderer), QueueTitles.Source.CARD);
+            rememberDetails(videoId, QueueDetails.Info.of(typedMenuChannel(renderer), typedMenuViews(renderer),
                     typedMenuAge(renderer), QueueTitles.Source.CARD));
         } catch (Exception ex) {
             Logger.printDebug(() -> "Local queue typed menu title unavailable", ex);
         }
     }
 
-    private static void rememberDetails(String video, QueueDetails.Info info) {
-        if (video == null || !video.matches("[A-Za-z0-9_-]{11}") || info.empty()) return;
-        QueueDetails.Info known = details.put(video, info);
+    private static void rememberDetails(String videoId, QueueDetails.Info info) {
+        if (!LocalQueue.isVideoId(videoId) || info.empty()) return;
+        QueueDetails.Info known = details.put(videoId, info);
         Utils.runOnMainThreadDelayed(() -> {
             synchronized (NativeQueuePatch.class) {
-                if (queue.updateDetails(video, known)) publish();
+                if (queue.updateDetails(videoId, known)) publish();
             }
         }, 0);
     }
 
-    public static void onCardMenu(String video, byte[] bytes, String label) {
+    public static void onCardMenu(String videoId, byte[] bytes, String label) {
         try {
-            if (bytes == null || bytes.length > 1024 * 1024) return;
+            if (bytes == null || bytes.length > MAX_CARD_BUFFER_BYTES) return;
             List<ProtoNode> root = ProtoNode.parse(bytes);
             if (root == null) return;
-            String title = CardTitle.find(cardNode(root), video, label);
-            if (title != null) rememberTitle(video, title, QueueTitles.Source.CARD);
+            String title = CardTitle.find(cardNode(root), videoId, cleanTitle(label));
+            if (title != null) rememberTitle(videoId, title, QueueTitles.Source.CARD);
         } catch (Exception ex) {
             Logger.printDebug(() -> "Local queue card title unavailable", ex);
         }
     }
 
+    private static String cleanTitle(String text) {
+        return CardTitle.clean(RestoreOriginalTitlesPatch.removeTitleMarker(text == null ? "" : text));
+    }
+
     private static CardTitle.Node cardNode(List<ProtoNode> nodes) {
         List<CardTitle.Node> children = new ArrayList<>(nodes.size());
         for (ProtoNode node : nodes) {
-            children.add(node.isText() ? new CardTitle.Node(node.getText(), List.of())
+            children.add(node.isText() ? new CardTitle.Node(cleanTitle(node.getText()), List.of())
                     : node.children == null ? new CardTitle.Node(null, List.of()) : cardNode(node.children));
         }
         return new CardTitle.Node(null, children);
@@ -176,13 +181,13 @@ public final class NativeQueuePatch {
         }
         byte[] endpoint = null;
         if (snapshot.current() != null) {
-            String video = snapshot.current().videoId();
+            String videoId = snapshot.current().videoId();
             Object descriptor = playbackDescriptor;
-            if (descriptor != null && video.equals(descriptorVideo(descriptor))) {
+            if (descriptor != null && videoId.equals(descriptorVideo(descriptor))) {
                 endpoint = descriptorEndpoint(descriptor);
             }
-            if (endpoint == null && response != null && video.equals(responseVideo(response))) {
-                endpoint = responseEndpoint(response);
+            if (endpoint == null && currentWatchResponse != null && videoId.equals(responseVideo(currentWatchResponse))) {
+                endpoint = responseEndpoint(currentWatchResponse);
             }
         }
         Object panel = parsePanel(PlaylistPanel.encode(snapshot, str("morphe_local_queue_title"),
@@ -197,8 +202,8 @@ public final class NativeQueuePatch {
         return panel;
     }
 
-    public static void onRatingPresenter(Object presenter, Object model) {
-        if (!ownedRatingButtons.contains(model)) return;
+    public static void onRatingPresenter(Object presenter, Object ratingButtonModel) {
+        if (!ownedRatingButtons.contains(ratingButtonModel)) return;
         // Native entity subscriptions handle current state and rollback. Legacy rating paths
         // also emit jkb events; retain that native subscription for these local presenters.
         registerRatingEvents(presenter);
@@ -216,9 +221,9 @@ public final class NativeQueuePatch {
         }
     }
 
-    public static void onVoteEvent(String video, Object status) {
+    public static void onVoteEvent(String videoId, Object status) {
         try {
-            ratings.remember(video, ratingNumber(status));
+            ratings.remember(videoId, ratingNumber(status));
         } catch (Exception ex) {
             Logger.printDebug(() -> "Local queue rating event unavailable", ex);
         }
@@ -242,52 +247,52 @@ public final class NativeQueuePatch {
     }
 
     /** Called only from the active watch navigator, not from prefetched player responses. */
-    public static synchronized void onResponse(Object source, Object watchResponse) {
+    public static synchronized void onResponse(Object sourceNavigator, Object watchResponse) {
         try {
-            navigator = new WeakReference<>(source);
+            watchNavigator = new WeakReference<>(sourceNavigator);
             if (watchResponse == null) return;
-            if (watchResponse != response) {
-                if (response != null && owns(responsePanel(response))) {
+            if (watchResponse != currentWatchResponse) {
+                if (currentWatchResponse != null && owns(responsePanel(currentWatchResponse))) {
                     // Watch responses can be cached and reused after the queue is gone.
-                    setResponsePanel(response, originalPanel);
-                    setResponseNavigation(response, originalNavigation);
+                    setResponsePanel(currentWatchResponse, originalPanel);
+                    setResponseNavigation(currentWatchResponse, originalNavigation);
                 }
-                response = watchResponse;
+                currentWatchResponse = watchResponse;
                 originalPanel = responsePanel(watchResponse);
                 originalNavigation = responseNavigation(watchResponse);
             }
             if (!active() || publishing) return;
-            String playlist = responsePlaylist(watchResponse);
-            String video = responseVideo(watchResponse);
-            if (playlist != null && !playlist.isEmpty()) {
+            String playlistId = responsePlaylist(watchResponse);
+            String videoId = responseVideo(watchResponse);
+            if (playlistId != null && !playlistId.isEmpty()) {
                 // An explicitly opened account playlist retains its native ownership.
                 queue.clear();
                 restoreNavigation();
                 refreshFullscreenButton();
                 return;
             }
-            if (video == null || !video.matches("[A-Za-z0-9_-]{11}")) return;
-            if (!queue.followPlayback(video, titleFor(video))) return;
-            queue.updateDetails(video, details.get(video));
-            QueueMetadata.fetch(video);
+            if (!LocalQueue.isVideoId(videoId)) return;
+            if (!queue.followPlayback(videoId, titleFor(videoId))) return;
+            queue.updateDetails(videoId, details.get(videoId));
+            QueueMetadata.fetch(videoId);
             setResponsePanel(watchResponse, renderer());
             setResponseNavigation(watchResponse, null);
-            prepareNavigation(source);
+            prepareNavigation(sourceNavigator);
             Utils.runOnMainThreadDelayed(NativeQueuePatch::refreshQueuePlayback, 0);
         } catch (Exception ex) {
             Logger.printException(() -> "Local queue watch response failed", ex);
         }
     }
 
-    public static synchronized void onPanelModel(Object source, Object model) {
+    public static synchronized void onPanelModel(Object sourceController, Object panelModel) {
         try {
-            controller = new WeakReference<>(source);
+            playlistController = new WeakReference<>(sourceController);
             if (!active()) return;
-            String playlist = modelPlaylist(model);
-            if (playlist != null && !playlist.isEmpty()) return;
-            if (!publishing && !queue.select(modelVideo(model), null)) return;
-            setModelPanel(model, renderer());
-            if (backendOwner.get() != navigator.get()) {
+            String playlistId = modelPlaylist(panelModel);
+            if (playlistId != null && !playlistId.isEmpty()) return;
+            if (!publishing && !queue.select(modelVideo(panelModel), null)) return;
+            setModelPanel(panelModel, renderer());
+            if (backendOwner.get() != watchNavigator.get()) {
                 Utils.runOnMainThreadDelayed(NativeQueuePatch::publish, 0);
             }
         } catch (Exception ex) {
@@ -296,8 +301,8 @@ public final class NativeQueuePatch {
     }
 
     /** Keep an empty-ID local panel visible without changing account playlist feature flags. */
-    public static boolean allowPanel(boolean original, Object source) {
-        return original || owns(controllerPanel(source));
+    public static boolean allowPanel(boolean original, Object sourceController) {
+        return original || owns(controllerPanel(sourceController));
     }
 
     public static boolean allowNavigator(boolean original, Object watchResponse) {
@@ -329,7 +334,7 @@ public final class NativeQueuePatch {
     }
 
     private static Object localNavigation() {
-        Object navigation = navigator.get();
+        Object navigation = watchNavigator.get();
         return navigation != null && backendOwner.get() == navigation ? navigation : null;
     }
 
@@ -349,15 +354,15 @@ public final class NativeQueuePatch {
     }
 
     /** Native header clicks retain their own listeners; only this queue's mode changes are local. */
-    public static synchronized boolean onRepeatRequested(Object source, int mode) {
-        if (!active() || localNavigation() != source) return false;
+    public static synchronized boolean onRepeatRequested(Object sourceNavigator, int mode) {
+        if (!active() || localNavigation() != sourceNavigator) return false;
         queue.setRepeatMode(mode);
         refreshQueuePlayback();
         return true;
     }
 
-    public static synchronized boolean onShuffleRequested(Object source, boolean enabled) {
-        if (!active() || localNavigation() != source) return false;
+    public static synchronized boolean onShuffleRequested(Object sourceNavigator, boolean enabled) {
+        if (!active() || localNavigation() != sourceNavigator) return false;
         queue.setShuffled(enabled);
         refreshQueuePlayback();
         return true;
@@ -441,7 +446,7 @@ public final class NativeQueuePatch {
     }
 
     public static boolean isLocalEntry(String entryId) {
-        return entryId != null && entryId.startsWith("morphe-queue-");
+        return LocalQueue.isEntryId(entryId);
     }
 
     public static int rowStyle(int original, Object adapter) {
@@ -478,14 +483,14 @@ public final class NativeQueuePatch {
     }
 
     /** Native endpoints carry stable entry IDs across reordering and removal/re-addition. */
-    public static synchronized boolean onPlaybackContext(Object source, String playlist,
-                                                          String video, String entryId) {
-        if (!owns(controllerPanel(source))) return false;
+    public static synchronized boolean onPlaybackContext(Object sourceController, String playlistId,
+                                                          String videoId, String entryId) {
+        if (!owns(controllerPanel(sourceController))) return false;
         if (!active()) return true;
-        if (playlist != null && !playlist.isEmpty()) return false;
+        if (playlistId != null && !playlistId.isEmpty()) return false;
         // The retained playing endpoint may contain YouTube's original setVideoId.
         // Only our namespaced IDs refer to local entries; preserve selection otherwise.
-        if (queue.select(video, isLocalEntry(entryId) ? entryId : null)) {
+        if (queue.select(videoId, isLocalEntry(entryId) ? entryId : null)) {
             Utils.runOnMainThread(NativeQueuePatch::publish);
             return true;
         }
@@ -517,32 +522,32 @@ public final class NativeQueuePatch {
         return true;
     }
 
-    public static boolean enqueue(String video, boolean playNext) {
-        return enqueue(video, titleFor(video), playNext);
+    public static boolean enqueue(String videoId, boolean playNext) {
+        return enqueue(videoId, titleFor(videoId), playNext);
     }
 
-    public static boolean enqueue(String video, QueueTitles.Title capturedTitle, boolean playNext) {
-        return enqueue(video, capturedTitle, playNext, false);
+    public static boolean enqueue(String videoId, QueueTitles.Title capturedTitle, boolean playNext) {
+        return enqueue(videoId, capturedTitle, playNext, false);
     }
 
-    private static boolean enqueue(String video, QueueTitles.Title capturedTitle, boolean playNext,
+    private static boolean enqueue(String videoId, QueueTitles.Title capturedTitle, boolean playNext,
                                    boolean showPanel) {
         if (!isPatchIncluded()) return false;
         Utils.runOnMainThread(() -> {
             try {
                 synchronized (NativeQueuePatch.class) {
                     // A dismissed player's late cached response is not a live watch session.
-                    Object currentResponse = isClosedPlayer(PlayerType.getCurrent().name()) ? null : response;
+                    Object currentResponse = isClosedPlayer(PlayerType.getCurrent().name()) ? null : currentWatchResponse;
                     if (currentResponse != null) {
-                        String playlist = responsePlaylist(currentResponse);
-                        if (playlist != null && !playlist.isEmpty()) {
+                        String playlistId = responsePlaylist(currentResponse);
+                        if (playlistId != null && !playlistId.isEmpty()) {
                             Utils.showToastShort(str("morphe_local_queue_leave_playlist"));
                             return;
                         }
                     }
                     boolean startingQueue = !active();
                     if (startingQueue && currentResponse != null) {
-                        Object navigation = navigator.get();
+                        Object navigation = watchNavigator.get();
                         if (navigation == null) throw new IllegalStateException("Watch navigator unavailable");
                         String current = responseVideo(currentResponse);
                         if (current != null && !current.isEmpty()) {
@@ -552,26 +557,26 @@ public final class NativeQueuePatch {
                         }
                     }
                     QueueTitles.Title title = capturedTitle;
-                    QueueTitles.Title cached = titleFor(video);
+                    QueueTitles.Title cached = titleFor(videoId);
                     if (title == null || cached != null && cached.source().ordinal() > title.source().ordinal()) {
                         title = cached;
                     }
-                    if (!queue.add(video, title, playNext) && !startingQueue) {
+                    if (!queue.add(videoId, title, playNext) && !startingQueue) {
                         Utils.showToastShort(str("morphe_local_queue_already_added"));
                         return;
                     }
-                    queue.updateDetails(video, details.get(video));
+                    queue.updateDetails(videoId, details.get(videoId));
                     // Starting with the playing video seeds that one entry above. Publish it
                     // once even when the requested video was the same as the seed.
-                    Logger.printInfo(() -> "Local queue add " + (playNext ? "next: " : "last: ") + video);
+                    Logger.printInfo(() -> "Local queue add " + (playNext ? "next: " : "last: ") + videoId);
                     if (currentResponse == null) {
-                        LoadVideoPatch.openVideoIntentWithInternalContext(video);
+                        LoadVideoPatch.openVideoIntentWithInternalContext(videoId);
                     } else {
                         if (!publish()) return;
-                        if (showPanel) openPanel(controller.get());
+                        if (showPanel) openPanel(playlistController.get());
                     }
                 }
-                QueueMetadata.fetch(video);
+                QueueMetadata.fetch(videoId);
                 Utils.showToastShort(str("morphe_local_queue_added"));
             } catch (Exception ex) {
                 Logger.printException(() -> "Could not add to local queue", ex);
@@ -603,20 +608,20 @@ public final class NativeQueuePatch {
         refreshFullscreenButton();
         try {
             restoreNavigation();
-            if (response != null && owns(responsePanel(response))) {
-                setResponsePanel(response, originalPanel);
-                setResponseNavigation(response, originalNavigation);
+            if (currentWatchResponse != null && owns(responsePanel(currentWatchResponse))) {
+                setResponsePanel(currentWatchResponse, originalPanel);
+                setResponseNavigation(currentWatchResponse, originalNavigation);
             }
         } catch (Exception ex) {
             // Host teardown may already have disposed its stores. Never refresh a closed UI.
             Logger.printDebug(() -> "Local queue player cleanup unavailable", ex);
         } finally {
-            response = null;
+            currentWatchResponse = null;
             playbackDescriptor = null;
             originalPanel = null;
             originalNavigation = null;
-            controller = new WeakReference<>(null);
-            navigator = new WeakReference<>(null);
+            playlistController = new WeakReference<>(null);
+            watchNavigator = new WeakReference<>(null);
             originalBackend = null;
             originalStorage = null;
             backendOwner = new WeakReference<>(null);
@@ -652,21 +657,21 @@ public final class NativeQueuePatch {
 
     private static boolean prepareNavigation(Object navigation) {
         if (backendOwner.get() == navigation) return true;
-        Object panelController = controller.get();
+        Object panelController = playlistController.get();
         if (panelController == null) return false;
         QueueEditScope.run(() -> {
             restoreNavigation();
             originalBackend = captureBackend(navigation);
-            originalStorage = installStorage(navigation, panelController, response);
+            originalStorage = installStorage(navigation, panelController, currentWatchResponse);
             backendOwner = new WeakReference<>(navigation);
         });
         return true;
     }
 
     private static synchronized boolean publish() {
-        if (publishing || response == null || isClosedPlayer(PlayerType.getCurrent().name())) return false;
-        Object navigation = navigator.get();
-        Object panelController = controller.get();
+        if (publishing || currentWatchResponse == null || isClosedPlayer(PlayerType.getCurrent().name())) return false;
+        Object navigation = watchNavigator.get();
+        Object panelController = playlistController.get();
         if (navigation == null || panelController == null) {
             Utils.showToastShort(str("morphe_local_queue_failed"));
             return false;
@@ -674,14 +679,14 @@ public final class NativeQueuePatch {
         publishing = true;
         try {
             QueueEditScope.run(() -> {
-                setResponsePanel(response, active() ? renderer() : originalPanel);
-                setResponseNavigation(response, active() ? null : originalNavigation);
+                setResponsePanel(currentWatchResponse, active() ? renderer() : originalPanel);
+                setResponseNavigation(currentWatchResponse, active() ? null : originalNavigation);
                 if (active()) prepareNavigation(navigation);
                 // Updating only the engagement panel leaves next/previous stale. Native queue
                 // notifications must update controls here without stopping/reopening playback.
-                refreshNavigator(navigation, response);
+                refreshNavigator(navigation, currentWatchResponse);
                 applyPlaybackModes();
-                refreshPanel(panelController, response);
+                refreshPanel(panelController, currentWatchResponse);
                 refreshQueuePlayback();
             });
             return true;
@@ -699,7 +704,7 @@ public final class NativeQueuePatch {
             Utils.showToastShort(str("morphe_local_queue_empty"));
             return;
         }
-        if (publish()) openPanel(controller.get());
+        if (publish()) openPanel(playlistController.get());
     }
 
     /** The player queue action can start a queue with the currently playing video. */
@@ -711,57 +716,57 @@ public final class NativeQueuePatch {
         }
     }
 
-    static synchronized LocalQueue.Entry metadataEntry(String video) {
-        QueueTitles.Title known = titleFor(video);
+    static synchronized LocalQueue.Entry metadataEntry(String videoId) {
+        QueueTitles.Title known = titleFor(videoId);
         if (known != null && known.source().ordinal() >= QueueTitles.Source.PLAYER.ordinal()) return null;
-        LocalQueue.Entry entry = queue.find(video);
+        LocalQueue.Entry entry = queue.find(videoId);
         return entry != null && entry.titleSource().ordinal() < QueueTitles.Source.PLAYER.ordinal()
                 ? entry : null;
     }
 
-    static synchronized LocalQueue.Entry detailsEntry(String video) {
-        LocalQueue.Entry entry = queue.find(video);
+    static synchronized LocalQueue.Entry detailsEntry(String videoId) {
+        LocalQueue.Entry entry = queue.find(videoId);
         return entry != null && !entry.details().complete() ? entry : null;
     }
 
-    static void updateDetails(String entryId, String video, QueueDetails.Info info) {
+    static void updateDetails(String entryId, String videoId, QueueDetails.Info info) {
         Utils.runOnMainThread(() -> {
             synchronized (NativeQueuePatch.class) {
-                LocalQueue.Entry entry = queue.find(video);
+                LocalQueue.Entry entry = queue.find(videoId);
                 if (entry == null || !entry.id().equals(entryId)) return;
-                QueueDetails.Info known = details.put(video, info);
-                if (queue.updateDetails(entryId, video, known)) publish();
+                QueueDetails.Info known = details.put(videoId, info);
+                if (queue.updateDetails(entryId, videoId, known)) publish();
             }
         });
     }
 
-    static void updateMetadata(String entryId, String video, String title) {
+    static void updateMetadata(String entryId, String videoId, String title) {
         Utils.runOnMainThread(() -> {
             synchronized (NativeQueuePatch.class) {
-                QueueTitles.Title known = titleFor(video);
+                QueueTitles.Title known = titleFor(videoId);
                 if (known != null && known.source().ordinal() >= QueueTitles.Source.PLAYER.ordinal()) return;
-                if (queue.updateMetadata(entryId, video, title)) {
-                    titles.put(video, title, QueueTitles.Source.NETWORK);
+                if (queue.updateMetadata(entryId, videoId, title)) {
+                    titles.put(videoId, title, QueueTitles.Source.NETWORK);
                     publish();
                 }
             }
         });
     }
 
-    public static int addFlyoutButtons(Object panel, int index, String video, Drawable icon) {
-        if (!Settings.QUEUE_ADD_FLYOUT_MENU.get() || video.isEmpty()) return index;
-        QueueTitles.Title title = titleFor(video);
+    public static int addFlyoutButtons(Object panel, int index, String videoId, Drawable icon) {
+        if (!Settings.QUEUE_ADD_FLYOUT_MENU.get() || videoId.isEmpty()) return index;
+        QueueTitles.Title title = titleFor(videoId);
         boolean canAdd = QueueFlyout.canAdd(PlayerFlyoutMenuComponentsFilter.getTopFlyoutMenuVisible(),
-                queue.find(video) != null);
+                queue.find(videoId) != null);
         int nextIndex = canAdd ? FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_next"),
-                v -> enqueue(video, title, true), index) : index;
+                v -> enqueue(videoId, title, true), index) : index;
         boolean addedNext = nextIndex > index;
         if (addedNext) index = nextIndex;
         nextIndex = canAdd ? FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_last"),
-                v -> enqueue(video, title, false), index) : index;
+                v -> enqueue(videoId, title, false), index) : index;
         boolean addedLast = nextIndex > index;
         if (addedLast) index = nextIndex;
-        flyout.remember(panel, video, addedNext, addedLast);
+        flyout.remember(panel, videoId, addedNext, addedLast);
         if (active()) {
             nextIndex = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_clear"),
                     v -> { clear(); FlyoutUtils.dismissFlyout(); }, index);

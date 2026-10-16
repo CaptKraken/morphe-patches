@@ -12,7 +12,7 @@ import java.util.List;
 /** Bodies are replaced with type-checked host access during patching. No runtime reflection. */
 public final class NativeQueueBridge {
     private NativeQueueBridge() {}
-    public static String ratingEntityKey(String video) { return ""; }
+    public static String ratingEntityKey(String videoId) { return ""; }
     public static List<?> panelRatingButtons(Object panel) { return List.of(); }
     public static void registerRatingEvents(Object presenter) {}
     public static String legacyRatingVideo(Object builder) { return ""; }
@@ -27,31 +27,31 @@ public final class NativeQueueBridge {
     public static String typedMenuViews(Object renderer) { return ""; }
     public static String typedMenuAge(Object renderer) { return ""; }
     public static Object parsePanel(byte[] bytes) { return null; }
-    public static String responseVideo(Object response) { return ""; }
-    public static String responsePlaylist(Object response) { return ""; }
-    public static Object responsePanel(Object response) { return null; }
-    public static byte[] responseEndpoint(Object response) { return null; }
+    public static String responseVideo(Object watchResponse) { return ""; }
+    public static String responsePlaylist(Object watchResponse) { return ""; }
+    public static Object responsePanel(Object watchResponse) { return null; }
+    public static byte[] responseEndpoint(Object watchResponse) { return null; }
     public static String descriptorVideo(Object descriptor) { return ""; }
     public static byte[] descriptorEndpoint(Object descriptor) { return null; }
-    public static Object responseNavigation(Object response) { return null; }
-    public static void setResponseNavigation(Object response, Object navigation) {}
-    public static void setResponsePanel(Object response, Object panel) {}
-    public static void refreshNavigator(Object navigator, Object response) {}
-    public static Object captureBackend(Object navigator) { return null; }
-    public static Object installStorage(Object navigator, Object controller, Object response) { return null; }
-    public static void restoreStorage(Object navigator, Object storage) {}
-    public static void restoreBackend(Object navigator, Object backend) {}
-    public static void setPlaybackModes(Object navigator, int repeatMode, boolean shuffled,
+    public static Object responseNavigation(Object watchResponse) { return null; }
+    public static void setResponseNavigation(Object watchResponse, Object navigation) {}
+    public static void setResponsePanel(Object watchResponse, Object panel) {}
+    public static void refreshNavigator(Object watchNavigator, Object watchResponse) {}
+    public static Object captureBackend(Object watchNavigator) { return null; }
+    public static Object installStorage(Object watchNavigator, Object playlistController, Object watchResponse) { return null; }
+    public static void restoreStorage(Object watchNavigator, Object storage) {}
+    public static void restoreBackend(Object watchNavigator, Object backend) {}
+    public static void setPlaybackModes(Object watchNavigator, int repeatMode, boolean shuffled,
                                         boolean resetShuffle) {}
     public static Object headerPanel(Object header) { return null; }
     public static void enableHeaderControls(Object header, int repeatMode, boolean shuffled) {}
-    public static void refreshPanel(Object controller, Object response) {}
-    public static void openPanel(Object controller) {}
+    public static void refreshPanel(Object playlistController, Object watchResponse) {}
+    public static void openPanel(Object playlistController) {}
     public static boolean isPlayerTransport(Object transport) { return false; }
     public static void refreshTransport(Object transport) {}
-    public static boolean canNavigateQueue(Object navigator, boolean next) { return false; }
-    public static boolean navigateQueue(Object transport, Object navigator, boolean next) { return false; }
-    public static Object controllerPanel(Object controller) { return null; }
+    public static boolean canNavigateQueue(Object watchNavigator, boolean next) { return false; }
+    public static boolean navigateQueue(Object transport, Object watchNavigator, boolean next) { return false; }
+    public static Object controllerPanel(Object playlistController) { return null; }
     public static Object modelPanel(Object model) { return null; }
     public static String modelVideo(Object model) { return ""; }
     public static String modelPlaylist(Object model) { return ""; }

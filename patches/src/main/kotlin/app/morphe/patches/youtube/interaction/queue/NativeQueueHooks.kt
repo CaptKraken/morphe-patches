@@ -160,13 +160,13 @@ internal class NativeQueueHooks(
         val ratingEntity = field(native.ratingEntity)
         val ratingEntityKey = field(native.ratingEntityKey)
         val ratingEntityStatus = field(native.ratingEntityStatus)
-        val keyType = target(native.keyNumber)
+        val keyNumberMethod = target(native.keyNumber)
         val keyVideo = target(native.keyVideo)
         bridge("entityRatingVideo", """
             check-cast p0, ${native.entityType}
             iget-object v0, p0, $ratingEntity
             iget-object v0, v0, $ratingEntityKey
-            invoke-static {v0}, $keyType
+            invoke-static {v0}, $keyNumberMethod
             move-result v1
             const/16 v2, 0x3e
             if-ne v1, v2, :empty
@@ -499,8 +499,6 @@ internal class NativeQueueHooks(
     }
 
     private fun installStorage() {
-        val panelRefresh = target(native.panelRefresh)
-        val navigatorRefresh = target(native.navigatorRefresh)
         val backend = field(native.backend, true)
         val nativeMode = field(native.nativeMode, true)
         val queueManager = field(native.queueManager)

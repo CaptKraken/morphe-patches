@@ -1567,7 +1567,8 @@ public final class RestoreOriginalTitlesPatch {
         return new String(videoId);
     }
 
-    private static String removeTitleMarker(String text) {
+    /** Removes this patch's marker before other features reuse the visible title text. */
+    public static String removeTitleMarker(String text) {
         final int markerStart = findTitleMarker(text);
         return markerStart < 0 ? text : text.substring(0, markerStart);
     }

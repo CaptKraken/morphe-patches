@@ -9,9 +9,22 @@ package app.morphe.extension.youtube.patches.queue.model;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /** Session-only queue with unique videos and stable identities across edits. */
 public final class LocalQueue {
+    public static final int VIDEO_ID_LENGTH = 11;
+    private static final Pattern VIDEO_ID_PATTERN = Pattern.compile("[A-Za-z0-9_-]{" + VIDEO_ID_LENGTH + "}");
+    private static final String ENTRY_ID_PREFIX = "morphe-queue-";
+
+    public static boolean isVideoId(String videoId) {
+        return videoId != null && VIDEO_ID_PATTERN.matcher(videoId).matches();
+    }
+
+    public static boolean isEntryId(String entryId) {
+        return entryId != null && entryId.startsWith(ENTRY_ID_PREFIX);
+    }
+
     public record Entry(String id, String videoId, String title, QueueTitles.Source titleSource,
                         QueueDetails.Info details) {}
     public record Snapshot(List<Entry> entries, int selected, int repeatMode,
@@ -46,7 +59,7 @@ public final class LocalQueue {
             if (entry.videoId().equals(videoId)) return false;
         }
         boolean missing = title == null || title.text().isBlank() || title.text().equals(videoId);
-        Entry entry = new Entry("morphe-queue-" + ++nextId, videoId,
+        Entry entry = new Entry(ENTRY_ID_PREFIX + ++nextId, videoId,
                 missing ? videoId : title.text(),
                 missing ? QueueTitles.Source.PLACEHOLDER : title.source(), QueueDetails.Info.EMPTY);
         entries.add(playNext && selected >= 0 ? selected + 1 : entries.size(), entry);
@@ -112,14 +125,14 @@ public final class LocalQueue {
                 QueueTitles.Source.CARD));
     }
 
-    public synchronized Entry find(String video) {
-        for (Entry entry : entries) if (entry.videoId().equals(video)) return entry;
+    public synchronized Entry find(String videoId) {
+        for (Entry entry : entries) if (entry.videoId().equals(videoId)) return entry;
         return null;
     }
 
-    public synchronized boolean updateMetadata(String entryId, String video, String title) {
-        Entry entry = find(video);
-        return entry != null && entry.id().equals(entryId) && updateTitle(video,
+    public synchronized boolean updateMetadata(String entryId, String videoId, String title) {
+        Entry entry = find(videoId);
+        return entry != null && entry.id().equals(entryId) && updateTitle(videoId,
                 new QueueTitles.Title(title, QueueTitles.Source.NETWORK));
     }
 
@@ -139,18 +152,18 @@ public final class LocalQueue {
         return changed;
     }
 
-    public synchronized boolean updateDetails(String entryId, String video, QueueDetails.Info details) {
-        Entry entry = find(video);
-        return entry != null && entry.id().equals(entryId) && updateDetails(video, details);
+    public synchronized boolean updateDetails(String entryId, String videoId, QueueDetails.Info details) {
+        Entry entry = find(videoId);
+        return entry != null && entry.id().equals(entryId) && updateDetails(videoId, details);
     }
 
-    public synchronized boolean updateDetails(String video, QueueDetails.Info details) {
+    public synchronized boolean updateDetails(String videoId, QueueDetails.Info details) {
         for (int i = 0; i < entries.size(); i++) {
             Entry entry = entries.get(i);
-            if (!entry.videoId().equals(video)) continue;
+            if (!entry.videoId().equals(videoId)) continue;
             QueueDetails.Info merged = entry.details().merge(details);
             if (merged.equals(entry.details())) return false;
-            entries.set(i, new Entry(entry.id(), video, entry.title(), entry.titleSource(), merged));
+            entries.set(i, new Entry(entry.id(), videoId, entry.title(), entry.titleSource(), merged));
             return true;
         }
         return false;

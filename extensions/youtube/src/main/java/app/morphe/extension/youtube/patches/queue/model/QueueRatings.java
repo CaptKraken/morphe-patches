@@ -34,7 +34,7 @@ public final class QueueRatings {
     }
 
     public synchronized void remember(String videoId, int status) {
-        if (videoId == null || !videoId.matches("[A-Za-z0-9_-]{11}") || status < LIKE || status > NEUTRAL) return;
+        if (!LocalQueue.isVideoId(videoId) || status < LIKE || status > NEUTRAL) return;
         states.put(videoId, status);
         while (states.size() > MAX_CACHE_ENTRIES) states.remove(states.keySet().iterator().next());
     }

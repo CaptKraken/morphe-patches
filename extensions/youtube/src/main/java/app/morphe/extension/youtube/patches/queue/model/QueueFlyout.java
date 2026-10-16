@@ -12,7 +12,7 @@ import java.util.ArrayList;
 
 /** Only successfully added local actions can replace overridden rows in the same menu. */
 public final class QueueFlyout {
-    private record Added(WeakReference<Object> panel, String video, boolean next, boolean last) {}
+    private record Added(WeakReference<Object> panel, String videoId, boolean next, boolean last) {}
     private final ArrayList<Added> menus = new ArrayList<>();
 
     /** The player's own video cannot be added again; feed menu behavior is unchanged. */
@@ -20,19 +20,19 @@ public final class QueueFlyout {
         return !playerMenu || !alreadyQueued;
     }
 
-    public synchronized void remember(Object panel, String video, boolean next, boolean last) {
+    public synchronized void remember(Object panel, String videoId, boolean next, boolean last) {
         menus.removeIf(menu -> menu.panel().get() == null || menu.panel().get() == panel);
         if (panel != null && (next || last)) {
-            menus.add(new Added(new WeakReference<>(panel), video, next, last));
+            menus.add(new Added(new WeakReference<>(panel), videoId, next, last));
         }
     }
 
-    public synchronized boolean replaces(Object panel, String video, String playlist,
+    public synchronized boolean replaces(Object panel, String videoId, String playlistId,
                                          boolean addEnabled, boolean overrideEnabled, String action) {
-        if (panel == null || !addEnabled || !overrideEnabled || video.isEmpty() || !playlist.isEmpty()) return false;
+        if (panel == null || !addEnabled || !overrideEnabled || videoId.isEmpty() || !playlistId.isEmpty()) return false;
         menus.removeIf(menu -> menu.panel().get() == null);
         for (Added menu : menus) {
-            if (menu.panel().get() != panel || !menu.video().equals(video)) continue;
+            if (menu.panel().get() != panel || !menu.videoId().equals(videoId)) continue;
             return switch (action) {
                 case "QUEUE_PLAY_NEXT" -> menu.next();
                 case "QUEUE_PLAY_LAST" -> menu.last();

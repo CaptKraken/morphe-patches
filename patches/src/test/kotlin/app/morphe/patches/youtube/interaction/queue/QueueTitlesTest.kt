@@ -54,11 +54,10 @@ class QueueTitlesTest {
             "How Can AI Create a Vision?", label), video, label))
     }
 
-    @Test fun `localized labels and original-title markers do not leak into the queue title`() {
+    @Test fun `localized labels do not leak into the queue title`() {
         val title = "A video title"
         val label = "Play video: $title - Channel - 100 views"
-        val marked = title + '\u2060' + "\u2061".repeat(33)
-        assertEquals(title, CardTitle.find(card(video, marked, label), video, label))
+        assertEquals(title, CardTitle.find(card(video, title, label), video, label))
         assertNull(CardTitle.find(card(video, "@channel", "/@channel"), video, "@channel, Verified"))
         assertNull(CardTitle.find(card(video, "Channel only"), video, ""))
     }

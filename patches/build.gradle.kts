@@ -87,17 +87,23 @@ tasks {
             setArgs(listOfNotNull(apk, jamOutput.orNull))
         }
     }
-    register<JavaExec>("validateNativeQueue") {
-        description = "Applies the experimental native YouTube queue and verifies the resulting DEX"
-        group = "verification"
-        dependsOn("testClasses")
-        classpath = sourceSets["test"].runtimeClasspath
-        mainClass.set("app.morphe.patches.youtube.interaction.queue.NativeQueueDeviceBuildKt")
-        maxHeapSize = "12g"
-        doFirst {
-            val apk = queueApk.orNull
-                ?: throw GradleException("validateNativeQueue requires -PqueueApk=/absolute/path/youtube.apk")
-            setArgs(listOfNotNull(apk, queueOutput.orNull))
+    mapOf(
+        "validateNativeQueue" to "standalone",
+        "validateNativeQueueCompatibility" to "combined",
+        "validateWithoutNativeQueue" to "unselected",
+    ).forEach { (taskName, mode) ->
+        register<JavaExec>(taskName) {
+            description = "Validates native YouTube queue APK integration ($mode)"
+            group = "verification"
+            dependsOn("testClasses")
+            classpath = sourceSets["test"].runtimeClasspath
+            mainClass.set("app.morphe.patches.youtube.interaction.queue.NativeQueueDeviceBuildKt")
+            maxHeapSize = "12g"
+            doFirst {
+                val apk = queueApk.orNull
+                    ?: throw GradleException("$taskName requires -PqueueApk=/absolute/path/youtube.apk")
+                setArgs(listOf(apk, queueOutput.orNull.orEmpty(), mode))
+            }
         }
     }
     // Used by gradle-semantic-release-plugin.
