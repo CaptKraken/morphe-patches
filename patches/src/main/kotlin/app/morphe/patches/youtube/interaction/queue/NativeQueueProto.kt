@@ -8,18 +8,19 @@
 package app.morphe.patches.youtube.interaction.queue
 
 import app.morphe.patcher.patch.PatchException
+import app.morphe.util.getReference
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.ClassDef
 import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.instruction.OffsetInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.SwitchPayload
 import com.android.tools.smali.dexlib2.iface.instruction.ThreeRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.WideLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
+import com.android.tools.smali.dexlib2.iface.reference.Reference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
 import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 
@@ -43,7 +44,7 @@ internal fun Method.constantCalls(name: String): List<QueueConstantCall> {
         }
         val one = instruction as? OneRegisterInstruction
         val two = instruction as? TwoRegisterInstruction
-        val reference = (instruction as? ReferenceInstruction)?.reference
+        val reference = instruction.getReference<Reference>()
         when {
             instruction.opcode in listOf(Opcode.CONST_STRING, Opcode.CONST_STRING_JUMBO) ->
                 registers[one!!.registerA] = (reference as StringReference).string

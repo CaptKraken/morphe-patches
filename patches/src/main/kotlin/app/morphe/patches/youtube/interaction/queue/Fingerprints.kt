@@ -11,6 +11,7 @@ import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.InstructionLocation.MatchAfterImmediately
 import app.morphe.patcher.InstructionLocation.MatchAfterWithin
 import app.morphe.patcher.fieldAccess
+import app.morphe.patcher.instanceOf
 import app.morphe.patcher.literal
 import app.morphe.patcher.methodCall
 import app.morphe.patcher.opcode
@@ -283,3 +284,292 @@ internal fun queueLegacyRatingFingerprint(voteType: String) = object : Fingerpri
     parameters = listOf(voteType, "L"),
     filters = listOf(methodCall(definingClass = "Landroid/content/res/Resources;", name = "getQuantityString")),
 ) {}
+
+internal class QueueParseMessageFingerprint(messageType: String) : Fingerprint(
+    definingClass = messageType,
+    name = "parseFrom",
+    parameters = listOf(messageType, "[B", "Lcom/google/protobuf/ExtensionRegistryLite;"),
+    returnType = messageType,
+)
+
+internal object QueueGeneratedRegistryFingerprint : Fingerprint(
+    definingClass = "Lcom/google/protobuf/ExtensionRegistryLite;",
+    name = "getGeneratedRegistry",
+    parameters = emptyList(),
+    returnType = "Lcom/google/protobuf/ExtensionRegistryLite;",
+)
+
+internal class QueueHasExtensionFingerprint(messageType: String, extensionType: String) : Fingerprint(
+    definingClass = messageType,
+    parameters = listOf(extensionType),
+    returnType = "Z",
+)
+
+internal class QueueGetExtensionFingerprint(messageType: String, extensionType: String) : Fingerprint(
+    definingClass = messageType,
+    parameters = listOf(extensionType),
+    returnType = "Ljava/lang/Object;",
+)
+
+internal object QueueLikeStatusFingerprint : Fingerprint(
+    classFingerprint = QueueLikeEntityFingerprint,
+    name = "getLikeStatus",
+    parameters = emptyList(),
+    returnType = "L",
+    filters = listOf(fieldAccess(definingClass = "this", opcode = Opcode.IGET_OBJECT)),
+)
+
+internal class QueueCurrentAccountFingerprint(providerType: String, accountType: String) : Fingerprint(
+    definingClass = providerType,
+    parameters = emptyList(),
+    returnType = accountType,
+)
+
+internal object QueueEntityKeyNumberFingerprint : Fingerprint(
+    classFingerprint = QueueEntityKeyFingerprint,
+    parameters = listOf("Ljava/lang/String;"),
+    returnType = "I",
+)
+
+internal object QueueEntityVideoIdFingerprint : Fingerprint(
+    classFingerprint = QueueEntityKeyFingerprint,
+    parameters = listOf("Ljava/lang/String;"),
+    returnType = "Ljava/lang/String;",
+)
+
+internal object QueueEntityKeyDecodeFingerprint : Fingerprint(
+    classFingerprint = QueueEntityKeyFingerprint,
+    parameters = listOf("Ljava/lang/String;"),
+    returnType = "L",
+    filters = listOf(methodCall(name = "parseFrom")),
+)
+
+internal class QueueVideoKeyEncoderFingerprint(format: FieldReference) : Fingerprint(
+    classFingerprint = QueueEntityKeyFingerprint,
+    filters = listOf(
+        literal(1),
+        fieldAccess(reference = format, opcode = Opcode.IPUT, location = MatchAfterImmediately()),
+    ),
+)
+
+internal class QueueRatingKeyFingerprint(encoder: MethodReference) : Fingerprint(
+    classFingerprint = QueueEntityKeyFingerprint,
+    parameters = listOf("I", "Ljava/lang/String;"),
+    returnType = "Ljava/lang/String;",
+    filters = listOf(methodCall(reference = encoder)),
+)
+
+internal class QueueRatingCleanupFingerprint(presenterType: String) : Fingerprint(
+    definingClass = presenterType,
+    parameters = emptyList(),
+    returnType = "V",
+    filters = listOf(methodCall(parameters = listOf("Ljava/lang/Object;"), returnType = "V")),
+)
+
+internal class QueueSubscribeRatingEventsFingerprint(eventsType: String) : Fingerprint(
+    definingClass = eventsType,
+    parameters = listOf("Ljava/lang/Object;"),
+    returnType = "V",
+    filters = listOf(methodCall(parameters = listOf("Ljava/lang/Object;", "Ljava/lang/Class;"))),
+)
+
+internal class QueuePlayerMetadataFingerprint(playerType: String) : Fingerprint(
+    definingClass = playerType,
+    name = "setChannelInformation",
+    parameters = listOf("L"),
+    returnType = "V",
+)
+
+internal class QueueNavigationContractFingerprint(
+    intentType: String,
+    descriptorType: String,
+    commitName: String,
+) : Fingerprint(
+    name = commitName,
+    parameters = listOf(intentType),
+    returnType = descriptorType,
+)
+
+internal class QueueNavigatorConstructorFingerprint(navigatorType: String, backendType: String) : Fingerprint(
+    definingClass = navigatorType,
+    name = "<init>",
+    parameters = List(10) { "L" } + "Lj$/util/Optional;",
+    filters = listOf(instanceOf(backendType)),
+)
+
+internal class QueueSwitchBackendFingerprint(navigatorType: String, backendType: String) : Fingerprint(
+    definingClass = navigatorType,
+    parameters = listOf(backendType, backendType),
+    returnType = "V",
+    filters = listOf(fieldAccess(definingClass = "this", type = backendType, opcode = Opcode.IPUT_OBJECT)),
+)
+
+internal class QueueNavigationAvailabilityFingerprint(
+    navigatorType: String,
+    intentType: String,
+) : Fingerprint(
+    definingClass = navigatorType,
+    parameters = listOf(intentType),
+    returnType = "I",
+)
+
+internal class QueueMessageInfoFingerprint(messageType: String) : Fingerprint(
+    definingClass = messageType,
+    name = "dynamicMethod",
+    filters = listOf(methodCall(name = "newMessageInfo")),
+)
+
+internal class QueueDescriptorVideoFingerprint(descriptorType: String, video: FieldReference) : Fingerprint(
+    definingClass = descriptorType,
+    parameters = emptyList(),
+    returnType = "Ljava/lang/String;",
+    filters = listOf(fieldAccess(reference = video)),
+)
+
+internal class QueueTransportConstructorFingerprint(transportType: String) : Fingerprint(
+    definingClass = transportType,
+    name = "<init>",
+    parameters = List(4) { "L" },
+    filters = listOf(methodCall(smali = "Ljava/lang/Object;-><init>()V")),
+)
+
+internal class QueueLoadDescriptorFingerprint(playerType: String, descriptorType: String) : Fingerprint(
+    definingClass = playerType,
+    parameters = listOf(descriptorType),
+    returnType = "V",
+)
+
+internal class QueueTransportContractFingerprint(next: MethodReference) : Fingerprint(
+    name = next.name,
+    parameters = emptyList(),
+    returnType = "V",
+)
+
+internal class QueueShuffleConstructorFingerprint(shuffleType: String) : Fingerprint(
+    definingClass = shuffleType,
+    name = "<init>",
+    parameters = List(5) { "L" },
+)
+
+internal class QueueStorageConstructorFingerprint(
+    storageType: String,
+    playbackType: String,
+    parserType: String,
+    configType: String,
+) : Fingerprint(
+    definingClass = storageType,
+    name = "<init>",
+    parameters = listOf(playbackType, parserType, configType),
+)
+
+internal class QueueBackendConstructorFingerprint(backendType: String) : Fingerprint(
+    definingClass = backendType,
+    name = "<init>",
+    parameters = listOf("L", "L"),
+)
+
+internal class QueuePopulateFingerprint(populateType: String, responseType: String) : Fingerprint(
+    definingClass = populateType,
+    parameters = listOf(responseType),
+    returnType = "V",
+)
+
+internal class QueuePopulateConstructorFingerprint(
+    populateType: String,
+    parserType: String,
+    configType: String,
+) : Fingerprint(
+    definingClass = populateType,
+    name = "<init>",
+    parameters = listOf("L", parserType, configType),
+)
+
+internal class QueueStorageSwitchFingerprint(
+    managerType: String,
+    storageType: String,
+    dispatcherType: String,
+) : Fingerprint(
+    definingClass = managerType,
+    parameters = listOf(storageType),
+    returnType = "V",
+    filters = listOf(methodCall(definingClass = dispatcherType)),
+)
+
+internal class QueuePlaybackDispatchFingerprint(dispatcherType: String) : Fingerprint(
+    definingClass = dispatcherType,
+    parameters = listOf("L", "L", "Z"),
+    returnType = "V",
+)
+
+internal class QueueRepeatModeFingerprint(backendType: String) : Fingerprint(
+    definingClass = backendType,
+    parameters = listOf("I"),
+    returnType = "V",
+)
+
+internal class QueueRepeatForwardFingerprint(navigatorType: String, repeat: MethodReference) : Fingerprint(
+    definingClass = navigatorType,
+    parameters = listOf("I"),
+    returnType = "V",
+    filters = listOf(methodCall(name = repeat.name, parameters = listOf("I"), returnType = "V")),
+)
+
+internal class QueueShuffleForwardFingerprint(navigatorType: String, shuffle: MethodReference) : Fingerprint(
+    definingClass = navigatorType,
+    parameters = listOf("Z"),
+    returnType = "V",
+    filters = listOf(methodCall(name = shuffle.name, parameters = listOf("Z"), returnType = "V")),
+)
+
+internal class QueueHeaderUpdateFingerprint(headerType: String) : Fingerprint(
+    definingClass = headerType,
+    parameters = listOf("I", "Z"),
+    returnType = "V",
+    filters = listOf(fieldAccess(type = "Landroid/widget/ImageView;", opcode = Opcode.IGET_OBJECT)),
+)
+
+internal class QueueAdapterRowsFingerprint(adapterType: String) : Fingerprint(
+    definingClass = adapterType,
+    parameters = listOf("Ljava/util/List;"),
+    returnType = "Ljava/util/List;",
+    filters = listOf(fieldAccess(definingClass = "this", type = "I", opcode = Opcode.IGET)),
+)
+
+internal class QueueAdapterGesturesFingerprint(adapterType: String) : Fingerprint(
+    definingClass = adapterType,
+    parameters = listOf("Ljava/lang/Class;", "Ljava/lang/Object;", "I"),
+    returnType = "[Ljava/lang/Class;",
+)
+
+internal class QueueMoveEventConstructorFingerprint(eventType: String) : Fingerprint(
+    definingClass = eventType,
+    name = "<init>",
+    parameters = listOf("L", "L", "I", "I"),
+)
+
+internal class QueueRowViewFingerprint(presenterType: String) : Fingerprint(
+    definingClass = presenterType,
+    parameters = emptyList(),
+    returnType = "Landroid/view/View;",
+    filters = listOf(fieldAccess(definingClass = "this", opcode = Opcode.IGET_OBJECT)),
+)
+
+internal class QueueSetPanelModelFingerprint(controllerType: String, modelType: String) : Fingerprint(
+    definingClass = controllerType,
+    parameters = listOf(modelType),
+    returnType = "V",
+    filters = listOf(fieldAccess(definingClass = "this", type = modelType, opcode = Opcode.IPUT_OBJECT)),
+)
+
+internal class QueuePlaybackContextFingerprint(controllerType: String) : Fingerprint(
+    definingClass = controllerType,
+    parameters = List(3) { "Ljava/lang/String;" },
+    returnType = "V",
+    filters = listOf(fieldAccess(definingClass = "this", type = "Ljava/lang/String;", opcode = Opcode.IPUT_OBJECT)),
+)
+
+internal class QueueDescriptorUpdateFingerprint(controllerType: String, descriptorType: String) : Fingerprint(
+    definingClass = controllerType,
+    parameters = listOf(descriptorType),
+    returnType = "V",
+)

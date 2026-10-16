@@ -20,6 +20,8 @@ import app.morphe.util.cloneParameters
 import app.morphe.util.findFreeRegister
 import app.morphe.util.findInstructionIndicesReversedOrThrow
 import app.morphe.util.getMutableMethod
+import app.morphe.util.removeFlags
+import app.morphe.util.toPublicAccessFlags
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
@@ -73,9 +75,8 @@ internal class NativeQueueHooks(
         val member = context.mutableClassDefBy(reference.definingClass).fields.single {
             it.toString() == reference.toString()
         }
-        member.accessFlags = (member.accessFlags and (AccessFlags.PRIVATE.value or AccessFlags.PROTECTED.value).inv()) or
-            AccessFlags.PUBLIC.value
-        if (writable) member.accessFlags = member.accessFlags and AccessFlags.FINAL.value.inv()
+        member.accessFlags = member.accessFlags.toPublicAccessFlags()
+        if (writable) member.removeFlags(AccessFlags.FINAL)
         return member.toString()
     }
 
