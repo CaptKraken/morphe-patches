@@ -1,25 +1,25 @@
-# Native Queue — preview 24
+# Native Queue — preview 25
 
 Independent experimental fork by CaptKraken, based on [Morphe Patches](https://github.com/MorpheApp/morphe-patches). This is not an official upstream release. Original attribution, [LICENSE](LICENSE) and [NOTICE](NOTICE) are retained, including upstream notices embedded in the bundle.
 
-Download [native-queue-21.20.405-preview24.mpp](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-queue-preview/native-queue-21.20.405-preview24.mpp).
+Download [native-queue-21.20.405-preview25.mpp](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-queue-preview/native-queue-21.20.405-preview25.mpp).
 
-This preview contains the branch-wide review fixes. Native controls, listener roles, initialization and visibility hooks use named fingerprints and matched instructions. Video/playlist IDs follow the labeled model fields through constructor and builder assignments; drag coordinates follow constructor parameters. Manual player hooks use the existing register utilities and preserve earlier hooks. Ownership uses weak object identity so equal account-playlist models cannot inherit local ownership. Protobuf discovery follows actual call-result stores and invalidates overwritten constants. Queue insertion rejects malformed video IDs.
+This preview finishes the discovery and shared-utility cleanup. Remaining custom method and constructor scanners are replaced with named, scoped fingerprints for native roles. Reference extraction, access flags and constructor register calculations reuse the shared Morphe utilities. Protobuf owner checks have separate fingerprint instances, and extension metadata uses named fields instead of tuple positions. The existing field and data-flow checks still establish the native contract.
 
-The existing control-registration lifetime fix remains. Additional navigation diagnostics remain removed. Support is still limited to YouTube **21.20.405**.
+This is a refactor with no added features or intended playback changes. The generated standalone output was compared against preview 24: eleven DEX files are byte-for-byte identical; the other file has the same class members and method instructions across 22,704 descriptions, with only `PatchInfo.PATCH_TIME` differing. Android SDK DEX/cross-DEX verification and resource compilation passed independently.
 
 Disable the preceding preview source, import this file in Morphe Manager, and select **Native Queue** alone as the source for YouTube. Patch an untouched YouTube **21.20.405** APK. Manager may retain saved selections; ensure Native temporary queue (experimental) is selected.
 
 Phone checks:
 
-- Start a first queue with at least three videos, Shuffle and Repeat off. Use player Next/Previous repeatedly in portrait and fullscreen, with the queue expanded and collapsed. Confirm Next follows the queue and does not append a recommendation; check both boundaries.
-- Close the player, start another queue without restarting YouTube, and repeat. Minimize/PiP should preserve the queue; closing should reset it.
-- Check repeat/shuffle, reordering, swipe removal of nonplaying items, native rating toggles, metadata/durations and Save playlist.
-- Open a normal account playlist and check its controls, modes and menus. Confirm flyout override and hide-button settings still apply.
+- Start a queue with at least three videos, Shuffle and Repeat off. Check player Next/Previous in portrait and fullscreen, with the queue expanded and collapsed. Confirm navigation follows the queue and respects its boundaries.
+- Close the player and start another queue without restarting YouTube. Closing should reset the queue; minimize/PiP should preserve it.
+- Check repeat/shuffle, drag reordering, swipe removal of nonplaying items, title/channel/statistics/duration display, rating toggles and Save playlist.
+- Open a normal account playlist and check that its controls, modes and menus still behave normally.
 
-Built from source commit [`0b1ccebacdad19347c4d746a15c87da393397392`](https://github.com/CaptKraken/morphe-patches/commit/0b1ccebacdad19347c4d746a15c87da393397392) on `feature/youtube-native-queue`. Preview branding is applied only to artifact metadata; source project metadata and notices remain unchanged.
+Validation: all **77 queue tests passed**, resource formatting passed for **90,681 strings**, and standalone, seven-related-patch combined, and Native Queue-unselected APK validation passed. The combined checks preserve earlier mode/margin hooks and exercise shifted constructor/fullscreen anchors. The Android `.mpp` bundle was built. No Android device or emulator is attached, so phone testing remains necessary; this cleanup does not establish the cause of the previously reported intermittent navigation issue.
 
-Validation: all **77 queue tests passed**, including receiver preservation, reordered constructor stores, unrelated reads, stale constant invalidation and equal-but-unowned models. Standalone and seven-related-patch combined APK application, Android DEX/cross-DEX verification and resource compilation passed; the final combined run also shifts constructor/fullscreen anchors and retains earlier hooks. Native Queue-unselected APK validation passed. String-resource formatting passed (90,681 strings), and the Android patch bundle was built. There is no attached Android device or emulator; these results do not establish runtime behavior or reproduce the intermittent first-queue navigation failure.
+Built from source commit [`a7e96d0765c2c5a2b0782dea11ddd58cb3d8de7c`](https://github.com/CaptKraken/morphe-patches/commit/a7e96d0765c2c5a2b0782dea11ddd58cb3d8de7c) on `feature/youtube-native-queue`. Preview branding changes only artifact metadata; source metadata and notices remain unchanged.
 
 Reproduce with the configured JDK and Android SDK:
 
@@ -27,6 +27,6 @@ Reproduce with the configured JDK and Android SDK:
 ./gradlew :patches:test :patches:checkStringResources :patches:validateNativeQueue :patches:validateNativeQueueCompatibility :patches:validateWithoutNativeQueue :patches:buildAndroid -PqueueApk=/absolute/path/youtube.apk
 ```
 
-SHA256: `13ebc9902fd48c6d7fcbc1cd241cb88825f7daf7aaa38f8b2fe5306700f03fe4`
+SHA256: `81bed80d757b18446ce13c233941fe970fa0c6419185ab4e133f745c99bbbd30`
 
 Older preview files are superseded. This branch distributes experimental builds; source development is on `feature/youtube-native-queue`.
