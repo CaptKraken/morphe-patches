@@ -429,7 +429,6 @@ internal class NativeQueueHooks(
             invoke-virtual {p1, v0}, $queueCommit
             move-result-object v1
             if-eqz v1, :missing
-            invoke-static {v1, p2}, $NATIVE_QUEUE_EXTENSION->onManualNavigationTarget(Ljava/lang/Object;Z)V
             iget-object v0, p0, $transportPlayer
             invoke-interface {v0, v1}, $loadDescriptor
             const/4 v0, 0x1

@@ -412,10 +412,8 @@ fun main(arguments: Array<String>) {
                     ((it as? ReferenceInstruction)?.reference as? MethodReference)?.toString()
                 }
             val commit = manual.indexOf("Lniq;->b(Laovl;)Laopa;")
-            val targetTrace = manual.indexOf(
-                "$runtimeType->onManualNavigationTarget(Ljava/lang/Object;Z)V")
             val load = manual.indexOf("Laowt;->a(Laopa;)V")
-            check(commit >= 0 && targetTrace > commit && load > targetTrace && manual.count { it == manual[load] } == 1) {
+            check(commit >= 0 && load > commit && manual.count { it == manual[load] } == 1) {
                 "Manual navigation must commit a queue descriptor before loading it once"
             }
             for ((name, hostLifecycle) in listOf("gR" to "d", "oN" to "e")) {
