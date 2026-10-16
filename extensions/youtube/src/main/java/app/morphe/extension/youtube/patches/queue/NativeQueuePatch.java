@@ -104,7 +104,7 @@ public final class NativeQueuePatch {
         if (title == null) return;
         Utils.runOnMainThreadDelayed(() -> {
             synchronized (NativeQueuePatch.class) {
-                if (queue.updateTitle(videoId, title)) publish();
+                if (queue.updateTitle(videoId, title)) publish(false);
             }
         }, 0);
     }
@@ -136,7 +136,7 @@ public final class NativeQueuePatch {
         QueueDetails.Info known = details.put(videoId, info);
         Utils.runOnMainThreadDelayed(() -> {
             synchronized (NativeQueuePatch.class) {
-                if (queue.updateDetails(videoId, known)) publish();
+                if (queue.updateDetails(videoId, known)) publish(false);
             }
         }, 0);
     }
@@ -208,7 +208,7 @@ public final class NativeQueuePatch {
             // must not retain the previous account's selected state through a panel refresh.
             Utils.runOnMainThreadDelayed(() -> {
                 synchronized (NativeQueuePatch.class) {
-                    if (active()) publish();
+                    if (active()) publish(false);
                 }
             }, 0);
         }
@@ -289,7 +289,7 @@ public final class NativeQueuePatch {
             if (!publishing && !queue.select(modelVideo(panelModel), null)) return;
             setModelPanel(panelModel, renderer());
             if (backendOwner.get() != watchNavigator.get()) {
-                Utils.runOnMainThreadDelayed(NativeQueuePatch::publish, 0);
+                Utils.runOnMainThreadDelayed(() -> publish(false), 0);
             }
         } catch (Exception ex) {
             Logger.printException(() -> "Local queue panel response failed", ex);
@@ -420,6 +420,8 @@ public final class NativeQueuePatch {
             Logger.printInfo(() -> "Local queue manual " + (next ? "next" : "previous")
                     + ", available=" + available);
             if (available && !navigateQueue(transport, navigation, next)) {
+                Logger.printInfo(() -> "Local queue manual " + (next ? "next" : "previous")
+                        + " returned no playback descriptor");
                 Utils.showToastShort(str("morphe_local_queue_failed"));
             }
             refreshTransportControls();
@@ -481,7 +483,7 @@ public final class NativeQueuePatch {
         // The retained playing endpoint may contain YouTube's original setVideoId.
         // Only our namespaced IDs refer to local entries; preserve selection otherwise.
         if (queue.select(videoId, isLocalEntry(entryId) ? entryId : null)) {
-            Utils.runOnMainThread(NativeQueuePatch::publish);
+            Utils.runOnMainThread(() -> publish(false));
             return true;
         }
         return false;
@@ -589,7 +591,7 @@ public final class NativeQueuePatch {
             if (!wasClosed) resetPlayerSession();
         } else if (wasClosed && active()) {
             // A queue may have been started from the feed before the player was visible.
-            Utils.runOnMainThreadDelayed(NativeQueuePatch::publish, 0);
+            Utils.runOnMainThreadDelayed(() -> publish(false), 0);
         }
     }
 
@@ -657,12 +659,21 @@ public final class NativeQueuePatch {
         return true;
     }
 
-    private static synchronized boolean publish() {
+    private static boolean publish() {
+        return publish(true);
+    }
+
+    /** Background updates are retained in the model until the replacement native panel binds. */
+    private static synchronized boolean publish(boolean reportUnavailable) {
         if (publishing || currentWatchResponse == null || isClosedPlayer(PlayerType.getCurrent().name())) return false;
         Object navigation = watchNavigator.get();
         Object panelController = playlistController.get();
         if (navigation == null || panelController == null) {
-            Utils.showToastShort(str("morphe_local_queue_failed"));
+            if (reportUnavailable) {
+                Logger.printInfo(() -> "Local queue update unavailable: navigator=" + (navigation != null)
+                        + ", controller=" + (panelController != null));
+                Utils.showToastShort(str("morphe_local_queue_failed"));
+            }
             return false;
         }
         publishing = true;
@@ -724,7 +735,7 @@ public final class NativeQueuePatch {
                 LocalQueue.Entry entry = queue.find(videoId);
                 if (entry == null || !entry.id().equals(entryId)) return;
                 QueueDetails.Info known = details.put(videoId, info);
-                if (queue.updateDetails(entryId, videoId, known)) publish();
+                if (queue.updateDetails(entryId, videoId, known)) publish(false);
             }
         });
     }
@@ -736,7 +747,7 @@ public final class NativeQueuePatch {
                 if (known != null && known.source().ordinal() >= QueueTitles.Source.PLAYER.ordinal()) return;
                 if (queue.updateMetadata(entryId, videoId, title)) {
                     titles.put(videoId, title, QueueTitles.Source.NETWORK);
-                    publish();
+                    publish(false);
                 }
             }
         });
