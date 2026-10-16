@@ -26,7 +26,6 @@ internal const val NATIVE_QUEUE_BRIDGE = "Lapp/morphe/extension/youtube/patches/
 val nativeQueuePatch = bytecodePatch(
     name = "Native temporary queue (experimental)",
     description = "Uses the native playlist panel for a temporary local queue. YouTube 21.20.405 only.",
-    default = false,
 ) {
     dependsOn(addToQueuePatch, playerTypeHookPatch)
     compatibleWith(Compatibility(
