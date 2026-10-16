@@ -274,7 +274,9 @@ public final class NativeQueuePatch {
                 return;
             }
             if (!LocalQueue.isVideoId(videoId)) return;
+            boolean appended = queue.find(videoId) == null;
             if (!queue.followPlayback(videoId, titleFor(videoId))) return;
+            Logger.printDebug(() -> "Local queue committed playback: " + videoId + ", appended=" + appended);
             queue.updateDetails(videoId, details.get(videoId));
             QueueMetadata.fetch(videoId);
             setResponsePanel(watchResponse, renderer());
@@ -417,6 +419,8 @@ public final class NativeQueuePatch {
 
     /** Manual controls must use the queue navigator, not a stale watch-response override. */
     public static synchronized boolean onManualNavigation(Object transport, boolean next) {
+        Logger.printDebug(() -> "Local queue player " + (next ? "next" : "previous")
+                + " requested, active=" + active() + ", registered=" + overlayTransports.contains(transport));
         if (!ownsTransport(transport)) return false;
         if (QueueEditScope.active()) return true;
         Object navigation = localNavigation();
@@ -437,6 +441,23 @@ public final class NativeQueuePatch {
         }
         // At a queue boundary, do not fall through to an unrelated recommendation.
         return true;
+    }
+
+    /** Observe the descriptor immediately before the native player loads it. */
+    public static synchronized void onManualNavigationTarget(Object descriptor, boolean next) {
+        try {
+            Logger.printDebug(() -> {
+                String videoId = descriptorVideo(descriptor);
+                LocalQueue.Snapshot snapshot = queue.snapshot();
+                LocalQueue.Entry current = snapshot.current();
+                return "Local queue player " + (next ? "next" : "previous")
+                        + " target=" + videoId + ", queued=" + (queue.find(videoId) != null)
+                        + ", current=" + (current == null ? "" : current.videoId())
+                        + ", selected=" + snapshot.selected() + ", size=" + snapshot.entries().size();
+            });
+        } catch (Exception ex) {
+            Logger.printDebug(() -> "Local queue navigation target trace unavailable", ex);
+        }
     }
 
     private static void refreshTransportControls() {
@@ -598,7 +619,11 @@ public final class NativeQueuePatch {
         if (type == null) return;
         boolean wasClosed = isClosedPlayer(PlayerType.getCurrent().name());
         if (isClosedPlayer(type.name())) {
-            if (!wasClosed) resetPlayerSession();
+            if (!wasClosed) {
+                Logger.printDebug(() -> "Local queue player session reset: " + PlayerType.getCurrent().name()
+                        + " -> " + type.name());
+                resetPlayerSession();
+            }
         } else if (wasClosed && active()) {
             // A queue may have been started from the feed before the player was visible.
             Utils.runOnMainThreadDelayed(NativeQueuePatch::publish, 0);
