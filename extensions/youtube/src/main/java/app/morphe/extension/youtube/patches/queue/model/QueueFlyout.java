@@ -15,6 +15,11 @@ public final class QueueFlyout {
     private record Added(WeakReference<Object> panel, String video, boolean next, boolean last) {}
     private final ArrayList<Added> menus = new ArrayList<>();
 
+    /** The player's own video cannot be added again; feed menu behavior is unchanged. */
+    public static boolean canAdd(boolean playerMenu, boolean alreadyQueued) {
+        return !playerMenu || !alreadyQueued;
+    }
+
     public synchronized void remember(Object panel, String video, boolean next, boolean last) {
         menus.removeIf(menu -> menu.panel().get() == null || menu.panel().get() == panel);
         if (panel != null && (next || last)) {

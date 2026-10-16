@@ -107,6 +107,36 @@ fun main(arguments: Array<String>) {
             fun references(owner: String, name: String) = mutableClassDefBy(owner).methods
                 .single { it.name == name }.implementation!!.instructions
                 .filterIsInstance<ReferenceInstruction>().map { it.reference.toString() }
+            val fullscreenBind = mutableClassDefBy("Lmvj;").methods.single { it.name == "a" }
+                .implementation!!.instructions.toList()
+            val fullscreenHook = fullscreenBind.indexOfFirst {
+                (it as? ReferenceInstruction)?.reference.toString() ==
+                    "$runtimeType->onFullscreenControlsBound(Landroid/view/ViewGroup;)V"
+            }
+            check(fullscreenHook > 0 && fullscreenBind[fullscreenHook - 1].opcode == Opcode.CHECK_CAST &&
+                (fullscreenBind[fullscreenHook - 1] as ReferenceInstruction).reference.toString() ==
+                    "Landroid/view/ViewGroup;" &&
+                fullscreenBind.take(fullscreenHook).filterIsInstance<WideLiteralInstruction>()
+                    .any { it.wideLiteral == 0x7f0b104cL }) {
+                "Bind the fullscreen entry only at the native quick-actions container"
+            }
+            check(runtimeReferences("onFullscreenControlsBound").any { it.contains("->isPatchIncluded(") } &&
+                runtimeReferences("onFullscreenControlsBound").any { it.contains("QueueFullscreenButton;->bind(") })
+            val fullscreenType = "Lapp/morphe/extension/youtube/patches/queue/QueueFullscreenButton;"
+            check(references(fullscreenType, "onClick").any { it.contains("NativeQueuePatch;->showQueue(") } &&
+                references(fullscreenType, "update").let { calls ->
+                    listOf("Settings;->HIDE_QUICK_ACTIONS:", "Settings;->HIDE_QUICK_ACTIONS_PLAYLIST_BUTTON:")
+                        .all { setting -> calls.any { it.contains(setting) } }
+                }) { "Fullscreen entry must open the native queue and respect existing hide settings" }
+            for (method in listOf("refreshQueuePlayback", "resetPlayerSession", "clear", "onResponse")) {
+                check(runtimeReferences(method).any { it.contains("->refreshFullscreenButton(") }) {
+                    "Fullscreen entry must update when the queue changes or gives way to an account playlist"
+                }
+            }
+            check(runtimeReferences("addFlyoutButtons").let { calls ->
+                calls.any { it.contains("PlayerFlyoutMenuComponentsFilter;->getTopFlyoutMenuVisible(") } &&
+                    calls.any { it.contains("QueueFlyout;->canAdd(") }
+            }) { "Player settings must omit redundant additions without changing feed menu eligibility" }
             val queueMenu = references("Lapp/morphe/extension/youtube/patches/AddToQueuePatch;", "addFlyoutButton")
             val playlistGuard = queueMenu.indexOfFirst { it.contains("FlyoutUtils;->getFlyoutPlaylistId(") }
             val nativeMenu = queueMenu.indexOfFirst { it.contains("NativeQueuePatch;->addFlyoutButtons(") }

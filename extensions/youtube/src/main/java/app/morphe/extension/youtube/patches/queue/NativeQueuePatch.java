@@ -39,6 +39,7 @@ import app.morphe.extension.youtube.patches.queue.model.QueueEditScope;
 import app.morphe.extension.youtube.patches.queue.model.QueuePanels;
 import app.morphe.extension.youtube.patches.queue.model.QueueFlyout;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
+import app.morphe.extension.youtube.patches.components.PlayerFlyoutMenuComponentsFilter;
 import app.morphe.extension.youtube.patches.utils.ProtoNode;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
 import app.morphe.extension.youtube.settings.Settings;
@@ -82,6 +83,19 @@ public final class NativeQueuePatch {
     }
 
     private static boolean active() { return !queue.isEmpty(); }
+
+    public static void onFullscreenControlsBound(ViewGroup actions) {
+        if (!isPatchIncluded()) return;
+        try {
+            QueueFullscreenButton.bind(actions, active());
+        } catch (Exception ex) {
+            Logger.printException(() -> "Local queue fullscreen button unavailable", ex);
+        }
+    }
+
+    private static void refreshFullscreenButton() {
+        Utils.runOnMainThread(() -> QueueFullscreenButton.refresh(active()));
+    }
 
     public static QueueTitles.Title titleFor(String video) { return titles.get(video); }
 
@@ -247,6 +261,7 @@ public final class NativeQueuePatch {
                 // An explicitly opened account playlist retains its native ownership.
                 queue.clear();
                 restoreNavigation();
+                refreshFullscreenButton();
                 return;
             }
             if (video == null || !video.matches("[A-Za-z0-9_-]{11}")) return;
@@ -358,6 +373,7 @@ public final class NativeQueuePatch {
     }
 
     private static synchronized void refreshQueuePlayback() {
+        refreshFullscreenButton();
         if (!active() || isClosedPlayer(PlayerType.getCurrent().name())) return;
         try {
             QueueEditScope.run(NativeQueuePatch::applyPlaybackModes);
@@ -582,6 +598,7 @@ public final class NativeQueuePatch {
 
     private static synchronized void resetPlayerSession() {
         queue.clear();
+        refreshFullscreenButton();
         try {
             restoreNavigation();
             if (response != null && owns(responsePanel(response))) {
@@ -611,6 +628,7 @@ public final class NativeQueuePatch {
 
     public static synchronized void clear() {
         queue.clear();
+        refreshFullscreenButton();
         restoreNavigation();
         publish();
     }
@@ -731,12 +749,14 @@ public final class NativeQueuePatch {
     public static int addFlyoutButtons(Object panel, int index, String video, Drawable icon) {
         if (!Settings.QUEUE_ADD_FLYOUT_MENU.get() || video.isEmpty()) return index;
         QueueTitles.Title title = titleFor(video);
-        int nextIndex = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_next"),
-                v -> enqueue(video, title, true), index);
+        boolean canAdd = QueueFlyout.canAdd(PlayerFlyoutMenuComponentsFilter.getTopFlyoutMenuVisible(),
+                queue.find(video) != null);
+        int nextIndex = canAdd ? FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_next"),
+                v -> enqueue(video, title, true), index) : index;
         boolean addedNext = nextIndex > index;
         if (addedNext) index = nextIndex;
-        nextIndex = FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_last"),
-                v -> enqueue(video, title, false), index);
+        nextIndex = canAdd ? FlyoutUtils.addFlyoutButton(panel, icon, str("morphe_local_queue_last"),
+                v -> enqueue(video, title, false), index) : index;
         boolean addedLast = nextIndex > index;
         if (addedLast) index = nextIndex;
         flyout.remember(panel, video, addedNext, addedLast);

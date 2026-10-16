@@ -11,6 +11,7 @@ import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patches.shared.misc.auth.AccountIdentityToStringFingerprint
+import app.morphe.patches.youtube.layout.buttons.action.QuickActionsElementSyntheticFingerprint
 import app.morphe.patches.youtube.layout.flyout.FlyoutMenuItemMessageFingerprint
 import app.morphe.patches.youtube.layout.playlistautoplay.NavigationIntentEnumFingerprint
 import app.morphe.patches.youtube.video.information.PlayerInitFingerprint
@@ -42,6 +43,10 @@ internal class NativeQueueReferences(private val context: BytecodePatchContext) 
             "Native queue: expected one $role, found ${matches.size}"
         )
     }
+
+    val fullscreenControlsBind = QuickActionsElementSyntheticFingerprint.sourceMethod
+    val fullscreenActionsId = (QuickActionsElementSyntheticFingerprint.matches.first().instruction
+            as WideLiteralInstruction).wideLiteral
 
     private fun methods(type: String) = context.classDefByOrNull(type)?.methods?.toList().orEmpty()
     private fun method(type: String, parameters: List<String>, result: String,

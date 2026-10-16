@@ -19,6 +19,13 @@ class QueueFlyoutTest {
     private val next = "QUEUE_PLAY_NEXT"
     private val last = "QUEUE_PLAY_LAST"
 
+    @Test fun `player settings omit redundant additions but can still start a queue`() {
+        assertFalse(QueueFlyout.canAdd(true, true))
+        assertTrue(QueueFlyout.canAdd(true, false))
+        assertTrue(QueueFlyout.canAdd(false, true))
+        assertTrue(QueueFlyout.canAdd(false, false))
+    }
+
     @Test fun `successful local additions replace both overridden native actions`() {
         val flyout = QueueFlyout()
         flyout.remember(panel, video, true, true)
