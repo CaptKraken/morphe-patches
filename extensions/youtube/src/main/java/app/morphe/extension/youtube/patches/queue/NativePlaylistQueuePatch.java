@@ -149,6 +149,7 @@ public final class NativePlaylistQueuePatch {
             if (queue == null) originalModel = controller.patch_getModel();
             if (publish(controller, candidate.playNext(videoId), true)) {
                 FlyoutUtils.dismissFlyout();
+                Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
                 controller.patch_openPanel();
             }
         } catch (Exception exception) {
