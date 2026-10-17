@@ -1,36 +1,38 @@
-# Native playlist queue — step 1, fix 3
+# Native playlist queue — step 2
 
-[Download the Android patch bundle](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step1-fix3.mpp)
+[Download the Android patch bundle](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step2.mpp)
 
-Source: [063fb067d](https://github.com/CaptKraken/morphe-patches/tree/063fb067df785bc8c813f1ec3b65bdf90d13a678)
+Source: [6f49c25ce](https://github.com/CaptKraken/morphe-patches/tree/6f49c25ce8b8293cf73d74df6dea8f1bac2c119e)
 
-Replace the previous local MPP source in Morphe Manager with this file. Patch an **untouched YouTube 21.20.405 APK**. **Native playlist queue is selected by default** in this test bundle. Use patches from this source only to avoid mixing full Morphe bundles.
+Replace the previous local MPP source in Morphe Manager with this file. Patch an **untouched YouTube 21.20.405 APK**. **Native playlist queue is selected by default**. Use patches from this source only to avoid mixing full Morphe bundles.
 
-## Changes in this build
+## Changes
 
-**Play next in native queue** dismisses the menu and shows the existing localized **Added to queue** toast without explicitly expanding the playlist panel. Open the queue yourself from YouTube's native collapsed playlist entry when ready. The unused open-panel bridge was removed; all playlist rendering remains native.
+Queue rows reuse titles and formatted metadata already loaded in YouTube's video cards. The patch reads those models through the project's shared element hook and returns their bytes unchanged. It does not make additional queue-metadata requests.
 
-**Native playlist queue** now has default selection enabled for repeated phone testing. Compatibility remains limited to YouTube 21.20.405.
+YouTube's existing large-thumbnail playlist rows display the title, channel and views/upload age. The channel line uses the existing player/flyout channel name when it matches the card's text exactly; otherwise the original combined text is preserved. Unindexed mix/playlist cards are excluded so their list title cannot replace a video's title. Internal title-restoration markers are removed through the existing title helper, while original-title and DeArrow hooks remain active.
 
-YouTube's [official Android queue help](https://support.google.com/youtube/answer/9546304?hl=en&co=GENIE.Platform%3DAndroid) documents queue additions without interrupting the current watch session, but does not specify panel expansion after each addition. Exact current stock Premium behavior was not reproduced here; this build follows the user's requested browsing behavior.
+Metadata depends on the native card being captured. Missing fields retain the available title/channel fallback; this preview does not fetch missing metadata. A video opened directly without a captured card can therefore lack views/age.
 
-This remains a fresh incremental rebuild from main; no code was copied from the old queue branch.
+Adding a video still shows the existing confirmation toast, preserves browsing without opening the panel, and keeps the current video playing. No code was copied from the old queue branch.
 
 ## Phone checks
 
-1. Import this MPP and check that **Native playlist queue** is included in the default patch selection.
-2. Play a regular video A outside a playlist, then minimize it or scroll to recommendations.
-3. On video B's three-dot menu, choose **Play next in native queue**. Expect the confirmation toast while browsing stays in place, with no automatic panel expansion.
-4. Return to A and manually open its native Queue entry. Expect A, B, while A continues without restarting or seeking.
-5. Close the panel, add C, and verify the same unobtrusive confirmation. Manually reopen the panel and expect A, C, B.
-6. Close/reopen the player and create a fresh queue. Existing Add to queue behavior should remain independent.
+1. Play a regular video A from the feed, outside an account playlist.
+2. On B's feed/recommendation menu, choose **Play next in native queue**. Expect the toast and no automatic expansion.
+3. Manually open Queue. Check A and B's titles, channel names, views and upload age against their native cards, with large thumbnails. A should keep playing without a restart or seek.
+4. Add C and check A, C, B order and the same metadata. Try titles/channel names in another language.
+5. Close and reopen the player, then create another queue. Existing Add to queue should remain independent. Ordinary account playlists should retain their normal behavior.
+6. If using Restore original titles or DeArrow, check those preferences still affect titles and that no internal marker is visible.
 
-This milestone includes insertion and native panel presentation only. Queued titles may be video IDs. Row playback, automatic advancement, player Next/Previous, editing, unique entries, shuffle/repeat, metadata enrichment, fullscreen access, ratings and saving are not implemented yet.
+This remains the presentation/insertion milestone. Row playback, automatic advancement, player Next/Previous, duration badges, editing, unique entries, shuffle/repeat, fullscreen access, ratings and saving are not implemented yet.
 
 ## Validation
 
-The two focused state tests, stock-APK application alongside six related patches, and Android SDK DEX/resource verification passed. The final Android build passed. A local metadata check loaded the actual MPP definition and verified default selection is true. No string resources changed. Manual confirmation of browsing preservation and Manager selection remains pending.
+Four focused queue/metadata tests passed. The full test task passed seven tests in total; five existing Jam tests were skipped because a YouTube Music APK was not supplied. The production parser also read all 20 cards from a captured native response.
 
-Source license and NOTICE are preserved. Only distribution manifest metadata differs from the build output. Earlier bundles remain here for reproduction; use the fix 3 download above.
+Stock YouTube 21.20.405 was patched and verified with Android SDK DEX/resource tools with the queue selected alongside eight related patches, and with those eight patches selected without the queue. The final Android bundle and its default-selection metadata were checked. Phone validation of the layout and metadata capture remains pending.
 
-SHA-256: `537e15d5f51cc4dde9a0a279f220fe0d0a61a68e59e650cc66c7a029679e4c44`
+LICENSE and NOTICE are preserved. Only distribution manifest metadata differs from the build output. Earlier bundles remain available for reproduction; use the step 2 download above.
+
+SHA-256: `83b99bdc17ab0731f0858d826467598d5e97daf8b0836f3c2059050210a64b5b`
