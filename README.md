@@ -1,27 +1,21 @@
-# Native playlist queue — step 2, fix 2
+# Native playlist queue — incremental phone-test builds
 
-[Download the Android patch bundle](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step2-fix2.mpp)
+Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
-Source: [e021250a4](https://github.com/CaptKraken/morphe-patches/tree/e021250a4952bd030b2f5603dae35254f159f487)
+## Step 3: complete native card information
 
-Replace the previous MPP source in Morphe Manager and patch an untouched **YouTube 21.20.405 APK**. Native playlist queue remains selected by default.
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step3-card-info.mpp) · [Source 7b2147f05](https://github.com/CaptKraken/morphe-patches/tree/7b2147f05ac0a615e12496e5a215d0d41d352249)
 
-## Change
+Native rows now include full collaborating-channel text, views/age and duration badges. Complete captured cards avoid a lookup; incomplete rows use a bounded background Android search projection with exact video-ID matching. Title policies remain effective and late completion updates only an owned active queue. Native UI is reused, with no auto-expansion. Optional missing/private/unindexed metadata retains its fallback. Ratings, row playback and removal are not included in this particular milestone.
 
-When native card capture has no title, the queue reuses the title already fetched by the existing flyout channel request. That request already asks for videoDetails, including the title, but previously kept only the channel information. The cached title is accepted only for the requested video ID. Native card titles retain priority, and the existing original-title processing still runs.
+Phone checks:
 
-This adds no request or wait. The request cache remains bounded; its original channel-info API and callers retain their behavior. The exact reported video (waZyE4Xl6bo) was checked against the existing public route and returns the expected full Starbound Extra title. Phone confirmation remains pending. If both the native card and existing request lack a title, the ID fallback remains. This fix does not add a separate fallback for missing views/age.
+1. Add waZyE4Xl6bo from Watch Later while a normal video plays; wait briefly, then confirm Starbound Extra and Starbound HFY, views/age and29:04 on the queued row.
+2. Check Home/recommendations and long channel names against the native playlist style.
+3. Close the player before a lookup completes and open an account playlist; the queue must not reopen or replace it. Confirm additions still show a toast without expanding the panel.
 
-## Phone check
+9 tests passed;5 existing Jam APK-dependent tests skipped. Stock21.20.405 patch application with9related patches and SDK DEX/resource checks passed with the queue selected and unselected. All20 captured native cards retained channel/info/duration. Exact reported-video lookup projection returned both collaborators and full metadata. Final Android MPP build/default=true check passed. Phone behavior remains unverified.
 
-Start a normal video outside an account playlist, add the same Starbound video from Watch Later, then manually expand Queue. Check its title, channel and views/age. Additions should still show the existing success toast and should not automatically expand the panel.
+SHA-256: `0116302d041841b7f10133134286fee272c74769d2663345ef48a583f31c5260`
 
-## Validation
-
-The full test task passed eight tests; five existing YouTube Music APK-dependent tests were skipped. The five queue/metadata tests passed. The existing channel route returned the exact reported video's ID, full title and channel. Code review verified a nonblocking cache read, matching response identity, preservation of native card titles and unchanged channel-info behavior. No new getter-only test or broad test framework was added.
-
-Stock YouTube 21.20.405 application and SDK DEX/resource verification passed with the queue and eight related patches. An unselected run with nine related patches, including the other channel-helper caller (Open channel of live avatar), also passed. The final Android MPP/default-selection check passed. Phone verification remains pending. Queued-row playback, player navigation, ratings, removal, repeat and shuffle remain separate future milestones.
-
-LICENSE and NOTICE are preserved. Only distribution manifest metadata differs from the build output. Earlier bundles remain available.
-
-SHA-256: `9c04bd600011953855150b3219fb64018015f82a2a6f01444b3c494b9c9cea36`
+Earlier step 1/2 bundles remain in this branch. LICENSE and NOTICE are preserved; only distribution manifest metadata differs from build output.
