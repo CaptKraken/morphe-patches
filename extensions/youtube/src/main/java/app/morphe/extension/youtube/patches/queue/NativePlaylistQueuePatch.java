@@ -11,7 +11,10 @@ import static app.morphe.extension.shared.StringRef.str;
 
 import java.lang.ref.WeakReference;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import app.morphe.extension.shared.ByteTrieSearch;
 import app.morphe.extension.shared.Logger;
@@ -31,6 +34,8 @@ public final class NativePlaylistQueuePatch {
             ByteTrieSearch.convertStringsToBytes("video_lockup_with_attachment.eml"));
     private static final Map<String, VideoMetadata> metadataCache =
             Collections.synchronizedMap(Utils.createSizeRestrictedMap(1000));
+    // Accessed only on the main thread; shared lookups may outlive the queue.
+    private static final Set<String> pendingMetadata = new HashSet<>();
 
     /** Implemented on the native playlist controller during patching. */
     public interface PlaylistController {
@@ -61,8 +66,15 @@ public final class NativePlaylistQueuePatch {
         try {
             VideoMetadata metadata = VideoMetadata.fromElement(bytes);
             if (metadata != null) {
-                metadataCache.compute(metadata.videoId(), (videoId, previous) -> previous == null
-                        ? metadata : metadata.withChannelName(previous.channelName()));
+                metadataCache.compute(metadata.videoId(), (videoId, previous) -> {
+                    if (previous == null) return metadata;
+                    if (!metadata.isComplete() && previous.isComplete()) {
+                        return new VideoMetadata(videoId, metadata.title(), previous.channelName(),
+                                previous.videoInfo(), metadata.duration().isEmpty()
+                                ? previous.duration() : metadata.duration());
+                    }
+                    return metadata.withChannelName(previous.channelName());
+                });
             }
         } catch (Exception exception) {
             Logger.printException(() -> "Could not read native queue card metadata", exception);
@@ -72,9 +84,9 @@ public final class NativePlaylistQueuePatch {
 
     private static void rememberChannel(String videoId, String title, String channelName) {
         metadataCache.compute(videoId, (id, metadata) -> {
-            if (metadata == null) return new VideoMetadata(id, title, channelName, "");
+            if (metadata == null) return new VideoMetadata(id, title, channelName, "", "");
             if (metadata.title().equals(id) && !title.equals(id)) {
-                metadata = new VideoMetadata(id, title, metadata.channelName(), metadata.videoInfo());
+                metadata = new VideoMetadata(id, title, metadata.channelName(), metadata.videoInfo(), metadata.duration());
             }
             return metadata.withChannelName(channelName);
         });
@@ -189,10 +201,44 @@ public final class NativePlaylistQueuePatch {
             if (publish(controller, candidate.playNext(videoId), true)) {
                 FlyoutUtils.dismissFlyout();
                 Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
+                completeMetadata();
             }
         } catch (Exception exception) {
             Logger.printException(() -> "Could not add video to native playlist queue", exception);
             Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+        }
+    }
+
+    private static void completeMetadata() {
+        for (PlaylistQueue.Entry entry : queue.entries()) {
+            VideoMetadata metadata = metadataCache.get(entry.videoId());
+            if (metadata != null && metadata.isComplete()) continue;
+            Locale locale = Locale.getDefault();
+            String key = entry.videoId() + ":" + locale.toLanguageTag();
+            if (!pendingMetadata.add(key)) continue;
+            String knownTitle = ChannelIdRequest.getVideoTitleIfAvailable(entry.videoId());
+            String capturedTitle = metadata == null ? entry.title() : metadata.title();
+            String searchTitle = knownTitle.isEmpty() ? capturedTitle : knownTitle;
+            Utils.runOnBackgroundThread(() -> {
+                VideoMetadata fetched = PlaylistMetadataRequest.fetch(entry.videoId(), searchTitle, locale);
+                Utils.runOnMainThread(() -> {
+                    pendingMetadata.remove(key);
+                    if (fetched == null || !Locale.getDefault().equals(locale)) return;
+                    metadataCache.compute(entry.videoId(), (videoId, previous) -> {
+                        if (previous == null || previous.title().equals(videoId)) return fetched;
+                        if (previous.isComplete()) return previous;
+                        // Preserve the captured/player title and title-patch processing.
+                        return new VideoMetadata(videoId, previous.title(), fetched.channelName(),
+                                fetched.videoInfo(), fetched.duration());
+                    });
+                    if (queue == null || queue.entries().stream()
+                            .noneMatch(item -> item.videoId().equals(entry.videoId()))) return;
+                    PlaylistController controller = readyController();
+                    if (controller != null && controller.patch_getModel() == publishedModel) {
+                        publish(controller, queue, false);
+                    }
+                });
+            });
         }
     }
 
@@ -253,7 +299,8 @@ public final class NativePlaylistQueuePatch {
                     .setThumbnails(PlaylistQueueRenderer.Thumbnails.newBuilder().addImages(image));
             if (metadata != null) {
                 video.setShortBylineText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.channelName()))
-                        .setVideoInfo(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.videoInfo()));
+                        .setVideoInfo(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.videoInfo()))
+                        .setLengthText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.duration()));
             }
             panel.addItems(PlaylistQueueRenderer.Item.newBuilder().setVideo(video));
         }

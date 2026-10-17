@@ -24,6 +24,7 @@ message Video {
     optional Text title = 1;
     optional Text short_byline_text = 2;
     optional Thumbnails thumbnails = 3;
+    optional Text length_text = 4;
     optional bool selected = 6;
     optional string video_id = 10;
     optional MainAppStyle main_app_style = 27;

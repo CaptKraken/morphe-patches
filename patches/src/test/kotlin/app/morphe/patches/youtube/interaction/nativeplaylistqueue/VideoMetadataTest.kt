@@ -8,6 +8,7 @@
 package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 
 import com.google.protobuf.GeneratedMessageLite
+import org.json.JSONObject
 import java.io.File
 import java.lang.reflect.Method
 import java.net.URLClassLoader
@@ -18,7 +19,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class VideoMetadataTest {
-    private class Parser(private val method: Method) {
+    private class Parser(private val method: Method, private val searchMethod: Method) {
         operator fun invoke(
             url: String,
             title: String,
@@ -28,6 +29,9 @@ class VideoMetadataTest {
             description: String = ""
         ): List<String>? = (method.invoke(null, url, title, info, channel, avatarLabel, description) as Array<*>?)
             ?.map { it as String }
+
+        fun search(json: String, videoId: String): List<String>? =
+            (searchMethod.invoke(null, json, videoId) as Array<*>?)?.map { it as String }
     }
 
     private fun withParser(block: (Parser) -> Unit) {
@@ -38,6 +42,7 @@ class VideoMetadataTest {
             "extensions/youtube/build/generated/java/generateReleaseProto/java/app/morphe/extension/youtube/innertube/queue/QueueCardRenderer.java")
         val output = createTempDirectory("playlist-queue-metadata").toFile()
         val protobufLibrary = File(GeneratedMessageLite::class.java.protectionDomain.codeSource.location.toURI())
+        val jsonLibrary = File(JSONObject::class.java.protectionDomain.codeSource.location.toURI())
         val fixture = File(output, "MetadataFixture.java").apply {
             writeText("""
                 package app.morphe.extension.youtube.patches.queue;
@@ -64,23 +69,50 @@ class VideoMetadataTest {
                         parsed = parsed.withChannelName(channel);
                         return new String[]{parsed.videoId(), parsed.title(), parsed.channelName(), parsed.videoInfo()};
                     }
+                    public static String[] search(String json, String videoId) throws Exception {
+                        var parsed = VideoMetadata.fromSearch(new org.json.JSONObject(json), videoId);
+                        if (parsed == null) return null;
+                        return new String[]{parsed.title(), parsed.channelName(), parsed.videoInfo(), parsed.duration()};
+                    }
                 }
             """.trimIndent())
         }
         try {
             assertEquals(0, ToolProvider.getSystemJavaCompiler().run(
-                null, null, null, "--release", "17", "-classpath", protobufLibrary.path,
+                null, null, null, "--release", "17", "-classpath", protobufLibrary.path + File.pathSeparator + jsonLibrary.path,
                 "-d", output.path, File(sources, "PlaylistQueue.java").path,
                 File(sources, "VideoMetadata.java").path, generated.path, fixture.path
             ))
             URLClassLoader(arrayOf(output.toURI().toURL()), GeneratedMessageLite::class.java.classLoader).use { loader ->
                 val parse = loader.loadClass("app.morphe.extension.youtube.patches.queue.MetadataFixture")
                     .getMethod("parse", *Array(6) { String::class.java })
-                block(Parser(parse))
+                val search = loader.loadClass("app.morphe.extension.youtube.patches.queue.MetadataFixture")
+                    .getMethod("search", String::class.java, String::class.java)
+                block(Parser(parse, search))
             }
         } finally {
             output.deleteRecursively()
         }
+    }
+
+    @Test
+    fun `lookup preserves collaborating channels and localized details only for the requested video`() = withParser { parse ->
+        val response = """
+            {"contents":{"sectionListRenderer":{"contents":[{"itemSectionRenderer":{"contents":[
+                {"compactVideoRenderer":{"videoId":"other_video","title":{"runs":[{"text":"Wrong result"}]}}},
+                {"compactVideoRenderer":{"videoId":"waZyE4Xl6bo",
+                    "title":{"runs":[{"text":"A native title"}]},
+                    "longBylineText":{"runs":[{"text":"Starbound Extra"},{"text":" and "},{"text":"Starbound HFY"}]},
+                    "shortBylineText":{"runs":[{"text":"Starbound Extra"}]},
+                    "shortViewCountText":{"runs":[{"text":"1,8 M de vues"}]},
+                    "publishedTimeText":{"runs":[{"text":"il y a 2 ans"}]},
+                    "lengthText":{"runs":[{"text":"29:04"}]}}}
+            ]}}]}}}
+        """.trimIndent()
+        assertEquals(listOf("A native title", "Starbound Extra and Starbound HFY", "1,8 M de vues · il y a 2 ans", "29:04"),
+            parse.search(response, "waZyE4Xl6bo"))
+        assertNull(parse.search(response, "abcdefghijk"))
+        assertNull(parse.search("{}", "waZyE4Xl6bo"))
     }
 
     @Test

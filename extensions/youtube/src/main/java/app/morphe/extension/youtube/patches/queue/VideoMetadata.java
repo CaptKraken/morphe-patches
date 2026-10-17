@@ -9,13 +9,15 @@ package app.morphe.extension.youtube.patches.queue;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
 
 import app.morphe.extension.youtube.innertube.queue.QueueCardRenderer;
 
-/** Display text captured from a single native card, without another network request. */
-record VideoMetadata(String videoId, String title, String channelName, String videoInfo) {
+/** Server-formatted display text for a native playlist row. */
+record VideoMetadata(String videoId, String title, String channelName, String videoInfo, String duration) {
     private static final String WATCH_URL_PREFIX = "https://www.youtube.com/watch?v=";
     private static final String METADATA_SEPARATOR = " · ";
 
@@ -44,8 +46,59 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
             }
             if (!parts.isEmpty()) rows.add(String.join(METADATA_SEPARATOR, parts));
         }
-        VideoMetadata result = new VideoMetadata(videoId, title, "", String.join("\n", rows));
+        VideoMetadata result = new VideoMetadata(videoId, title, "", String.join("\n", rows),
+                video.getThumbnail().getTimestampText());
         return result.withChannelLabel(video.getAvatar().getAccessibilityText(), card.getAccessibilityText());
+    }
+
+    /** Native search cards provide the full byline, including collaborating channels. */
+    static VideoMetadata fromSearch(JSONObject response, String videoId) {
+        JSONObject contents = response.optJSONObject("contents");
+        JSONObject sections = contents == null ? null : contents.optJSONObject("sectionListRenderer");
+        var sectionItems = sections == null ? null : sections.optJSONArray("contents");
+        if (sectionItems == null) return null;
+        for (int sectionIndex = 0; sectionIndex < sectionItems.length(); sectionIndex++) {
+            JSONObject section = sectionItems.optJSONObject(sectionIndex);
+            JSONObject itemSection = section == null ? null : section.optJSONObject("itemSectionRenderer");
+            var items = itemSection == null ? null : itemSection.optJSONArray("contents");
+            if (items == null) continue;
+            for (int index = 0; index < items.length(); index++) {
+                JSONObject item = items.optJSONObject(index);
+                JSONObject video = item == null ? null : item.optJSONObject("compactVideoRenderer");
+                if (video == null || !videoId.equals(video.optString("videoId"))) continue;
+                String title = text(video.optJSONObject("title"));
+                String channel = text(video.optJSONObject("longBylineText"));
+                if (channel.isEmpty()) channel = text(video.optJSONObject("shortBylineText"));
+                if (title.isEmpty() || channel.isEmpty()) continue;
+                List<String> info = new ArrayList<>();
+                String views = text(video.optJSONObject("shortViewCountText"));
+                String age = text(video.optJSONObject("publishedTimeText"));
+                if (!views.isEmpty()) info.add(views);
+                if (!age.isEmpty()) info.add(age);
+                return new VideoMetadata(videoId, title, channel, String.join(METADATA_SEPARATOR, info),
+                        text(video.optJSONObject("lengthText")));
+            }
+        }
+        return null;
+    }
+
+    private static String text(JSONObject text) {
+        if (text == null) return "";
+        String simple = text.optString("simpleText", "");
+        if (!simple.isEmpty()) return simple;
+        var runs = text.optJSONArray("runs");
+        StringBuilder result = new StringBuilder();
+        if (runs != null) {
+            for (int index = 0; index < runs.length(); index++) {
+                JSONObject run = runs.optJSONObject(index);
+                if (run != null) result.append(run.optString("text", ""));
+            }
+        }
+        return result.toString();
+    }
+
+    boolean isComplete() {
+        return !title.isEmpty() && !title.equals(videoId) && !channelName.isEmpty() && !videoInfo.isEmpty();
     }
 
     private VideoMetadata withChannelLabel(String avatarLabel, String description) {
@@ -70,14 +123,14 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     VideoMetadata withChannelName(String name) {
         if (name.isEmpty() || name.equals(channelName)) return this;
         if (videoInfo.isEmpty() || videoInfo.equals(name)) {
-            return new VideoMetadata(videoId, title, name, "");
+            return new VideoMetadata(videoId, title, name, "", duration);
         }
         // Cards may combine the channel, views and age into one text. Split only an
         // exact known channel prefix; channel names themselves can contain separators.
         for (String separator : List.of(METADATA_SEPARATOR, "\n")) {
             String prefix = name + separator;
             if (videoInfo.startsWith(prefix)) {
-                return new VideoMetadata(videoId, title, name, videoInfo.substring(prefix.length()));
+                return new VideoMetadata(videoId, title, name, videoInfo.substring(prefix.length()), duration);
             }
         }
         return this;

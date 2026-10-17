@@ -33,9 +33,14 @@ message VideoWithContextData {
 }
 
 message VideoData {
+    optional CardThumbnail thumbnail = 1;
     optional Avatar avatar = 3;
     optional string drag_and_drop_url = 6;
     optional LockupMetadata lockup_metadata = 21;
+}
+
+message CardThumbnail {
+    optional string timestamp_text = 2;
 }
 
 message Avatar {
