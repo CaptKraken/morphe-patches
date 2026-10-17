@@ -46,18 +46,18 @@ public final class NativePlaylistQueuePatch {
         return false; // Modified during patching.
     }
 
-    /** Injection point, after the native stale-model checks and accepted-model assignment. */
-    public static void onModelAccepted(PlaylistController controller) {
+    /** Injection point, after a native model acceptance or completed video transition. */
+    public static void onControllerUpdated(PlaylistController controller) {
         Utils.runOnMainThreadNowOrLater(() -> {
             try {
-                acceptModel(controller);
+                updateController(controller);
             } catch (Exception exception) {
-                Logger.printException(() -> "Could not observe native playlist model", exception);
+                Logger.printException(() -> "Could not observe native playlist controller", exception);
             }
         });
     }
 
-    private static void acceptModel(PlaylistController controller) {
+    private static void updateController(PlaylistController controller) {
         if (!observingPlayer) {
             observingPlayer = true;
             PlayerType.getOnChange().addObserver(type -> {
@@ -71,7 +71,7 @@ public final class NativePlaylistQueuePatch {
         }
         // A queued callback may arrive after our synchronous update has returned. Never
         // treat our own accepted model as a new native baseline or publish it again.
-        if (publishing || controller.patch_getModel() == publishedModel) return;
+        if (publishing || (publishedModel != null && controller.patch_getModel() == publishedModel)) return;
 
         PlaylistController previous = controllerRef.get();
         if (queue != null && previous != controller) {
@@ -81,7 +81,7 @@ public final class NativePlaylistQueuePatch {
         controllerRef = new WeakReference<>(controller);
         if (queue == null) return;
 
-        // An accepted native update is presentation input, never a new queue selection.
+        // Native controller updates are presentation input, never a new queue selection.
         if (!controller.patch_getVideoId().equals(queue.entries().getFirst().videoId())
                 || hasPlaylist(controller)) {
             queue = null;
@@ -140,7 +140,7 @@ public final class NativePlaylistQueuePatch {
         try {
             PlaylistController controller = readyController();
             if (controller == null) {
-                Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+                Utils.showToastShort(str("morphe_native_playlist_queue_not_ready"));
                 return;
             }
             PlaylistQueue candidate = queue == null
@@ -184,7 +184,8 @@ public final class NativePlaylistQueuePatch {
         queue = null;
         originalModel = null;
         publishedModel = null;
-        if (controller != null && expectedModel != null && restoreModel != null) {
+        // A null baseline is valid when YouTube had no playlist before our display.
+        if (controller != null && expectedModel != null) {
             try {
                 controller.patch_restorePanel(expectedModel, restoreModel);
             } catch (Exception exception) {

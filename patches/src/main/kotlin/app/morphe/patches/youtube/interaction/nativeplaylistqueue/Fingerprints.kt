@@ -29,11 +29,33 @@ internal object PlaylistControllerConstructorFingerprint : Fingerprint(
     filters = listOf(string("engagement-panel-playlist"))
 )
 
-internal fun acceptedPlaylistModelFingerprint(controllerType: String, modelField: FieldReference) = Fingerprint(
+internal fun acceptedPlaylistModelFingerprint(
+    controllerType: String,
+    modelField: FieldReference,
+    responseVideoField: FieldReference
+) = Fingerprint(
     definingClass = controllerType,
     returnType = "V",
     parameters = listOf(modelField.type),
-    filters = listOf(fieldAccess(reference = modelField, opcode = Opcode.IPUT_OBJECT))
+    filters = listOf(
+        fieldAccess(reference = responseVideoField, opcode = Opcode.IGET_OBJECT),
+        methodCall("Landroid/text/TextUtils;->isEmpty(Ljava/lang/CharSequence;)Z",
+            location = MatchAfterImmediately()),
+        // The response's optional video ID is checked against the active video's ID.
+        fieldAccess(definingClass = controllerType, type = "Ljava/lang/String;",
+            opcode = Opcode.IGET_OBJECT, location = MatchAfterWithin(2)),
+        methodCall("Ljava/lang/String;->length()I", location = MatchAfterWithin(1)),
+        methodCall("Ljava/lang/String;->equals(Ljava/lang/Object;)Z", location = MatchAfterWithin(2)),
+        fieldAccess(reference = modelField, opcode = Opcode.IPUT_OBJECT)
+    )
+)
+
+/** The active video transition can complete without any playlist model being accepted. */
+internal fun playlistVideoTransitionFingerprint(activeVideoField: FieldReference) = Fingerprint(
+    definingClass = activeVideoField.definingClass,
+    returnType = "V",
+    parameters = List(3) { "Ljava/lang/String;" },
+    filters = listOf(fieldAccess(reference = activeVideoField, opcode = Opcode.IPUT_OBJECT))
 )
 
 /** Finds the native model renderer for restoration; no visibility branch is overridden. */

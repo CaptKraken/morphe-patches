@@ -10,10 +10,14 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
+import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
+import app.morphe.util.addInstructionsAtControlFlowLabel
+import app.morphe.util.cloneParameters
 import app.morphe.util.findFieldFromToString
+import app.morphe.util.findInstructionIndicesReversedOrThrow
 import app.morphe.util.getReference
 import app.morphe.util.matchSingle
 import app.morphe.util.p0Register
@@ -33,7 +37,7 @@ private const val DEFAULT_QUEUE_MODE = 1
 internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context) {
     val description = PlaylistModelDescriptionFingerprint.matchSingle().originalMethod
     val modelType = description.definingClass
-    val videoField = description.findFieldFromToString("{videoId=")
+    val responseVideoField = description.findFieldFromToString("{videoId=")
     val playlistField = description.findFieldFromToString(", playlistId=")
     val panelField = description.findFieldFromToString(", playlistPanel=")
     val navigationField = description.findFieldFromToString(", navigationSets=")
@@ -42,8 +46,15 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
     val controller = mutableClassDefBy(controllerType)
     val modelField = controller.fields.single { it.type == modelType }
     val collapsedView = controller.fields.single { it.type == "Landroid/view/View;" }
-    val accept = acceptedPlaylistModelFingerprint(controllerType, modelField).matchSingle()
+    val accept = acceptedPlaylistModelFingerprint(controllerType, modelField, responseVideoField).matchSingle()
+    val activeVideoMatch = accept.instructionMatches[2]
+    val activeVideoField = activeVideoMatch.getInstruction<TwoRegisterInstruction>()
+        .getReference<FieldReference>()!!
+    check(activeVideoMatch.getInstruction<TwoRegisterInstruction>().registerB == accept.originalMethod.p0Register) {
+        "Native playlist queue: active video must belong to the playlist controller"
+    }
     val render = playlistPanelRenderFingerprint(modelField, panelField).matchSingle()
+    val transition = playlistVideoTransitionFingerprint(activeVideoField).matchSingle()
     val panelDefault = classDefBy(panelType).fields.single {
         it.type == panelType && AccessFlags.STATIC.isSet(it.accessFlags)
     }
@@ -65,6 +76,16 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
 
     val constructor = classDefBy(modelType).methods.single {
         it.name == "<init>" && it.parameterTypes.isNotEmpty()
+    }
+    // Ordinary videos can have no playlist model at all. Use the native builder's
+    // defaults, including required tracking parameters, rather than inventing them.
+    val modelFactory = classDefBy(modelType).methods.single {
+        AccessFlags.PUBLIC.isSet(it.accessFlags) && AccessFlags.STATIC.isSet(it.accessFlags) &&
+                it.parameterTypes.isEmpty() && it.returnType.startsWith("L") && it.returnType != modelType
+    }
+    val buildModel = classDefBy(modelFactory.returnType).methods.single {
+        AccessFlags.PUBLIC.isSet(it.accessFlags) && !AccessFlags.STATIC.isSet(it.accessFlags) &&
+                it.parameterTypes.isEmpty() && it.returnType == modelType
     }
     check(constructor.parameterTypes.size == 7 && constructor.parameterTypes.none { it in listOf("J", "D") }) {
         "Native playlist queue: unexpected accepted-model constructor"
@@ -96,18 +117,25 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
     }
 
     controller.interfaces.add(CONTROLLER_INTERFACE)
-    for ((name, field) in listOf("patch_getVideoId" to videoField, "patch_getPlaylistId" to playlistField)) {
-        addBridge(name, emptyList(), "Ljava/lang/String;", 1, """
-            iget-object v0, p0, $modelField
-            if-eqz v0, :empty
-            iget-object v0, v0, $field
-            if-nez v0, :done
-            :empty
-            const-string v0, ""
-            :done
-            return-object v0
-        """)
-    }
+    // A watch response can omit its video ID. Use the native stale-response guard's
+    // active video instead of treating an optional response field as playback state.
+    addBridge("patch_getVideoId", emptyList(), "Ljava/lang/String;", 1, """
+        iget-object v0, p0, $activeVideoField
+        if-nez v0, :done
+        const-string v0, ""
+        :done
+        return-object v0
+    """)
+    addBridge("patch_getPlaylistId", emptyList(), "Ljava/lang/String;", 1, """
+        iget-object v0, p0, $modelField
+        if-eqz v0, :empty
+        iget-object v0, v0, $playlistField
+        if-nez v0, :done
+        :empty
+        const-string v0, ""
+        :done
+        return-object v0
+    """)
     addBridge("patch_getModel", emptyList(), "Ljava/lang/Object;", 1, """
         iget-object v0, p0, $modelField
         return-object v0
@@ -120,6 +148,7 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
     """)
     val copyArguments = constructorFields.mapIndexed { index, field ->
         when {
+            field == responseVideoField -> "iget-object v${index + 5}, p0, $activeVideoField"
             field == panelField -> "move-object v${index + 5}, v3"
             field == navigationField -> "const/4 v${index + 5}, 0x0"
             field.type == "I" -> "const/4 v${index + 5}, $DEFAULT_QUEUE_MODE"
@@ -128,7 +157,12 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
     }.joinToString("\n")
     addBridge("patch_updatePanel", listOf("[B"), "Ljava/lang/Object;", 13, """
         iget-object v0, p0, $modelField
-        if-eqz v0, :rejected
+        if-nez v0, :model_ready
+        invoke-static {}, $modelFactory
+        move-result-object v0
+        invoke-virtual {v0}, $buildModel
+        move-result-object v0
+        :model_ready
         sget-object v1, $panelDefault
         invoke-static {}, Lcom/google/protobuf/ExtensionRegistryLite;->getGeneratedRegistry()Lcom/google/protobuf/ExtensionRegistryLite;
         move-result-object v2
@@ -165,6 +199,17 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
 
     // Preserve every native rejection before this assignment. In particular, a stale model
     // must not claim the current controller or overwrite our local insertion state.
-    accept.method.addInstruction(accept.instructionMatches.single().index + 1,
-        "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onModelAccepted($CONTROLLER_INTERFACE)V")
+    accept.method.addInstruction(accept.instructionMatches.last().index + 1,
+        "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onControllerUpdated($CONTROLLER_INTERFACE)V")
+
+    // Observe completed transitions, including native early returns that leave no model.
+    // Do not publish between the native assignments of its video/playlist identity fields.
+    // The native transition reuses p0 as a local on some exits. Preserve the
+    // original receiver before adding callbacks at those returns.
+    transition.method.cloneParameters(controller).apply {
+        findInstructionIndicesReversedOrThrow(Opcode.RETURN_VOID).forEach { index ->
+            addInstructionsAtControlFlowLabel(index,
+                "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onControllerUpdated($CONTROLLER_INTERFACE)V")
+        }
+    }
 }
