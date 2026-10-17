@@ -22,6 +22,7 @@ import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
+import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
 import app.morphe.extension.youtube.shared.PlayerType;
 
 @SuppressWarnings("unused")
@@ -179,7 +180,8 @@ public final class NativePlaylistQueuePatch {
             }
             rememberChannel(controller.patch_getVideoId(),
                     VideoInformation.getVideoTitle(), VideoInformation.getChannelName());
-            rememberChannel(videoId, videoId, channelName);
+            String title = ChannelIdRequest.getVideoTitleIfAvailable(videoId);
+            rememberChannel(videoId, title.isEmpty() ? videoId : title, channelName);
             PlaylistQueue candidate = queue == null
                     ? new PlaylistQueue(controller.patch_getVideoId(), VideoInformation.getVideoTitle())
                     : queue;
