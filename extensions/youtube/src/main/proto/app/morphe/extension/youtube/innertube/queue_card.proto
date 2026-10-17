@@ -29,11 +29,17 @@ message VideoWithContextModel {
 
 message VideoWithContextData {
     optional VideoData video_data = 1;
+    optional string accessibility_text = 2;
 }
 
 message VideoData {
+    optional Avatar avatar = 3;
     optional string drag_and_drop_url = 6;
     optional LockupMetadata lockup_metadata = 21;
+}
+
+message Avatar {
+    optional string accessibility_text = 3;
 }
 
 message LockupMetadata {

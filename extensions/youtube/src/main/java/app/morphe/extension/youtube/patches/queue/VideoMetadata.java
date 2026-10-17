@@ -22,7 +22,8 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     static VideoMetadata fromElement(byte[] bytes) throws InvalidProtocolBufferException {
         var model = QueueCardRenderer.Element.parseFrom(bytes).getType().getComponentType().getModel();
         if (!model.hasVideoWithContextModel()) return null;
-        var video = model.getVideoWithContextModel().getVideoWithContextData().getVideoData();
+        var card = model.getVideoWithContextModel().getVideoWithContextData();
+        var video = card.getVideoData();
         String url = video.getDragAndDropUrl();
         if (!url.startsWith(WATCH_URL_PREFIX)) return null;
         // A mix/playlist card can link its first video but show the list's title.
@@ -43,7 +44,27 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
             }
             if (!parts.isEmpty()) rows.add(String.join(METADATA_SEPARATOR, parts));
         }
-        return new VideoMetadata(videoId, title, "", String.join("\n", rows));
+        VideoMetadata result = new VideoMetadata(videoId, title, "", String.join("\n", rows));
+        return result.withChannelLabel(video.getAvatar().getAccessibilityText(), card.getAccessibilityText());
+    }
+
+    private VideoMetadata withChannelLabel(String avatarLabel, String description) {
+        if (avatarLabel.isEmpty() && description.isEmpty()) return this;
+        // The avatar label names this card's channel. Confirm the longest metadata
+        // prefix at its end, or a complete segment of the card's accessibility text.
+        // Neither path parses localized words such as "Go to channel" or "views".
+        // Work backwards so separators inside a channel name remain part of the name.
+        String name = "";
+        for (String separator : List.of(METADATA_SEPARATOR, "\n")) {
+            int boundary = videoInfo.lastIndexOf(separator);
+            while (boundary > 0) {
+                String candidate = videoInfo.substring(0, boundary);
+                if (candidate.length() > name.length() && (avatarLabel.endsWith(candidate)
+                        || description.contains(" - " + candidate + " - "))) name = candidate;
+                boundary = videoInfo.lastIndexOf(separator, boundary - 1);
+            }
+        }
+        return withChannelName(name);
     }
 
     VideoMetadata withChannelName(String name) {

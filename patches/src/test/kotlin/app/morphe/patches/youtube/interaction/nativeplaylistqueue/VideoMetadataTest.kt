@@ -9,6 +9,7 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 
 import com.google.protobuf.GeneratedMessageLite
 import java.io.File
+import java.lang.reflect.Method
 import java.net.URLClassLoader
 import javax.tools.ToolProvider
 import kotlin.io.path.createTempDirectory
@@ -17,7 +18,19 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class VideoMetadataTest {
-    private fun withParser(block: ((String, String, String, String) -> List<String>?) -> Unit) {
+    private class Parser(private val method: Method) {
+        operator fun invoke(
+            url: String,
+            title: String,
+            info: String = "",
+            channel: String = "",
+            avatarLabel: String = "",
+            description: String = ""
+        ): List<String>? = (method.invoke(null, url, title, info, channel, avatarLabel, description) as Array<*>?)
+            ?.map { it as String }
+    }
+
+    private fun withParser(block: (Parser) -> Unit) {
         val root = generateSequence(File("").absoluteFile) { it.parentFile }
             .first { File(it, "extensions/youtube/src/main/proto").isDirectory }
         val sources = File(root, "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue")
@@ -33,15 +46,17 @@ class VideoMetadataTest {
                     private static AttributedText text(String content) {
                         return AttributedText.newBuilder().setContent(content).build();
                     }
-                    public static String[] parse(String url, String title, String info, String channel) throws Exception {
+                    public static String[] parse(String url, String title, String info,
+                            String channel, String label, String description) throws Exception {
                         var row = MetadataRow.newBuilder().addMetadataParts(MetadataPart.newBuilder().setText(text(info)));
                         var metadata = LockupMetadataViewModel.newBuilder().setTitle(text(title)).setMetadata(
                             ContentMetadata.newBuilder().setContentMetadataViewModel(
                                 ContentMetadataViewModel.newBuilder().addMetadataRows(row)));
-                        var video = VideoData.newBuilder().setDragAndDropUrl(url).setLockupMetadata(
-                            LockupMetadata.newBuilder().setLockupMetadataViewModel(metadata));
+                        var video = VideoData.newBuilder().setAvatar(Avatar.newBuilder().setAccessibilityText(label))
+                            .setDragAndDropUrl(url).setLockupMetadata(
+                                LockupMetadata.newBuilder().setLockupMetadataViewModel(metadata));
                         var contextual = VideoWithContextModel.newBuilder().setVideoWithContextData(
-                            VideoWithContextData.newBuilder().setVideoData(video));
+                            VideoWithContextData.newBuilder().setVideoData(video).setAccessibilityText(description));
                         var element = Element.newBuilder().setType(ElementType.newBuilder().setComponentType(
                             ComponentType.newBuilder().setModel(CardModel.newBuilder().setVideoWithContextModel(contextual))));
                         var parsed = VideoMetadata.fromElement(element.build().toByteArray());
@@ -60,10 +75,8 @@ class VideoMetadataTest {
             ))
             URLClassLoader(arrayOf(output.toURI().toURL()), GeneratedMessageLite::class.java.classLoader).use { loader ->
                 val parse = loader.loadClass("app.morphe.extension.youtube.patches.queue.MetadataFixture")
-                    .getMethod("parse", *Array(4) { String::class.java })
-                block { url, title, info, channel ->
-                    (parse.invoke(null, url, title, info, channel) as Array<*>?)?.map { it as String }
-                }
+                    .getMethod("parse", *Array(6) { String::class.java })
+                block(Parser(parse))
             }
         } finally {
             output.deleteRecursively()
@@ -73,13 +86,13 @@ class VideoMetadataTest {
     @Test
     fun `metadata is accepted only with a complete native card identity and title`() = withParser { parse ->
         val url = "https://www.youtube.com/watch?v=abcdefghijk"
-        assertEquals(listOf("abcdefghijk", "A title", "", ""), parse(url, "A title", "", ""))
-        assertNull(parse("https://www.youtube.com/playlist?list=PLabcdefghijk", "A playlist", "", ""))
-        assertNull(parse("$url&list=RDabcdefghijk", "A mix", "", ""))
+        assertEquals(listOf("abcdefghijk", "A title", "", ""), parse(url, "A title"))
+        assertNull(parse("https://www.youtube.com/playlist?list=PLabcdefghijk", "A playlist"))
+        assertNull(parse("$url&list=RDabcdefghijk", "A mix"))
         assertEquals(listOf("abcdefghijk", "A video in a playlist", "", ""),
-            parse("$url&list=PLabcdefghijk&index=2", "A video in a playlist", "", ""))
-        assertNull(parse("https://www.youtube.com/watch?v=invalid", "A title", "", ""))
-        assertNull(parse(url, "", "", ""))
+            parse("$url&list=PLabcdefghijk&index=2", "A video in a playlist"))
+        assertNull(parse("https://www.youtube.com/watch?v=invalid", "A title"))
+        assertNull(parse(url, ""))
     }
 
     @Test
@@ -88,8 +101,25 @@ class VideoMetadataTest {
         val channel = "La chaîne · 🎵"
         val info = "1,8 M de vues · il y a 2 ans"
         assertEquals(listOf("abcdefghijk", "Une vidéo 🎵", channel, info),
-            parse(url, "Une vidéo 🎵", "$channel · $info", channel))
+            parse(url, "Une vidéo 🎵", "$channel · $info", channel = channel))
         assertEquals(listOf("abcdefghijk", "Une vidéo 🎵", "", "$channel · $info"),
-            parse(url, "Une vidéo 🎵", "$channel · $info", "Another channel"))
+            parse(url, "Une vidéo 🎵", "$channel · $info", channel = "Another channel"))
+    }
+
+    @Test
+    fun `native accessibility text identifies a long channel without flyout metadata`() = withParser { parse ->
+        val url = "https://www.youtube.com/watch?v=abcdefghijk"
+        val channel = "Starbound Extra and Starbound HFY"
+        val info = "157 views · 46 minutes ago"
+        assertEquals(listOf("abcdefghijk", "We Sent Earth Our Mightiest Weapons", channel, info),
+            parse(url, "We Sent Earth Our Mightiest Weapons", "$channel · $info",
+                avatarLabel = "Go to channel $channel"))
+        assertEquals(listOf("abcdefghijk", "A title", channel, info),
+            parse(url, "A title", "$channel · $info",
+                description = "A title - 10 minutes - $channel - 157 views - 46 minutes ago - play video"))
+        assertEquals(listOf("abcdefghijk", "A title", "Stars · HFY", info),
+            parse(url, "A title", "Stars · HFY · $info", avatarLabel = "Accéder à la chaîne Stars · HFY"))
+        assertEquals(listOf("abcdefghijk", "A title", "", "$channel · $info"),
+            parse(url, "A title", "$channel · $info", avatarLabel = "Go to channel Another channel"))
     }
 }
