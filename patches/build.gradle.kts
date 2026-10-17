@@ -40,6 +40,10 @@ tasks {
     test {
         useJUnitPlatform()
         jamApk.orNull?.let { systemProperty("jamApk", it) }
+        // The focused state tests compile this Android-free extension source directly.
+        inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/PlaylistQueue.java"
+        )).withPropertyName("playlistQueueStateSource")
     }
 
     register<JavaExec>("checkStringResources") {
@@ -72,6 +76,21 @@ tasks {
             val apk = jamApk.orNull
                 ?: throw GradleException("validateJam requires -PjamApk=/absolute/path/to/ytm.apk")
             setArgs(listOfNotNull(apk, jamOutput.orNull))
+        }
+    }
+
+    register<JavaExec>("validatePlaylistQueue") {
+        description = "Applies Native playlist queue to a stock APK and verifies it with Android SDK tools"
+        group = "verification"
+        dependsOn("testClasses")
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("app.morphe.patches.youtube.interaction.nativeplaylistqueue.PlaylistQueueApkBuildKt")
+        doFirst {
+            val apk = providers.gradleProperty("playlistQueueApk").orNull
+                ?: throw GradleException("validatePlaylistQueue requires -PplaylistQueueApk=/absolute/path/youtube.apk")
+            val mode = providers.gradleProperty("playlistQueueMode").getOrElse("standalone")
+            val output = providers.gradleProperty("playlistQueueOutput").orNull
+            setArgs(listOfNotNull(apk, mode, output))
         }
     }
     // Used by gradle-semantic-release-plugin.

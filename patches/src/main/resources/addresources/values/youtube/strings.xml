@@ -638,6 +638,11 @@ Info: May not work on live streams"</string>
     <string name="morphe_queue_manager_open_queue">Open queue</string>
     <string name="morphe_queue_manager_save_queue">Save queue to playlist</string>
 
+    <!-- interaction.nativeplaylistqueue.nativePlaylistQueuePatch -->
+    <string name="morphe_native_playlist_queue_title">Queue</string>
+    <string name="morphe_native_playlist_queue_next">Play next in native queue</string>
+    <string name="morphe_native_playlist_queue_unavailable">Could not display the queue. Open a video without a playlist and try again.</string>
+
     <!-- interaction.livering.openChannelOfLiveAvatarPatch -->
     <string name="morphe_open_channel_of_live_avatar_title">Open channel from live avatar</string>
     <string name="morphe_open_channel_of_live_avatar_summary">Prevents the live stream from opening when tapping the channel\'s avatar</string>

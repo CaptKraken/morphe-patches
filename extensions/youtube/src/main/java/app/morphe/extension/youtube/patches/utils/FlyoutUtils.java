@@ -56,6 +56,7 @@ import app.morphe.extension.youtube.patches.PictureinPictureButtonPatch;
 import app.morphe.extension.youtube.patches.SaveToWatchLaterPatch;
 import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.components.PlayerFlyoutMenuComponentsFilter;
+import app.morphe.extension.youtube.patches.queue.NativePlaylistQueuePatch;
 import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
 import app.morphe.extension.youtube.settings.Settings;
 import app.morphe.extension.youtube.shared.EngagementPanel;
@@ -528,6 +529,12 @@ public final class FlyoutUtils {
         customItemTextRefs.clear();
 
         final String flyoutVideoId = getFlyoutVideoId();
+
+        if (NativePlaylistQueuePatch.isPatchIncluded()
+                && !PlayerFlyoutMenuComponentsFilter.getTopFlyoutMenuVisible() && !isShortFlyout) {
+            nextButtonIndex = NativePlaylistQueuePatch.addFlyoutButton(
+                    flyoutPanel, nextButtonIndex, flyoutVideoId);
+        }
 
         // region to show the following buttons only for specific flyout menus.
         final String allButtonsVideoId;
