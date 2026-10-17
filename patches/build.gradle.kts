@@ -33,17 +33,23 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    testImplementation(libs.protobuf.javalite)
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.1")
 }
 
 tasks {
     test {
         useJUnitPlatform()
+        dependsOn(":extensions:youtube:generateReleaseProto")
         jamApk.orNull?.let { systemProperty("jamApk", it) }
         // The focused state tests compile this Android-free extension source directly.
         inputs.file(rootProject.file(
             "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/PlaylistQueue.java"
         )).withPropertyName("playlistQueueStateSource")
+        inputs.files(
+            rootProject.file("extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/VideoMetadata.java"),
+            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/queue_card.proto")
+        ).withPropertyName("playlistQueueMetadataSources")
     }
 
     register<JavaExec>("checkStringResources") {

@@ -22,9 +22,21 @@ message Item {
 
 message Video {
     optional Text title = 1;
+    optional Text short_byline_text = 2;
     optional Thumbnails thumbnails = 3;
     optional bool selected = 6;
     optional string video_id = 10;
+    optional MainAppStyle main_app_style = 27;
+    optional Text video_info = 31;
+}
+
+message MainAppStyle {
+    enum Style {
+        UNSPECIFIED = 0;
+        PROMINENT_THUMBNAIL = 2;
+    }
+
+    optional Style value = 1;
 }
 
 message Text {

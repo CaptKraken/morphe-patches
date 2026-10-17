@@ -10,18 +10,27 @@ package app.morphe.extension.youtube.patches.queue;
 import static app.morphe.extension.shared.StringRef.str;
 
 import java.lang.ref.WeakReference;
+import java.util.Collections;
+import java.util.Map;
 
+import app.morphe.extension.shared.ByteTrieSearch;
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.ResourceType;
 import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.shared.Utils;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.patches.VideoInformation;
+import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.shared.PlayerType;
 
 @SuppressWarnings("unused")
 public final class NativePlaylistQueuePatch {
+    private static final ByteTrieSearch CARD_COMPONENTS = new ByteTrieSearch(
+            ByteTrieSearch.convertStringsToBytes("video_lockup_with_attachment.eml"));
+    private static final Map<String, VideoMetadata> metadataCache =
+            Collections.synchronizedMap(Utils.createSizeRestrictedMap(1000));
+
     /** Implemented on the native playlist controller during patching. */
     public interface PlaylistController {
         String patch_getVideoId();
@@ -43,6 +52,31 @@ public final class NativePlaylistQueuePatch {
 
     public static boolean isPatchIncluded() {
         return false; // Modified during patching.
+    }
+
+    /** Read-only shared element hook; preserves bytes and every other patch's changes. */
+    public static byte[] onElementLoaded(byte[] bytes) {
+        if (bytes == null || !CARD_COMPONENTS.matches(bytes)) return bytes;
+        try {
+            VideoMetadata metadata = VideoMetadata.fromElement(bytes);
+            if (metadata != null) {
+                metadataCache.compute(metadata.videoId(), (videoId, previous) -> previous == null
+                        ? metadata : metadata.withChannelName(previous.channelName()));
+            }
+        } catch (Exception exception) {
+            Logger.printException(() -> "Could not read native queue card metadata", exception);
+        }
+        return bytes;
+    }
+
+    private static void rememberChannel(String videoId, String title, String channelName) {
+        metadataCache.compute(videoId, (id, metadata) -> {
+            if (metadata == null) return new VideoMetadata(id, title, channelName, "");
+            if (metadata.title().equals(id) && !title.equals(id)) {
+                metadata = new VideoMetadata(id, title, metadata.channelName(), metadata.videoInfo());
+            }
+            return metadata.withChannelName(channelName);
+        });
     }
 
     /** Injection point, after a native model acceptance or completed video transition. */
@@ -115,7 +149,8 @@ public final class NativePlaylistQueuePatch {
         int nextIndex = FlyoutUtils.addFlyoutButton(flyoutPanel,
                 iconId == 0 ? null : Utils.getContext().getDrawable(iconId),
                 str("morphe_native_playlist_queue_next"),
-                view -> playNext(videoId), index);
+                view -> playNext(videoId, videoId.equals(FlyoutUtils.getFlyoutVideoId())
+                        ? FlyoutUtils.getFlyoutChannelName() : ""), index);
         return nextIndex > index ? nextIndex : index;
     }
 
@@ -135,13 +170,16 @@ public final class NativePlaylistQueuePatch {
         return playlistId != null && !playlistId.isEmpty();
     }
 
-    private static void playNext(String videoId) {
+    private static void playNext(String videoId, String channelName) {
         try {
             PlaylistController controller = readyController();
             if (controller == null) {
                 Utils.showToastShort(str("morphe_native_playlist_queue_not_ready"));
                 return;
             }
+            rememberChannel(controller.patch_getVideoId(),
+                    VideoInformation.getVideoTitle(), VideoInformation.getChannelName());
+            rememberChannel(videoId, videoId, channelName);
             PlaylistQueue candidate = queue == null
                     ? new PlaylistQueue(controller.patch_getVideoId(), VideoInformation.getVideoTitle())
                     : queue;
@@ -199,13 +237,22 @@ public final class NativePlaylistQueuePatch {
                 .setSelectedIndex(0).setPlaylistId("").setVideoCount(source.entries().size());
         for (int index = 0; index < source.entries().size(); index++) {
             PlaylistQueue.Entry entry = source.entries().get(index);
+            VideoMetadata metadata = metadataCache.get(entry.videoId());
+            String title = metadata == null ? entry.title() : metadata.title();
             var image = PlaylistQueueRenderer.Thumbnail.newBuilder()
                     .setUrl("https://i.ytimg.com/vi/" + entry.videoId() + "/hqdefault.jpg")
                     .setWidth(480).setHeight(360);
             var video = PlaylistQueueRenderer.Video.newBuilder()
                     .setVideoId(entry.videoId()).setSelected(index == 0)
-                    .setTitle(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(entry.title()))
+                    .setTitle(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(
+                            RestoreOriginalTitlesPatch.getTitle(entry.videoId(), title)))
+                    .setMainAppStyle(PlaylistQueueRenderer.MainAppStyle.newBuilder()
+                            .setValue(PlaylistQueueRenderer.MainAppStyle.Style.PROMINENT_THUMBNAIL))
                     .setThumbnails(PlaylistQueueRenderer.Thumbnails.newBuilder().addImages(image));
+            if (metadata != null) {
+                video.setShortBylineText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.channelName()))
+                        .setVideoInfo(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.videoInfo()));
+            }
             panel.addItems(PlaylistQueueRenderer.Item.newBuilder().setVideo(video));
         }
         return panel.build().toByteArray();

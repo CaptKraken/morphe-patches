@@ -16,7 +16,9 @@ import app.morphe.patches.youtube.interaction.loop.loopVideoPatch
 import app.morphe.patches.youtube.interaction.savetowatchlater.saveToWatchLaterButtonPatch
 import app.morphe.patches.youtube.layout.buttons.action.hideVideoActionButtonsPatch
 import app.morphe.patches.youtube.layout.buttons.overlay.hidePlayerOverlayButtonsPatch
+import app.morphe.patches.youtube.layout.dearrow.deArrowPatch
 import app.morphe.patches.youtube.layout.flyout.addToQueuePatch
+import app.morphe.patches.youtube.layout.originaltitles.restoreOriginalTitlesPatch
 import app.morphe.patches.youtube.layout.playlistautoplay.disablePlaylistAutoplayPatch
 import java.io.File
 import kotlin.io.path.createTempDirectory
@@ -34,7 +36,8 @@ fun main(arguments: Array<String>) {
     val sdk = System.getenv("ANDROID_HOME") ?: error("ANDROID_HOME is required for SDK verification")
     val relatedPatches = setOf(
         addToQueuePatch, saveToWatchLaterButtonPatch, loopVideoPatch,
-        disablePlaylistAutoplayPatch, hidePlayerOverlayButtonsPatch, hideVideoActionButtonsPatch
+        disablePlaylistAutoplayPatch, hidePlayerOverlayButtonsPatch, hideVideoActionButtonsPatch,
+        restoreOriginalTitlesPatch, deArrowPatch
     )
     val selected = when (mode) {
         "standalone" -> setOf(nativePlaylistQueuePatch)
