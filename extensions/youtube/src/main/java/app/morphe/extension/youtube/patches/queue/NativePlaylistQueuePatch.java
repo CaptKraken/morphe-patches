@@ -30,7 +30,6 @@ public final class NativePlaylistQueuePatch {
         boolean patch_isAttached();
         Object patch_updatePanel(byte[] panel);
         void patch_restorePanel(Object expectedModel, Object originalModel);
-        void patch_openPanel();
     }
 
     private static WeakReference<PlaylistController> controllerRef = new WeakReference<>(null);
@@ -150,7 +149,6 @@ public final class NativePlaylistQueuePatch {
             if (publish(controller, candidate.playNext(videoId), true)) {
                 FlyoutUtils.dismissFlyout();
                 Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
-                controller.patch_openPanel();
             }
         } catch (Exception exception) {
             Logger.printException(() -> "Could not add video to native playlist queue", exception);

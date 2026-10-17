@@ -191,12 +191,6 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
         :done
         return-void
     """)
-    addBridge("patch_openPanel", emptyList(), "V", 1, """
-        iget-object v0, p0, $collapsedView
-        invoke-virtual {v0}, Landroid/view/View;->performClick()Z
-        return-void
-    """)
-
     // Preserve every native rejection before this assignment. In particular, a stale model
     // must not claim the current controller or overwrite our local insertion state.
     accept.method.addInstruction(accept.instructionMatches.last().index + 1,
