@@ -55,5 +55,19 @@
     "commit": "eff1206c7de88ec7fa56b6dc607e3d0483b1d6c6",
     "sha256": "96eb6a1d9e93ce3544a9ab40acf751fe403312dedd43632590078677b3935d05",
     "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step6-swipe-removal.mpp"
+  },
+  {
+    "filename": "native-playlist-queue-21.20.405-step6-fix1-full-byline.mpp",
+    "title": "Step 6 fix 1: retain full collaborating-channel bylines",
+    "description": "Includes all step6 functionality. Uploader-only cards no longer skip full native byline lookup. Verified longBylineText takes precedence over later uploader-only card/player/lookup metadata, retaining all collaborating names and native connectors. Captured titles and native single-line playlist UI are preserved.",
+    "phone_checks": [
+      "Add waZyE4Xl6bo from Watch Later or Home, wait for background metadata and confirm Starbound Extra and Starbound HFY in the native byline (native ellipsis may truncate it).",
+      "Scroll/reopen the queue and play another item; collaborating-channel data should not revert to the uploader-only name.",
+      "Retest native row playback, rating buttons and swipe removal from step6."
+    ],
+    "validation": "13 tests passed;5 existing Jam APK-dependent tests skipped. Current stock21.20.405 +11related patches SDK DEX/resource validation passed. Actual saved native response cache-precedence smoke retained both collaborators after uploader-only updates. Final AndroidMPP/default=true and review gate passed. Phone validation pending.",
+    "commit": "5ad1ab038b1d394adde5a40a3ebd41655413ba95",
+    "sha256": "7d76b035035bd11df8e926d7d73a9b5fb4c43a4d01d659ce734c9bd442d9516c",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step6-fix1-full-byline.mpp"
   }
 ]

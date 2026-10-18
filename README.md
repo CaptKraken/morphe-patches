@@ -2,6 +2,22 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## Step 6 fix 1: retain full collaborating-channel bylines
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step6-fix1-full-byline.mpp) · [Source 5ad1ab038](https://github.com/CaptKraken/morphe-patches/tree/5ad1ab038b1d394adde5a40a3ebd41655413ba95)
+
+Includes all step6 functionality. Uploader-only cards no longer skip full native byline lookup. Verified longBylineText takes precedence over later uploader-only card/player/lookup metadata, retaining all collaborating names and native connectors. Captured titles and native single-line playlist UI are preserved.
+
+Phone checks:
+
+1. Add waZyE4Xl6bo from Watch Later or Home, wait for background metadata and confirm Starbound Extra and Starbound HFY in the native byline (native ellipsis may truncate it).
+2. Scroll/reopen the queue and play another item; collaborating-channel data should not revert to the uploader-only name.
+3. Retest native row playback, rating buttons and swipe removal from step6.
+
+13 tests passed;5 existing Jam APK-dependent tests skipped. Current stock21.20.405 +11related patches SDK DEX/resource validation passed. Actual saved native response cache-precedence smoke retained both collaborators after uploader-only updates. Final AndroidMPP/default=true and review gate passed. Phone validation pending.
+
+SHA-256: `7d76b035035bd11df8e926d7d73a9b5fb4c43a4d01d659ce734c9bd442d9516c`
+
 ## Step 6: native swipe removal
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step6-swipe-removal.mpp) · [Source eff1206c7](https://github.com/CaptKraken/morphe-patches/tree/eff1206c7de88ec7fa56b6dc607e3d0483b1d6c6)
