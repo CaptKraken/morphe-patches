@@ -306,19 +306,13 @@ public final class NativePlaylistQueuePatch {
 
     private static void requestAutomaticAdvance() {
         QueueAdvance ended = completion;
-        if (ended == null || !ended.isFor(queue) || dragSession != null || pendingSelection != null) return;
+        if (ended == null || !ended.isFor(queue) || queue.repeatMode() == PlaylistQueue.REPEAT_ONE
+                || dragSession != null || pendingSelection != null) return;
         PlaylistController controller = readyController();
         if (controller == null || controller.patch_getModel() != publishedModel) return;
         Utils.runOnMainThread(() -> {
             if (completion != ended || dragSession != null || pendingSelection != null
                     || readyController() != controller || controller.patch_getModel() != publishedModel) return;
-            // Repeat one replays this playback; it is not playlist advancement. Like
-            // Loop video, use the existing seek API, keeping the captured timer veto.
-            PlaylistQueue.Entry replay = ended.takeRepeatTarget(queue);
-            if (replay != null) {
-                playQueueEntry(controller, queue.selectedIndex(), replay);
-                return;
-            }
             if (controller.patch_getNavigator() == null || !ended.beginRequest(queue)) return;
             // Advancing to another item still respects Disable playlist autoplay.
             controller.patch_requestAutomaticAdvance();
@@ -505,6 +499,10 @@ public final class NativePlaylistQueuePatch {
                 || "AUTOPLAY".equals(name) || "AUTONAV".equals(name))) return false;
         PlaylistController controller = ownedNavigator(navigator);
         if (controller == null) return false;
+        // The native repeat-one backend already owns replay, including its ended-player
+        // restart. Consuming either automatic event here blocks that original path.
+        if (queue.repeatMode() == PlaylistQueue.REPEAT_ONE
+                && ("AUTOPLAY".equals(name) || "AUTONAV".equals(name))) return false;
         if ("AUTONAV".equals(name) || dragSession != null || pendingSelection != null) return true;
         if ("AUTOPLAY".equals(name)) {
             // The existing patch's policy stays authoritative in either hook order.

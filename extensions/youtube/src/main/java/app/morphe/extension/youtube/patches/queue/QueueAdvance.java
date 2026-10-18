@@ -24,7 +24,7 @@ final class QueueAdvance {
     }
 
     boolean beginRequest(PlaylistQueue queue) {
-        if (!isFor(queue) || sleepTimerEnding || requested || dispatched) return false;
+        if (!canAdvance(queue) || requested || dispatched) return false;
         requested = true;
         return true;
     }
@@ -35,15 +35,14 @@ final class QueueAdvance {
         dispatched = false;
     }
 
-    /** Explicit replay is independent of the native playlist-advance request and its policy. */
-    PlaylistQueue.Entry takeRepeatTarget(PlaylistQueue queue) {
-        if (!isFor(queue) || queue.repeatMode() != PlaylistQueue.REPEAT_ONE) return null;
-        return takePlaybackTarget(queue);
+    private boolean canAdvance(PlaylistQueue queue) {
+        // Native repeat one owns automatic playback; do not request or consume it locally.
+        return isFor(queue) && !sleepTimerEnding && queue.repeatMode() != PlaylistQueue.REPEAT_ONE;
     }
 
     /** Select the target only once, using the current order after any completed drag. */
     PlaylistQueue.Entry takePlaybackTarget(PlaylistQueue queue) {
-        if (!isFor(queue) || sleepTimerEnding || dispatched) return null;
+        if (!canAdvance(queue) || dispatched) return null;
         dispatched = true;
         int next = queue.nextIndex(true);
         return next >= 0 ? queue.entries().get(next) : null;

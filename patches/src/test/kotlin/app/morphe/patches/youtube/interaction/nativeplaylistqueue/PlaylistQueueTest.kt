@@ -202,7 +202,7 @@ class PlaylistQueueTest {
     }
 
     @Test
-    fun `repeat one can replay without requesting playlist advancement and still honors the timer`() = withQueue { type ->
+    fun `native repeat one retains completion ownership while off and all still advance locally`() = withQueue { type ->
         val initial = type.getConstructor(String::class.java, String::class.java)
             .newInstance("abcdefghijk", "Playing video")
         val queue = type.getMethod("playNext", String::class.java).invoke(initial, "lmnopqrstuv")
@@ -216,17 +216,13 @@ class PlaylistQueueTest {
             val selected = type.getMethod("select", Int::class.javaPrimitiveType).invoke(queue, index)
             val one = repeat.invoke(selected, 2)
             val ended = constructor.newInstance(one, false)
-            // No native AUTOPLAY request is needed to claim the repeat target.
-            assertEquals(type.getMethod("currentEntry").invoke(one), call(ended, "takeRepeatTarget", one))
-            assertEquals(null, call(ended, "takeRepeatTarget", one))
             assertEquals(false, call(ended, "beginRequest", one))
             assertEquals(null, call(ended, "takePlaybackTarget", one))
-            assertEquals(null, call(constructor.newInstance(one, true), "takeRepeatTarget", one))
+            assertEquals(false, call(constructor.newInstance(one, true), "beginRequest", one))
         }
         for (mode in listOf(0, 1)) {
             val source = repeat.invoke(queue, mode)
             val ended = constructor.newInstance(source, false)
-            assertEquals(null, call(ended, "takeRepeatTarget", source))
             assertEquals(true, call(ended, "beginRequest", source))
             val target = call(ended, "takePlaybackTarget", source)!!
             assertEquals("lmnopqrstuv", target.javaClass.getMethod("videoId").invoke(target))
@@ -249,16 +245,16 @@ class PlaylistQueueTest {
         assertEquals(null, call(ended, "takePlaybackTarget", last))
         val one = type.getMethod("withRepeatMode", Int::class.javaPrimitiveType).invoke(last, 2)
         changed.invoke(ended)
-        assertEquals(type.getMethod("currentEntry").invoke(one), call(ended, "takePlaybackTarget", one))
+        assertEquals(false, call(ended, "beginRequest", one))
         assertEquals(null, call(ended, "takePlaybackTarget", one))
         val all = type.getMethod("withRepeatMode", Int::class.javaPrimitiveType).invoke(last, 1)
         changed.invoke(ended)
         val first = (type.getMethod("entries").invoke(all) as List<*>).first()
         assertEquals(first, call(ended, "takePlaybackTarget", all))
-        val timer = constructor.newInstance(one, true)
+        val timer = constructor.newInstance(all, true)
         changed.invoke(timer)
-        assertEquals(false, call(timer, "beginRequest", one))
-        assertEquals(null, call(timer, "takePlaybackTarget", one))
+        assertEquals(false, call(timer, "beginRequest", all))
+        assertEquals(null, call(timer, "takePlaybackTarget", all))
     }
 
     @Test
