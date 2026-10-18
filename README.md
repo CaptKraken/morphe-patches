@@ -2,6 +2,24 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## Step 7 — native drag reordering
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step7-reordering.mpp) · [Source 1a679ff3c](https://github.com/CaptKraken/morphe-patches/tree/1a679ff3c05d77b8a5b4ca06c752be0eeda12dc5)
+
+Cumulative build with YouTube's existing drag handles and gesture machinery enabled for local queue rows. Completed moves update local queue order while retaining the playing entry. Metadata refresh waits until a drag ends. Normal account-playlist reordering keeps its native backend and callbacks.
+
+Phone checks:
+
+1. Add several videos, open Queue, and drag the left handle up and down, including first-to-last and last-to-first. Collapse/reopen the panel and confirm the order remains.
+2. Move the playing row and move other rows across it. The same video should keep playing and remain highlighted at its new position. Play next in native queue should insert after that position.
+3. After reordering, tap a different row, use like/dislike, and swipe a nonplaying row left then tap remove. Check that each action targets the correct video.
+4. Try a held or cancelled drag while metadata finishes loading, then rotate or close/reopen the player. Check for stale order, flicker, errors, or a stuck drag.
+5. Open an ordinary account playlist and confirm its drag actions still work normally.
+
+Review gate passed. Focused JVM suite: 14 passed; 5 existing Jam APK-dependent tests skipped. Real YouTube 21.20.405 patch application and SDK DEX/resource verification passed with 11 related patches and with Native playlist queue unselected. Emitted native callbacks/bridges and ownership guards inspected; queue hooks absent when unselected. Captured native Mix row verified canReorder field 36, and local rows omit the server edit identifiers. Android MPP built and default selection verified. Gesture and playback checks above remain pending on a phone.
+
+SHA-256: `061b6ea631ee7805ad6c0b807ac8c46c77ee1d476247cd36b47b9e41a88f835b`
+
 ## Step 6 fix 1: retain full collaborating-channel bylines
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step6-fix1-full-byline.mpp) · [Source 5ad1ab038](https://github.com/CaptKraken/morphe-patches/tree/5ad1ab038b1d394adde5a40a3ebd41655413ba95)
