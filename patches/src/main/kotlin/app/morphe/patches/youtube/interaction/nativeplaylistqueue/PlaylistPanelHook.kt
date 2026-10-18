@@ -141,6 +141,13 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
         iget-object v0, p0, $modelField
         return-object v0
     """)
+    addBridge("patch_getPanel", emptyList(), "Ljava/lang/Object;", 1, """
+        iget-object v0, p0, $modelField
+        if-eqz v0, :done
+        iget-object v0, v0, $panelField
+        :done
+        return-object v0
+    """)
     addBridge("patch_isAttached", emptyList(), "Z", 1, """
         iget-object v0, p0, $collapsedView
         invoke-virtual {v0}, Landroid/view/View;->isAttachedToWindow()Z

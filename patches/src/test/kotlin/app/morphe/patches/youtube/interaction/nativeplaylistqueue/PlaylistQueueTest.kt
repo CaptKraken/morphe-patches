@@ -130,9 +130,9 @@ class PlaylistQueueTest {
         val ended = constructor.newInstance(queue, false)
         assertEquals(true, call(ended, "beginRequest", queue))
         assertEquals(false, call(ended, "beginRequest", queue))
-        val target = call(ended, "takeNext", queue)
+        val target = call(ended, "takePlaybackTarget", queue)
         assertEquals("abcdefghijk", target!!.javaClass.getMethod("videoId").invoke(target))
-        assertEquals(null, call(ended, "takeNext", queue))
+        assertEquals(null, call(ended, "takePlaybackTarget", queue))
         val selected = type.getMethod("select", Int::class.javaPrimitiveType).invoke(queue, 1)
         assertEquals(false, call(ended, "isFor", selected))
         val reopened = type.getConstructor(String::class.java, String::class.java)
@@ -154,14 +154,79 @@ class PlaylistQueueTest {
         val ended = constructor.newInstance(queue, false)
         val moved = type.getMethod("move", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
             .invoke(queue, 2, 1)
-        val target = call(ended, "takeNext", moved)
+        val target = call(ended, "takePlaybackTarget", moved)
         assertEquals("lmnopqrstuv", target!!.javaClass.getMethod("videoId").invoke(target))
         assertEquals(0, type.getMethod("selectedIndex").invoke(moved))
         val last = type.getMethod("select", Int::class.javaPrimitiveType).invoke(queue, 2)
-        assertEquals(null, call(constructor.newInstance(last, false), "takeNext", last))
+        assertEquals(null, call(constructor.newInstance(last, false), "takePlaybackTarget", last))
         val timer = constructor.newInstance(queue, true)
         assertEquals(false, call(timer, "beginRequest", queue))
-        assertEquals(null, call(timer, "takeNext", queue))
+        assertEquals(null, call(timer, "takePlaybackTarget", queue))
+    }
+
+    @Test
+    fun `repeat distinguishes automatic replay from manual skips and survives queue edits`() = withQueue { type ->
+        val initial = type.getConstructor(String::class.java, String::class.java)
+            .newInstance("abcdefghijk", "Playing video")
+        val insert = type.getMethod("playNext", String::class.java)
+        val queue = insert.invoke(insert.invoke(initial, "lmnopqrstuv"), "0123456789_")
+        val select = type.getMethod("select", Int::class.javaPrimitiveType)
+        val repeat = type.getMethod("withRepeatMode", Int::class.javaPrimitiveType)
+        val next = type.getMethod("nextIndex", Boolean::class.javaPrimitiveType)
+        val previous = type.getMethod("previousIndex")
+        for ((mode, automatic, manual, backwards) in listOf(
+            listOf(0, -1, -1, -1), listOf(1, 0, 0, 2), listOf(2, 2, -1, -1)
+        )) {
+            val repeated = repeat.invoke(queue, mode)
+            val last = select.invoke(repeated, 2)
+            assertEquals(automatic, next.invoke(last, true))
+            assertEquals(manual, next.invoke(last, false))
+            assertEquals(backwards, previous.invoke(repeated))
+            var edited = type.getMethod("move", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+                .invoke(last, 0, 1)
+            edited = type.getMethod("remove", Int::class.javaPrimitiveType).invoke(edited, 0)
+            edited = insert.invoke(edited, "ZYXWVUTSRQP")
+            assertEquals(mode, type.getMethod("repeatMode").invoke(edited))
+            assertEquals("lmnopqrstuv", type.getMethod("currentEntry").invoke(edited)
+                .javaClass.getMethod("videoId").invoke(type.getMethod("currentEntry").invoke(edited)))
+        }
+        assertEquals(0, type.getMethod("repeatMode").invoke(queue))
+        val single = repeat.invoke(initial, 1)
+        assertEquals(0, next.invoke(single, true))
+        assertEquals(0, next.invoke(single, false))
+        assertEquals(0, previous.invoke(single))
+        for (invalid in listOf(-1, 3)) {
+            val failure = assertFailsWith<InvocationTargetException> { repeat.invoke(queue, invalid) }
+            assertIs<IllegalArgumentException>(failure.cause)
+        }
+    }
+
+    @Test
+    fun `changing repeat after the end re-arms one completion but keeps the sleep timer authoritative`() = withQueue { type ->
+        val initial = type.getConstructor(String::class.java, String::class.java)
+            .newInstance("abcdefghijk", "Playing video")
+        val queue = type.getMethod("playNext", String::class.java).invoke(initial, "lmnopqrstuv")
+        val last = type.getMethod("select", Int::class.javaPrimitiveType).invoke(queue, 1)
+        val completion = type.classLoader.loadClass("app.morphe.extension.youtube.patches.queue.QueueAdvance")
+        val constructor = completion.getDeclaredConstructor(type, Boolean::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+        fun call(instance: Any, name: String, source: Any): Any? = completion.getDeclaredMethod(name, type)
+            .apply { isAccessible = true }.invoke(instance, source)
+        val changed = completion.getDeclaredMethod("repeatChanged").apply { isAccessible = true }
+        val ended = constructor.newInstance(last, false)
+        assertEquals(null, call(ended, "takePlaybackTarget", last))
+        val one = type.getMethod("withRepeatMode", Int::class.javaPrimitiveType).invoke(last, 2)
+        changed.invoke(ended)
+        assertEquals(type.getMethod("currentEntry").invoke(one), call(ended, "takePlaybackTarget", one))
+        assertEquals(null, call(ended, "takePlaybackTarget", one))
+        val all = type.getMethod("withRepeatMode", Int::class.javaPrimitiveType).invoke(last, 1)
+        changed.invoke(ended)
+        val first = (type.getMethod("entries").invoke(all) as List<*>).first()
+        assertEquals(first, call(ended, "takePlaybackTarget", all))
+        val timer = constructor.newInstance(one, true)
+        changed.invoke(timer)
+        assertEquals(false, call(timer, "beginRequest", one))
+        assertEquals(null, call(timer, "takePlaybackTarget", one))
     }
 
     @Test

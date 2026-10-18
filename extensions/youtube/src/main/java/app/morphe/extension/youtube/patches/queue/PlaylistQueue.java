@@ -13,23 +13,31 @@ import java.util.regex.Pattern;
 
 /** Immutable order and selection for the local playlist queue. */
 public final class PlaylistQueue {
+    // YouTube's native repeat observer uses off=0, all=1, one=2.
+    public static final int REPEAT_OFF = 0;
+    public static final int REPEAT_ALL = 1;
+    public static final int REPEAT_ONE = 2;
+
     private static final Pattern VIDEO_ID = Pattern.compile("[A-Za-z0-9_-]{11}");
 
     public record Entry(String videoId, String title) {}
 
     private final List<Entry> entries;
     private final int selectedIndex;
+    private final int repeatMode;
 
     public PlaylistQueue(String playingVideoId, String playingTitle) {
         selectedIndex = 0;
+        repeatMode = REPEAT_OFF;
         requireVideoId(playingVideoId);
         entries = List.of(new Entry(playingVideoId,
                 playingTitle == null || playingTitle.isEmpty() ? playingVideoId : playingTitle));
     }
 
-    private PlaylistQueue(List<Entry> entries, int selectedIndex) {
+    private PlaylistQueue(List<Entry> entries, int selectedIndex, int repeatMode) {
         this.entries = List.copyOf(entries);
         this.selectedIndex = selectedIndex;
+        this.repeatMode = repeatMode;
     }
 
     public List<Entry> entries() {
@@ -44,16 +52,37 @@ public final class PlaylistQueue {
         return entries.get(selectedIndex);
     }
 
+    public int repeatMode() {
+        return repeatMode;
+    }
+
+    public PlaylistQueue withRepeatMode(int mode) {
+        if (mode < REPEAT_OFF || mode > REPEAT_ONE) throw new IllegalArgumentException("Invalid repeat mode");
+        return mode == repeatMode ? this : new PlaylistQueue(entries, selectedIndex, mode);
+    }
+
+    /** Repeat-one applies only to completion; manual Next still skips. -1 means no target. */
+    public int nextIndex(boolean afterCompletion) {
+        if (afterCompletion && repeatMode == REPEAT_ONE) return selectedIndex;
+        if (selectedIndex + 1 < entries.size()) return selectedIndex + 1;
+        return repeatMode == REPEAT_ALL ? 0 : -1;
+    }
+
+    public int previousIndex() {
+        if (selectedIndex > 0) return selectedIndex - 1;
+        return repeatMode == REPEAT_ALL ? entries.size() - 1 : -1;
+    }
+
     public PlaylistQueue select(int index) {
         if (index < 0 || index >= entries.size()) throw new IndexOutOfBoundsException(index);
-        return new PlaylistQueue(entries, index);
+        return new PlaylistQueue(entries, index, repeatMode);
     }
 
     public PlaylistQueue playNext(String videoId) {
         requireVideoId(videoId);
         var updated = new ArrayList<>(entries);
         updated.add(selectedIndex + 1, new Entry(videoId, videoId));
-        return new PlaylistQueue(updated, selectedIndex);
+        return new PlaylistQueue(updated, selectedIndex, repeatMode);
     }
 
     public PlaylistQueue remove(int index) {
@@ -61,7 +90,7 @@ public final class PlaylistQueue {
         if (index == selectedIndex) return this;
         var updated = new ArrayList<>(entries);
         updated.remove(index);
-        return new PlaylistQueue(updated, selectedIndex - (index < selectedIndex ? 1 : 0));
+        return new PlaylistQueue(updated, selectedIndex - (index < selectedIndex ? 1 : 0), repeatMode);
     }
 
     /** Move an entry with the native adapter's remove-then-insert semantics. */
@@ -76,7 +105,7 @@ public final class PlaylistQueue {
         if (from == selection) selection = to;
         else if (from < selection && to >= selection) selection--;
         else if (from > selection && to <= selection) selection++;
-        return new PlaylistQueue(updated, selection);
+        return new PlaylistQueue(updated, selection, repeatMode);
     }
 
     public static boolean isVideoId(String videoId) {

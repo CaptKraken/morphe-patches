@@ -104,6 +104,7 @@ internal fun installPlaylistNavigation(context: BytecodePatchContext, controller
             """)
         })
     }
+    installPlaylistRepeat(context, controllerType, controlsField, navigatorType)
     installPlaylistPlayerControls(context, navigatorType, enumType, wrapperType)
     dispatchers.forEach { match ->
         for (returnType in listOf("Z", "I")) {

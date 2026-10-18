@@ -34,7 +34,9 @@ val nativePlaylistQueuePatch = bytecodePatch(
     name = "Native playlist queue",
     description = "Adds a Play next action and a temporary queue with native playlist rows and rating actions. " +
             "Tap a queued row to play it or swipe it to remove it. " +
-            "Drag its handle to reorder or use the queue menu to save it as a playlist. Playback advances through the queue, including player Next/Previous. YouTube 21.20.405 only.",
+            "Drag its handle to reorder or use the queue menu to save it as a playlist. " +
+            "Playback follows the queue and its repeat mode, synchronized with the player Loop switch. " +
+            "YouTube 21.20.405 only.",
     default = true
 ) {
     dependsOn(

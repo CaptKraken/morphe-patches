@@ -29,11 +29,17 @@ final class QueueAdvance {
         return true;
     }
 
+    /** A user repeat change can restart an ended item, without bypassing its captured timer. */
+    void repeatChanged() {
+        requested = false;
+        dispatched = false;
+    }
+
     /** Select the target only once, using the current order after any completed drag. */
-    PlaylistQueue.Entry takeNext(PlaylistQueue queue) {
+    PlaylistQueue.Entry takePlaybackTarget(PlaylistQueue queue) {
         if (!isFor(queue) || sleepTimerEnding || dispatched) return null;
         dispatched = true;
-        int next = queue.selectedIndex() + 1;
-        return next < queue.entries().size() ? queue.entries().get(next) : null;
+        int next = queue.nextIndex(true);
+        return next >= 0 ? queue.entries().get(next) : null;
     }
 }

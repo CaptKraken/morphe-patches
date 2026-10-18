@@ -278,3 +278,105 @@ internal fun playlistControlPressFingerprint(controlsType: String, request: Fiel
     filters = listOf(fieldAccess(reference = request, opcode = Opcode.SGET_OBJECT)),
     custom = { method, _ -> AccessFlags.PUBLIC.isSet(method.accessFlags) }
 )
+
+internal object PlaylistHeaderConstructorFingerprint : Fingerprint(
+    name = "<init>",
+    filters = listOf(resourceLiteral(ResourceType.LAYOUT, "compact_playlist_panel_header"))
+)
+
+/** Both native repeat controls observe this exact mode/shuffle pair. */
+internal object PlaylistRepeatBindingFingerprint : Fingerprint(
+    classFingerprint = PlaylistHeaderConstructorFingerprint,
+    returnType = "V",
+    parameters = listOf("L", "L", "I"),
+    filters = listOf(
+        fieldAccess(opcode = Opcode.IGET_OBJECT),
+        fieldAccess(type = "I", opcode = Opcode.IGET, location = MatchAfterImmediately()),
+        fieldAccess(type = "Z", opcode = Opcode.IGET_BOOLEAN, location = MatchAfterImmediately()),
+        methodCall(parameters = listOf("I", "Z"), returnType = "V", location = MatchAfterImmediately())
+    )
+)
+
+internal object PlaylistRepeatCapabilitiesFingerprint : Fingerprint(
+    classFingerprint = PlaylistHeaderConstructorFingerprint,
+    returnType = "V",
+    parameters = listOf("L", "L", "I"),
+    filters = listOf(
+        fieldAccess(type = "Z", opcode = Opcode.IGET_BOOLEAN),
+        opcode(Opcode.IF_NEZ, location = MatchAfterImmediately()),
+        fieldAccess(type = "Z", opcode = Opcode.IGET_BOOLEAN, location = MatchAfterImmediately()),
+        opcode(Opcode.IF_EQZ, location = MatchAfterImmediately()),
+        methodCall("Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;->setEnabled(Z)V")
+    )
+)
+
+/** Observe the native notification before it compares old state or notifies either control. */
+internal fun playlistRepeatObserverFingerprint(mode: FieldReference, shuffle: FieldReference) = Fingerprint(
+    returnType = "V",
+    parameters = listOf("Ljava/lang/Object;"),
+    filters = listOf(
+        fieldAccess(type = "I", opcode = Opcode.IGET),
+        fieldAccess(type = "Ljava/lang/Object;", opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        checkCast(mode.definingClass, location = MatchAfterImmediately()),
+        fieldAccess(reference = mode, opcode = Opcode.IGET, location = MatchAfterImmediately()),
+        fieldAccess(reference = shuffle, opcode = Opcode.IGET_BOOLEAN, location = MatchAfterImmediately()),
+        fieldAccess(reference = mode, opcode = Opcode.IPUT, location = MatchAfterImmediately()),
+        fieldAccess(type = "Z", opcode = Opcode.IGET_BOOLEAN, location = MatchAfterImmediately()),
+        fieldAccess(reference = shuffle, opcode = Opcode.IPUT_BOOLEAN, location = MatchAfterImmediately())
+    )
+)
+
+internal fun playlistRepeatSubscriptionFingerprint(stateType: String, callback: MethodReference) = Fingerprint(
+    definingClass = stateType,
+    returnType = "V",
+    parameters = listOf("L"),
+    filters = listOf(
+        fieldAccess(definingClass = stateType, opcode = Opcode.IGET_OBJECT),
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = emptyList(), location = MatchAfterImmediately()),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+        opcode(Opcode.CONST_16),
+        methodCall(reference = callback, location = MatchAfterImmediately())
+    )
+)
+
+/** Register after the constructor has initialized its native weak observer set. */
+internal fun playlistRepeatStateConstructorFingerprint(stateType: String, contextType: String) = Fingerprint(
+    definingClass = stateType,
+    name = "<init>",
+    parameters = listOf(contextType),
+    filters = listOf(
+        fieldAccess(type = "Ljava/util/Set;", opcode = Opcode.IPUT_OBJECT),
+        opcode(Opcode.RETURN_VOID, location = MatchAfterImmediately())
+    )
+)
+
+
+internal object PlayerLoopMenuConstructorFingerprint : Fingerprint(
+    name = "<init>",
+    filters = listOf(string("menu_item_single_video_playback_loop"))
+)
+
+/** Header repeat and the native Loop cancellation click share this listener. */
+internal fun playlistHeaderRepeatRequestFingerprint(headerType: String, setter: MethodReference) = Fingerprint(
+    name = "onClick",
+    returnType = "V",
+    parameters = listOf("Landroid/view/View;"),
+    filters = listOf(
+        checkCast(headerType),
+        methodCall("Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;->isSelected()Z"),
+        methodCall(reference = setter)
+    )
+)
+
+internal fun playerLoopRequestFingerprint(gearType: String, setter: MethodReference) = Fingerprint(
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(checkCast(gearType), methodCall(reference = setter))
+)
+
+/** Explicit native Loop on/off commands; internal playback resets have another signature. */
+internal fun playerLoopCommandFingerprint(setter: MethodReference) = Fingerprint(
+    returnType = "V",
+    parameters = listOf("L", "Ljava/util/Map;"),
+    filters = listOf(methodCall(reference = setter))
+)
