@@ -2,6 +2,23 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## Step 12 — queue position and notification boundary
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step12-queue-indicators.mpp) · [Source f22aff16a](https://github.com/CaptKraken/morphe-patches/tree/f22aff16ab262fbe953b11b07a33415764a3831f)
+
+Corrects the native renderer pagination offset so a two-item queue shows 2/2 after advancing. Filters the owned queue's notification Next action at the final item and refreshes cached native playback state after queue edits, repeat changes and background selection. The notification visibility change uses Android 13+ PlaybackState actions; Android 12 and earlier use a separate notification action layout, which is not changed in this step. Counter and notification fixes have separate source commits.
+
+Phone checks:
+
+1. With two queued videos, advance from the on-screen player and check 2/2. Repeat using notification Next, both while YouTube is visible and after Home; reopen and check the selected row and count.
+2. At the last item with Repeat off or Repeat one, Next should disappear from the Android 13+ notification. Enable Repeat all and check Next returns and wraps to the first entry; switch it off again while paused and playing.
+3. At the boundary, append another video, reorder, remove a different item, or tap an earlier row. Check count and Next availability update without reopening the app.
+4. Check native Loop/repeat-one playback, ordinary/account playlists, casting and Morphe hide-notification-controls settings retain their behavior. Device testing is still needed; Android 12-and-earlier button visibility is outside this step.
+
+19 existing tests passed;5 unrelated Jam APK-dependent tests skipped. Stock21.20.405 APK application passed standalone, combined with16 related selections, and queue-unselected, with SDK12DEX/hierarchy/resource checks. Emitted session ownership, preserved receiver, shared-filter chaining and native-original load/repeat paths inspected. Android MPP/default-selection checks and separate exact staged-tree pre-commit gates passed. Phone validation remains pending; Android12-and-earlier notification action layout is unchanged.
+
+SHA-256: `ea74e375388c6f44f25b8c49b9e53f863c098edde7ac7fa17660dde87c9f7f63`
+
 ## Step 11 — notification Next follows the queue
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step11-notification-next.mpp) · [Source a2a83547b](https://github.com/CaptKraken/morphe-patches/tree/a2a83547ba12581dd31aaff6a600564499240eec)
