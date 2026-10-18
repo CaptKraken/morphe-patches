@@ -22,7 +22,7 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
 
 /** Preserve ordinary native routing; intercept only this controller's local queue navigation. */
-internal fun installPlaylistNavigation(context: BytecodePatchContext, controllerType: String) = with(context) {
+internal fun installPlaylistNavigation(context: BytecodePatchContext, controllerType: String, commandType: String) = with(context) {
     val enumType = NavigationIntentEnumFingerprint.matchSingle().originalClassDef.type
     val wrapperType = playlistNavigationRequestFingerprint(enumType).matchSingle().originalClassDef.type
     val intent = classDefBy(wrapperType).fields.single { it.type == enumType }
@@ -104,6 +104,7 @@ internal fun installPlaylistNavigation(context: BytecodePatchContext, controller
             """)
         })
     }
+    installPlaylistNotification(context, wrapperType, enumType, commandType)
     installPlaylistRepeat(context, controllerType, controlsField, navigatorType)
     installPlaylistPlayerControls(context, navigatorType, enumType, wrapperType)
     dispatchers.forEach { match ->

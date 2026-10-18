@@ -134,7 +134,7 @@ internal fun installPlaylistRowPlayback(
             return v0
         """)
     })
-    installPlaylistNavigation(context, controller.type)
+    installPlaylistNavigation(context, controller.type, videoEndpoint.type)
     // A nonserialized bit belongs to the exact native object, survives a stale
     // view callback, and disappears with that object. No native model is retained
     // in an extension cache, and protobuf equality/serialization stay unchanged.

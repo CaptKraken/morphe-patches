@@ -71,6 +71,16 @@ public final class NativePlaylistQueuePatch {
         void patch_refreshNavigation();
     }
 
+    /** Native notification owner; its service navigator can load without a watch screen. */
+    public interface MediaControls {
+        ServiceNavigator patch_getQueueNavigator();
+    }
+
+    public interface ServiceNavigator {
+        String patch_getVideoId();
+        void patch_playQueueVideo(byte[] command);
+    }
+
     /** YouTube's shared repeat/shuffle observer, also used by the player's Loop switch. */
     public interface RepeatState {
         Object patch_getRepeatContext();
@@ -129,6 +139,8 @@ public final class NativePlaylistQueuePatch {
     private static PlaylistQueue queue;
     private static Object originalModel;
     private static Object publishedModel;
+    // Background playback can confirm selection before the watch screen catches up.
+    private static boolean selectionNeedsPublishing;
     private static boolean publishing;
     private static boolean observingPlayer;
     private record RowSelection(PlaylistQueue.Entry entry) {}
@@ -227,7 +239,13 @@ public final class NativePlaylistQueuePatch {
         // A queued callback may arrive after our synchronous update has returned. Never
         // treat our own accepted model as a new native baseline or publish it again.
         if (publishing) return;
+        // The service can advance while a retained watch screen still describes the
+        // previous video. Only the active-ID hooks can commit background selection.
+        if (queue != null && !controller.patch_getVideoId().equals(VideoInformation.getVideoId())) return;
         if (publishedModel != null && controller.patch_getModel() == publishedModel) {
+            if (selectionNeedsPublishing && readyController() == controller) {
+                publish(controller, queue, false);
+            }
             refreshRepeatState(controller, false);
             requestAutomaticAdvance();
             return;
@@ -255,6 +273,7 @@ public final class NativePlaylistQueuePatch {
             pendingSelection = null;
             originalModel = null;
             publishedModel = null;
+            selectionNeedsPublishing = false;
             refreshPlayerControls(navigator);
             return;
         }
@@ -471,6 +490,52 @@ public final class NativePlaylistQueuePatch {
         return true;
     }
 
+    /** Runs after native media logging, before either foreground or service skip routing. */
+    public static boolean onNotificationNext(MediaControls controls) {
+        if (!Utils.isCurrentlyOnMainThread() || queue == null) return false;
+        ServiceNavigator navigator = controls.patch_getQueueNavigator();
+        PlaylistQueue.Entry source = queue.currentEntry();
+        if (navigator == null || !VideoInformation.getPlaylistId().isEmpty()) return false;
+        String serviceVideoId = navigator.patch_getVideoId();
+        String activeVideoId = VideoInformation.getVideoId();
+        if (pendingSelection != null) {
+            // A second press can arrive after the service switches but before the
+            // background active-ID callback commits our authorized target.
+            String targetId = pendingSelection.entry().videoId();
+            return (source.videoId().equals(serviceVideoId) || targetId.equals(serviceVideoId))
+                    && (source.videoId().equals(activeVideoId) || targetId.equals(activeVideoId));
+        }
+        if (!source.videoId().equals(serviceVideoId) || !source.videoId().equals(activeVideoId)) return false;
+        if (dragSession != null) return true;
+        int index = queue.nextIndex(false);
+        if (index < 0) return true;
+        PlaylistQueue.Entry target = queue.entries().get(index);
+        RowSelection selection = authorizeRowSelection(target);
+        completion = null;
+        Utils.runOnMainThread(() -> {
+            if (pendingSelection != selection || queue == null) return;
+            if (queue.currentEntry() != source || queue.entries().stream().noneMatch(entry -> entry == target)
+                    || !source.videoId().equals(navigator.patch_getVideoId())
+                    || !source.videoId().equals(VideoInformation.getVideoId())
+                    || !VideoInformation.getPlaylistId().isEmpty()) {
+                pendingSelection = null;
+                return;
+            }
+            try {
+                // Use the native service load entry point. A watch-screen command may
+                // wait for activity resume; selection waits for the shared active-ID hook.
+                var endpoint = PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
+                        .setWatchEndpoint(PlaylistQueueRenderer.WatchEndpoint.newBuilder().setVideoId(target.videoId()));
+                navigator.patch_playQueueVideo(endpoint.build().toByteArray());
+            } catch (Exception exception) {
+                pendingSelection = null;
+                Logger.printException(() -> "Could not skip native playlist queue from media controls", exception);
+                Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+            }
+        });
+        return true;
+    }
+
     /** Native controls retain their visibility logic, including Hide previous/next settings. */
     public static int navigationAvailability(Object navigator, NavigationRequest request) {
         Enum<?> intent = request.patch_getNavigationIntent();
@@ -626,6 +691,7 @@ public final class NativePlaylistQueuePatch {
                     if (queue.entries().get(index) != pendingSelection.entry()) continue;
                     dragSession = null;
                     queue = queue.select(index);
+                    selectionNeedsPublishing = true;
                     completion = null;
                     pendingSelection = null;
                     // Let the original navigation/response callback finish first.
@@ -746,6 +812,7 @@ public final class NativePlaylistQueuePatch {
             if (startingQueue) candidate = candidate.withRepeatMode(initialRepeatMode(controller));
             queue = candidate;
             publishedModel = acceptedModel;
+            selectionNeedsPublishing = false;
             controller.patch_markQueueRows();
             refreshRepeatState(controller, startingQueue);
             refreshPlayerControls(controller.patch_getNavigator());
@@ -771,6 +838,7 @@ public final class NativePlaylistQueuePatch {
         pendingSelection = null;
         originalModel = null;
         publishedModel = null;
+        selectionNeedsPublishing = false;
         // A null baseline is valid when YouTube had no playlist before our display.
         if (controller != null && expectedModel != null) {
             try {

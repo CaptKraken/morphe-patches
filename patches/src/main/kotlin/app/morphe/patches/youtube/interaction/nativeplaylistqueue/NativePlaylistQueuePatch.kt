@@ -20,6 +20,7 @@ import app.morphe.patches.youtube.misc.settings.settingsPatch
 import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
 import app.morphe.patches.youtube.video.information.videoInformationPatch
 import app.morphe.patches.youtube.video.information.playerStatusHook
+import app.morphe.patches.youtube.video.videoid.hookBackgroundPlayVideoId
 import app.morphe.patches.youtube.video.videoid.hookVideoId
 import app.morphe.patches.youtube.video.videoid.videoIdPatch
 import app.morphe.util.setExtensionIsPatchIncluded
@@ -69,6 +70,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
         playerStatusHook(EXTENSION_CLASS, "onPlayerStatus", includeController = true)
         hookElement("$EXTENSION_CLASS->onElementLoaded")
         hookVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")
+        hookBackgroundPlayVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }

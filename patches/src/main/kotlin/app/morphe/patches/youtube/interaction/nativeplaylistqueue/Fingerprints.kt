@@ -380,3 +380,86 @@ internal fun playerLoopCommandFingerprint(setter: MethodReference) = Fingerprint
     parameters = listOf("L", "Ljava/util/Map;"),
     filters = listOf(methodCall(reference = setter))
 )
+
+/** Resolve the native callback name through Android, rather than its obfuscated override. */
+internal object NotificationNextCallbackFingerprint : Fingerprint(
+    name = "onSkipToNext",
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(
+        fieldAccess(opcode = Opcode.IGET_OBJECT),
+        methodCall(opcode = Opcode.INVOKE_VIRTUAL, parameters = emptyList(), returnType = "V",
+            location = MatchAfterImmediately())
+    ),
+    custom = { _, classDef -> classDef.superclass == "Landroid/media/session/MediaSession\$Callback;" }
+)
+
+internal fun notificationNextDelegateFingerprint(callback: MethodReference) = Fingerprint(
+    name = callback.name,
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(
+        fieldAccess(opcode = Opcode.IGET_OBJECT),
+        methodCall(opcode = Opcode.INVOKE_VIRTUAL, parameters = emptyList(), returnType = "V",
+            location = MatchAfterImmediately()),
+        opcode(Opcode.RETURN_VOID, location = MatchAfterImmediately())
+    ),
+    custom = { _, classDef -> classDef.superclass == callback.definingClass }
+)
+
+/** Observe after media logging, before the optional foreground callback takes over. */
+internal fun notificationNextDispatchFingerprint(owner: String, next: FieldReference) = Fingerprint(
+    definingClass = owner,
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(
+        fieldAccess(definingClass = owner, opcode = Opcode.IGET_OBJECT),
+        opcode(Opcode.IF_EQZ, location = MatchAfterImmediately()),
+        fieldAccess(definingClass = owner, opcode = Opcode.IGET_OBJECT, location = MatchAfterWithin(5)),
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = emptyList(),
+            returnType = "Ljava/lang/Object;", location = MatchAfterImmediately()),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+        opcode(Opcode.CHECK_CAST, location = MatchAfterImmediately()),
+        fieldAccess(reference = next, opcode = Opcode.SGET_OBJECT, location = MatchAfterImmediately()),
+        methodCall(parameters = listOf(next.type), returnType = "V", location = MatchAfterImmediately())
+    )
+)
+
+/** The service navigator recognizes an ended same-video target before starting playback. */
+internal fun playlistServiceNavigatorFingerprint(wrapperType: String) = Fingerprint(
+    parameters = listOf(wrapperType),
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(opcode = Opcode.IGET_OBJECT),
+        fieldAccess(opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        fieldAccess(opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        opcode(Opcode.IF_EQZ, location = MatchAfterImmediately()),
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = emptyList(), returnType = "Ljava/lang/String;"),
+        methodCall("Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z",
+            location = MatchAfterWithin(1))
+    )
+)
+
+/** Native playback descriptor builder accepts an ordinary watch command. */
+internal fun playlistPlaybackDescriptorBuilderFingerprint(descriptorType: String) = Fingerprint(
+    parameters = emptyList(),
+    returnType = descriptorType,
+    filters = listOf(string("Only one of localProto, command, videoIdList can be set"))
+)
+
+/** Only the ordinary watch-page callback is replaced; casting/no-op delegates keep control. */
+internal fun notificationForegroundNextFingerprint(callbackType: String, next: FieldReference) = Fingerprint(
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(fieldAccess(reference = next, opcode = Opcode.SGET_OBJECT)),
+    custom = { _, classDef -> callbackType in classDef.interfaces }
+)
+
+/** Load a new watch target; native JUMP only accepts targets in an existing playlist. */
+internal fun playlistServiceLoadFingerprint(serviceType: String, descriptorType: String) = Fingerprint(
+    definingClass = serviceType,
+    parameters = listOf(descriptorType),
+    returnType = "V",
+    custom = { method, _ -> AccessFlags.PUBLIC.isSet(method.accessFlags) &&
+            !AccessFlags.STATIC.isSet(method.accessFlags) }
+)
