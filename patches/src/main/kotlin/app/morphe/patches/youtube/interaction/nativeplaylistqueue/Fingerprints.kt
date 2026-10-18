@@ -149,6 +149,34 @@ internal object PlaylistRichRowConstructorFingerprint : Fingerprint(
     filters = listOf(resourceLiteral(ResourceType.ID, "playlist_panel_video_item"))
 )
 
+/** Native selection updates replace the swipe foreground's background. */
+internal object PlaylistRowBackgroundFingerprint : Fingerprint(
+    classFingerprint = PlaylistRichRowConstructorFingerprint,
+    parameters = emptyList(),
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(type = "Landroid/view/View;", opcode = Opcode.IGET_OBJECT),
+        methodCall("Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V",
+            location = MatchAfterImmediately()),
+        methodCall("Landroid/widget/TextView;->setTextColor(I)V", location = MatchAfterWithin(8))
+    )
+)
+
+/** SwipeLayout is an unobfuscated native widget; attachment caches its foreground drawable. */
+internal object PlaylistSwipeAttachedFingerprint : Fingerprint(
+    definingClass = "Lcom/google/android/libraries/youtube/common/ui/swipelayout/SwipeLayout;",
+    name = "onAttachedToWindow",
+    parameters = emptyList(),
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(type = "Landroid/view/View;", opcode = Opcode.IPUT_OBJECT),
+        methodCall("Landroid/view/View;->getBackground()Landroid/graphics/drawable/Drawable;",
+            location = MatchAfterImmediately()),
+        fieldAccess(type = "Landroid/graphics/drawable/Drawable;", opcode = Opcode.IPUT_OBJECT,
+            location = MatchAfterWithin(2))
+    )
+)
+
 /** The native binder configures the drag handle's touch target from resources. */
 internal object PlaylistDragBinderFingerprint : Fingerprint(
     classFingerprint = PlaylistRichRowConstructorFingerprint,

@@ -206,4 +206,5 @@ internal fun installPlaylistRowPlayback(
     val listenerRegister = (endpointRead.instructionMatches.first().instruction as TwoRegisterInstruction).registerB
     endpointRead.method.addInstruction(endpointRead.instructionMatches.first().index + 1,
         "invoke-static/range {v$listenerRegister .. v$listenerRegister}, $EXTENSION_CLASS->onRowClicked($clickInterface)V")
+    installPlaylistSwipeBackground(context, listenerType)
 }

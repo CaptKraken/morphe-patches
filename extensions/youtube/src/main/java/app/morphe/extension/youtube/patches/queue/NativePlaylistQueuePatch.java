@@ -110,6 +110,11 @@ public final class NativePlaylistQueuePatch {
         Object patch_getQueueEndpoint();
     }
 
+    /** Refreshes the native swipe widget's existing foreground background cache. */
+    public interface SwipeBackground {
+        void patch_refreshQueueSwipeBackground();
+    }
+
     /** Nonserialized ownership bit on native rows from an accepted local panel. */
     public interface QueueRow {
         boolean patch_isQueueOwned();
@@ -649,6 +654,21 @@ public final class NativePlaylistQueuePatch {
             pendingSelection = null;
             Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
         });
+    }
+
+    /** Keep the swipe restore drawable in sync when an attached queue row changes selection. */
+    public static void onSwipeBackgroundChanged(RowClick row, SwipeBackground background) {
+        if (!Utils.isCurrentlyOnMainThread()) return;
+        PlaylistController controller = controllerRef.get();
+        if (controller == null || background == null) return;
+        // Binding happens synchronously inside our publication, before publishedModel
+        // and ownership bits are committed. Require the exact bound endpoint in the
+        // controller's accepted model, including during that initial publication.
+        if (!publishing && (queue == null || controller.patch_getModel() != publishedModel)) return;
+        Object endpoint = row.patch_getQueueEndpoint();
+        if (endpoint != null && controller.patch_findQueueRow(endpoint) >= 0) {
+            background.patch_refreshQueueSwipeBackground();
+        }
     }
 
     /** Intercepts only our native swipe button, after native disabled/template checks. */
