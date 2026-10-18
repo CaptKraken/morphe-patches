@@ -2,6 +2,23 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## Step 11 — notification Next follows the queue
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step11-notification-next.mpp) · [Source a2a83547b](https://github.com/CaptKraken/morphe-patches/tree/a2a83547ba12581dd31aaff6a600564499240eec)
+
+Routes notification Next to the queued target through YouTube's normal playback-service load API, bypassing the foreground history/screen route. Registers the existing background active-video hook to confirm queue selection while hidden, and refreshes retained UI when it catches up. Casting/unrelated/account playback retain original callbacks. This step handles notification Next; it retains the earlier native Repeat-one correction and existing queue features.
+
+Phone checks:
+
+1. With YouTube visible and a three-item queue, press Next in the notification. It should play the next queue item, not a recommendation/history item.
+2. Leave YouTube using Home. Press notification Next twice without reopening it; queued videos should actually play. Return to YouTube and check selection, with no extra delayed skip. Repeat from lock screen and paused playback.
+3. Reorder then test notification Next; test last boundary and repeat-all wrap, quick presses and duplicate IDs. Confirm native Repeat one remains working after manual skips.
+4. Check ordinary/account/casting notification controls and hidden-media-controls/spoof/fullscreen settings. Existing Activity/process-death persistence and background automatic advance are not expanded by this step.
+
+19 existing tests passed;5 existing Jam APK-dependent tests skipped. Current stock21.20.405 APK application passed standalone, combined with16 related selections (including a shared helper), and queue-unselected; SDK DEX/hierarchy/resource checks passed. Emitted notification/service/background-ID hooks and original native loader/repeat paths inspected. Android MPP/default-selection and exact staged-tree review gate passed. Actual background playback/selection and native mode transitions require phone testing.
+
+SHA-256: `964aa662ce5f5fccafc838e76867dceabd2f1365b392059ed619cf2f4131e3ce`
+
 ## Step 10.2 — preserve YouTube's native repeat-one playback
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step10-repeat-fix2.mpp) · [Source 757208921](https://github.com/CaptKraken/morphe-patches/tree/7572089217d27d04c4998b806718782323695bab)

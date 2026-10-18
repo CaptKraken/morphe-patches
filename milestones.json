@@ -161,5 +161,20 @@
     "commit": "7572089217d27d04c4998b806718782323695bab",
     "sha256": "a5b993127013b4fad7ee36c7c8fed14a77f4e5c6e45c1b927bf02ea246ffc02a",
     "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step10-repeat-fix2.mpp"
+  },
+  {
+    "filename": "native-playlist-queue-21.20.405-step11-notification-next.mpp",
+    "title": "Step 11 \u2014 notification Next follows the queue",
+    "description": "Routes notification Next to the queued target through YouTube's normal playback-service load API, bypassing the foreground history/screen route. Registers the existing background active-video hook to confirm queue selection while hidden, and refreshes retained UI when it catches up. Casting/unrelated/account playback retain original callbacks. This step handles notification Next; it retains the earlier native Repeat-one correction and existing queue features.",
+    "phone_checks": [
+      "With YouTube visible and a three-item queue, press Next in the notification. It should play the next queue item, not a recommendation/history item.",
+      "Leave YouTube using Home. Press notification Next twice without reopening it; queued videos should actually play. Return to YouTube and check selection, with no extra delayed skip. Repeat from lock screen and paused playback.",
+      "Reorder then test notification Next; test last boundary and repeat-all wrap, quick presses and duplicate IDs. Confirm native Repeat one remains working after manual skips.",
+      "Check ordinary/account/casting notification controls and hidden-media-controls/spoof/fullscreen settings. Existing Activity/process-death persistence and background automatic advance are not expanded by this step."
+    ],
+    "validation": "19 existing tests passed;5 existing Jam APK-dependent tests skipped. Current stock21.20.405 APK application passed standalone, combined with16 related selections (including a shared helper), and queue-unselected; SDK DEX/hierarchy/resource checks passed. Emitted notification/service/background-ID hooks and original native loader/repeat paths inspected. Android MPP/default-selection and exact staged-tree review gate passed. Actual background playback/selection and native mode transitions require phone testing.",
+    "commit": "a2a83547ba12581dd31aaff6a600564499240eec",
+    "sha256": "964aa662ce5f5fccafc838e76867dceabd2f1365b392059ed619cf2f4131e3ce",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step11-notification-next.mpp"
   }
 ]
