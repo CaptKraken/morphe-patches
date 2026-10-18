@@ -191,6 +191,8 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
         :done
         return-void
     """)
+    installPlaylistRowPlayback(context, modelField, panelField)
+
     // Preserve every native rejection before this assignment. In particular, a stale model
     // must not claim the current controller or overwrite our local insertion state.
     accept.method.addInstruction(accept.instructionMatches.last().index + 1,

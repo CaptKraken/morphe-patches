@@ -47,9 +47,15 @@ public final class NativePlaylistQueuePatch {
         String patch_getVideoId();
         String patch_getPlaylistId();
         Object patch_getModel();
+        int patch_findQueueRow(Object endpoint);
         boolean patch_isAttached();
         Object patch_updatePanel(byte[] panel);
         void patch_restorePanel(Object expectedModel, Object originalModel);
+    }
+
+    /** Native listener bridge retains the bound endpoint before logging decorates it. */
+    public interface RowClick {
+        Object patch_getQueueEndpoint();
     }
 
     private static WeakReference<PlaylistController> controllerRef = new WeakReference<>(null);
@@ -58,6 +64,11 @@ public final class NativePlaylistQueuePatch {
     private static Object publishedModel;
     private static boolean publishing;
     private static boolean observingPlayer;
+    private record RowSelection(PlaylistQueue.Entry entry) {}
+    private static RowSelection pendingSelection;
+    // Native navigation can be rejected (for example while signed out). A failed
+    // click must not authorize a much later, unrelated open of the same video.
+    private static final int ROW_NAVIGATION_TIMEOUT_MILLISECONDS = 10_000;
 
     private NativePlaylistQueuePatch() {}
 
@@ -157,10 +168,14 @@ public final class NativePlaylistQueuePatch {
         controllerRef = new WeakReference<>(controller);
         if (queue == null) return;
 
-        // Native controller updates are presentation input, never a new queue selection.
-        if (!controller.patch_getVideoId().equals(queue.entries().getFirst().videoId())
+        // A row click authorizes only that exact entry. Wait for the authoritative
+        // video-ID hook before committing selection; prefetched responses cannot do it.
+        if (!hasPlaylist(controller) && pendingSelection != null
+                && controller.patch_getVideoId().equals(pendingSelection.entry().videoId())) return;
+        if (!controller.patch_getVideoId().equals(queue.currentEntry().videoId())
                 || hasPlaylist(controller)) {
             queue = null;
+            pendingSelection = null;
             originalModel = null;
             publishedModel = null;
             return;
@@ -169,13 +184,41 @@ public final class NativePlaylistQueuePatch {
         publish(controller, queue, false);
     }
 
+    /** Runs after YouTube's click veto but before its logging decorates the endpoint. */
+    public static void onRowClicked(RowClick click) {
+        pendingSelection = null;
+        PlaylistController controller = readyController();
+        if (queue == null || controller == null || controller.patch_getModel() != publishedModel) return;
+        int index = controller.patch_findQueueRow(click.patch_getQueueEndpoint());
+        if (index < 0 || index >= queue.entries().size() || index == queue.selectedIndex()) return;
+        RowSelection selection = new RowSelection(queue.entries().get(index));
+        pendingSelection = selection;
+        // Do not publish here: the original listener still needs its bound endpoint.
+        Utils.runOnMainThreadDelayed(() -> {
+            if (pendingSelection == selection) pendingSelection = null;
+        }, ROW_NAVIGATION_TIMEOUT_MILLISECONDS);
+    }
+
     /** Shared video-ID hook; prefetched player responses must not change this state. */
     public static void onVideoChanged(String videoId) {
         Utils.runOnMainThreadNowOrLater(() -> {
-            if (videoId.equals(VideoInformation.getVideoId()) && queue != null
-                    && !queue.entries().getFirst().videoId().equals(videoId)) {
-                releasePanel();
+            if (!videoId.equals(VideoInformation.getVideoId()) || queue == null) return;
+            if (pendingSelection != null && pendingSelection.entry().videoId().equals(videoId)) {
+                for (int index = 0; index < queue.entries().size(); index++) {
+                    if (queue.entries().get(index) != pendingSelection.entry()) continue;
+                    queue = queue.select(index);
+                    pendingSelection = null;
+                    // Let the original navigation/response callback finish first.
+                    Utils.runOnMainThread(() -> {
+                        PlaylistController controller = readyController();
+                        if (controller == null) return;
+                        if (controller.patch_getModel() == publishedModel) refreshOwnedPanel(videoId);
+                        else updateController(controller);
+                    });
+                    return;
+                }
             }
+            if (!queue.currentEntry().videoId().equals(videoId)) releasePanel();
         });
     }
 
@@ -298,6 +341,7 @@ public final class NativePlaylistQueuePatch {
         Object expectedModel = publishedModel;
         Object restoreModel = originalModel;
         queue = null;
+        pendingSelection = null;
         originalModel = null;
         publishedModel = null;
         // A null baseline is valid when YouTube had no playlist before our display.
@@ -313,7 +357,7 @@ public final class NativePlaylistQueuePatch {
     private static byte[] renderer(PlaylistQueue source) {
         var panel = PlaylistQueueRenderer.Panel.newBuilder()
                 .setTitle(str("morphe_native_playlist_queue_title"))
-                .setSelectedIndex(0).setPlaylistId("").setVideoCount(source.entries().size());
+                .setSelectedIndex(source.selectedIndex()).setPlaylistId("").setVideoCount(source.entries().size());
         for (int index = 0; index < source.entries().size(); index++) {
             PlaylistQueue.Entry entry = source.entries().get(index);
             VideoMetadata metadata = metadataCache.get(entry.videoId());
@@ -322,7 +366,9 @@ public final class NativePlaylistQueuePatch {
                     .setUrl("https://i.ytimg.com/vi/" + entry.videoId() + "/hqdefault.jpg")
                     .setWidth(480).setHeight(360);
             var video = PlaylistQueueRenderer.Video.newBuilder()
-                    .setVideoId(entry.videoId()).setSelected(index == 0)
+                    .setVideoId(entry.videoId()).setSelected(index == source.selectedIndex())
+                    .setNavigationEndpoint(PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
+                            .setWatchEndpoint(PlaylistQueueRenderer.WatchEndpoint.newBuilder().setVideoId(entry.videoId())))
                     .setTitle(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(
                             RestoreOriginalTitlesPatch.getTitle(entry.videoId(), title)))
                     .setMainAppStyle(PlaylistQueueRenderer.MainAppStyle.newBuilder()
@@ -334,7 +380,7 @@ public final class NativePlaylistQueuePatch {
                         .setLengthText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.duration()));
             }
             QueueRatingActions actions = ratingActions.get(entry.videoId());
-            if (index == 0 && actions != null && entry.videoId().equals(VideoInformation.getVideoId())) {
+            if (index == source.selectedIndex() && actions != null && entry.videoId().equals(VideoInformation.getVideoId())) {
                 video.addAllActionButtons(actions.buttons(
                         str("offline_playlist_panel_like_button_accessibility_text"),
                         str("offline_playlist_panel_dislike_button_accessibility_text")));

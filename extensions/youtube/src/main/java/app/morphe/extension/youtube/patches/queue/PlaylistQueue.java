@@ -11,33 +11,49 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
-/** Immutable insertion state for a queue anchored to the video currently playing. */
+/** Immutable order and selection for the local playlist queue. */
 public final class PlaylistQueue {
     private static final Pattern VIDEO_ID = Pattern.compile("[A-Za-z0-9_-]{11}");
 
     public record Entry(String videoId, String title) {}
 
     private final List<Entry> entries;
+    private final int selectedIndex;
 
     public PlaylistQueue(String playingVideoId, String playingTitle) {
+        selectedIndex = 0;
         requireVideoId(playingVideoId);
         entries = List.of(new Entry(playingVideoId,
                 playingTitle == null || playingTitle.isEmpty() ? playingVideoId : playingTitle));
     }
 
-    private PlaylistQueue(List<Entry> entries) {
+    private PlaylistQueue(List<Entry> entries, int selectedIndex) {
         this.entries = List.copyOf(entries);
+        this.selectedIndex = selectedIndex;
     }
 
     public List<Entry> entries() {
         return entries;
     }
 
+    public int selectedIndex() {
+        return selectedIndex;
+    }
+
+    public Entry currentEntry() {
+        return entries.get(selectedIndex);
+    }
+
+    public PlaylistQueue select(int index) {
+        if (index < 0 || index >= entries.size()) throw new IndexOutOfBoundsException(index);
+        return new PlaylistQueue(entries, index);
+    }
+
     public PlaylistQueue playNext(String videoId) {
         requireVideoId(videoId);
         var updated = new ArrayList<>(entries);
-        updated.add(1, new Entry(videoId, videoId));
-        return new PlaylistQueue(updated);
+        updated.add(selectedIndex + 1, new Entry(videoId, videoId));
+        return new PlaylistQueue(updated, selectedIndex);
     }
 
     public static boolean isVideoId(String videoId) {

@@ -52,6 +52,25 @@ class PlaylistQueueTest {
     }
 
     @Test
+    fun `row selection keeps order and subsequent insertion follows the selected row`() = withQueue { type ->
+        val initial = type.getConstructor(String::class.java, String::class.java)
+            .newInstance("abcdefghijk", "Playing video")
+        val insert = type.getMethod("playNext", String::class.java)
+        val populated = insert.invoke(insert.invoke(initial, "lmnopqrstuv"), "0123456789_")
+        val select = type.getMethod("select", Int::class.javaPrimitiveType)
+        val selected = select.invoke(populated, 2)
+        val updated = insert.invoke(selected, "ZYXWVUTSRQP")
+        assertEquals(listOf("abcdefghijk", "0123456789_", "lmnopqrstuv"), videos(selected))
+        assertEquals(listOf("abcdefghijk", "0123456789_", "lmnopqrstuv", "ZYXWVUTSRQP"), videos(updated))
+        assertEquals(0, type.getMethod("selectedIndex").invoke(populated))
+        assertEquals(2, type.getMethod("selectedIndex").invoke(updated))
+        for (invalid in listOf(-1, 3)) {
+            val failure = assertFailsWith<InvocationTargetException> { select.invoke(populated, invalid) }
+            assertIs<IndexOutOfBoundsException>(failure.cause)
+        }
+    }
+
+    @Test
     fun `invalid insertion cannot corrupt a valid queue`() = withQueue { type ->
         val queue = type.getConstructor(String::class.java, String::class.java)
             .newInstance("abcdefghijk", "Playing video")

@@ -8,8 +8,7 @@ option optimize_for = LITE_RUNTIME;
 
 import "app/morphe/extension/youtube/innertube/icon.proto";
 
-// Subset of YouTube 21.20.405's playlist renderer. Playback endpoints and editing
-// actions are deliberately absent until those features are implemented.
+// Subset of YouTube 21.20.405's native playlist renderer and actions.
 message Panel {
     optional string title = 1;
     repeated Item items = 2;
@@ -28,6 +27,7 @@ message Video {
     optional Thumbnails thumbnails = 3;
     optional Text length_text = 4;
     optional bool selected = 6;
+    optional NavigationEndpoint navigation_endpoint = 7;
     optional string video_id = 10;
     optional MainAppStyle main_app_style = 27;
     optional Text video_info = 31;
@@ -111,4 +111,12 @@ message Thumbnail {
     optional string url = 1;
     optional int32 width = 2;
     optional int32 height = 3;
+}
+
+message NavigationEndpoint {
+    optional WatchEndpoint watch_endpoint = 48687757;
+}
+
+message WatchEndpoint {
+    optional string video_id = 1;
 }

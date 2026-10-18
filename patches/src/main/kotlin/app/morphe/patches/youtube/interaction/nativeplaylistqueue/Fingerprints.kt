@@ -10,12 +10,15 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.InstructionLocation.MatchAfterImmediately
 import app.morphe.patcher.InstructionLocation.MatchAfterWithin
+import app.morphe.patcher.resource.ResourceType
+import app.morphe.patcher.resourceLiteral
 import app.morphe.patcher.fieldAccess
 import app.morphe.patcher.methodCall
 import app.morphe.patcher.opcode
 import app.morphe.patcher.string
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
+import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 
 internal object PlaylistModelDescriptionFingerprint : Fingerprint(
     name = "toString",
@@ -70,4 +73,53 @@ internal fun playlistPanelRenderFingerprint(modelField: FieldReference, panelFie
             location = MatchAfterWithin(6)),
         opcode(Opcode.MOVE_RESULT, location = MatchAfterImmediately())
     )
+)
+
+/** Native playlist item factory; the education label belongs to its reorder/delete controller. */
+internal object PlaylistItemsConstructorFingerprint : Fingerprint(
+    name = "<init>",
+    filters = listOf(resourceLiteral(ResourceType.STRING, "playlist_reorder_delete_edu"))
+)
+
+internal fun playlistItemFactoryFingerprint(videoType: String) = Fingerprint(
+    classFingerprint = PlaylistItemsConstructorFingerprint,
+    parameters = listOf("Ljava/util/List;"),
+    returnType = "Ljava/util/List;",
+    filters = listOf(fieldAccess(type = videoType, opcode = Opcode.IGET_OBJECT))
+)
+
+internal fun playlistContentsFingerprint(panelType: String, factory: MethodReference) = Fingerprint(
+    definingClass = factory.definingClass,
+    parameters = emptyList(),
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(definingClass = panelType, opcode = Opcode.IGET_OBJECT),
+        methodCall(reference = factory, location = MatchAfterImmediately())
+    )
+)
+
+internal fun playlistClickEndpointFingerprint(endpoint: FieldReference, decorate: MethodReference) = Fingerprint(
+    definingClass = endpoint.definingClass,
+    name = "onClick",
+    parameters = listOf("Landroid/view/View;"),
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(reference = endpoint, opcode = Opcode.IGET_OBJECT),
+        methodCall(reference = decorate, location = MatchAfterImmediately())
+    )
+)
+
+internal fun playlistEndpointBindingFingerprint(endpoint: FieldReference) = Fingerprint(
+    definingClass = endpoint.definingClass,
+    returnType = "V",
+    filters = listOf(fieldAccess(reference = endpoint, opcode = Opcode.IPUT_OBJECT)),
+    custom = { method, _ -> method.name != "onClick" }
+)
+
+internal fun playlistNativeClickFingerprint(listenerType: String) = Fingerprint(
+    definingClass = listenerType,
+    name = "onClick",
+    parameters = listOf("Landroid/view/View;"),
+    returnType = "V",
+    filters = listOf(string("com.google.android.libraries.youtube.logging.interaction_logger"))
 )
