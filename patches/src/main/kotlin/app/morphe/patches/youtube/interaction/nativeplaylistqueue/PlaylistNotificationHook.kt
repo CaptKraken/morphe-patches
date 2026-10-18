@@ -9,13 +9,10 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 
 import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
-import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
-import app.morphe.patches.shared.MediaSessionSetPlaybackStateFingerprint
 import app.morphe.util.addInstructionsAtControlFlowLabel
-import app.morphe.util.cloneParameters
 import app.morphe.util.findFreeRegister
 import app.morphe.util.getReference
 import app.morphe.util.matchSingle
@@ -24,7 +21,6 @@ import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.TypeReference
-import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodParameter
 
@@ -39,11 +35,11 @@ internal fun installPlaylistNotification(
         .instructionMatches.last().instruction.getReference<FieldReference>()!!
     val nextRequest = playlistNavigationSingletonFingerprint(wrapperType, next).matchSingle()
         .instructionMatches.last().instruction.getReference<FieldReference>()!!
-    val callback = NotificationNextCallbackFingerprint.matchSingle().instructionMatches.last()
+    val callback = notificationSkipCallbackFingerprint("onSkipToNext").matchSingle().instructionMatches.last()
         .instruction.getReference<MethodReference>()!!
     // Ignore wrappers, casting callbacks and no-op listeners. Require the delegate
     // whose original next method contains the same native navigation singleton.
-    val delegates = notificationNextDelegateFingerprint(callback).matchAll().map { match ->
+    val delegates = notificationDelegateFingerprint(callback).matchAll().map { match ->
         match to match.instructionMatches[1].instruction.getReference<MethodReference>()!!
     }.filter { (_, reference) ->
         classDefBy(reference.definingClass).methods.single { it.toString() == reference.toString() }
@@ -57,8 +53,23 @@ internal fun installPlaylistNotification(
         "Native playlist queue: media next callback and service dispatch must agree"
     }
     val foregroundCallback = notification.instructionMatches.first().instruction.getReference<FieldReference>()!!
-    val foregroundType = notificationForegroundNextFingerprint(foregroundCallback.type, nextRequest).matchSingle()
+    val foregroundType = notificationForegroundSkipFingerprint(foregroundCallback.type, nextRequest).matchSingle()
         .originalClassDef.type
+    val previousCallback = notificationSkipCallbackFingerprint("onSkipToPrevious").matchSingle()
+        .instructionMatches.last().instruction.getReference<MethodReference>()!!
+    val previousDelegate = notificationDelegateFingerprint(previousCallback, callbackDelegate.originalClassDef.type)
+        .matchSingle().instructionMatches[1].instruction.getReference<MethodReference>()!!
+    check(previousDelegate.definingClass == owner) {
+        "Native playlist queue: notification skips must share their media owner"
+    }
+    val previous = notificationPreviousDispatchFingerprint(previousDelegate).matchSingle()
+    val previousForeground = previous.instructionMatches.first().instruction.getReference<FieldReference>()!!
+    val previousIntent = playlistNavigationIntentFingerprint(enumType, "PREVIOUS").matchSingle()
+        .instructionMatches.last().instruction.getReference<FieldReference>()!!
+    val previousRequest = playlistNavigationSingletonFingerprint(wrapperType, previousIntent).matchSingle()
+        .instructionMatches.last().instruction.getReference<FieldReference>()!!
+    val previousForegroundType = notificationForegroundSkipFingerprint(previousForeground.type, previousRequest)
+        .matchSingle().originalClassDef.type
     val provider = notification.instructionMatches[2].instruction.getReference<FieldReference>()!!
     val getProvider = notification.instructionMatches[3].instruction.getReference<MethodReference>()!!
     val serviceType = notification.instructionMatches[5].instruction.getReference<TypeReference>()!!.type
@@ -135,8 +146,13 @@ internal fun installPlaylistNotification(
     mutableClassDefBy(owner).interfaces.add(mediaInterface)
     bridge(owner, "patch_getQueueNavigator", emptyList(), navigatorInterface, 2, """
         iget-object v0, p0, $foregroundCallback
-        if-eqz v0, :local
+        if-eqz v0, :previous
         instance-of v0, v0, $foregroundType
+        if-eqz v0, :missing
+        :previous
+        iget-object v0, p0, $previousForeground
+        if-eqz v0, :local
+        instance-of v0, v0, $previousForegroundType
         if-eqz v0, :missing
         :local
         iget-object v0, p0, $provider
@@ -151,76 +167,18 @@ internal fun installPlaylistNotification(
         const/4 v0, 0x0
         return-object v0
     """)
-    // Resolve the callback from this session on every update. A retained screen or
-    // the most recently constructed media owner does not establish service ownership.
-    val callbackInterface = "Lapp/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch\$NotificationCallback;"
-    val sessionInterface = "Lapp/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch\$NotificationSession;"
-    val callbackOwner = callbackDelegate.instructionMatches.first().instruction.getReference<FieldReference>()!!
-    check(callbackOwner.type == owner)
-    mutableClassDefBy(callbackDelegate.originalClassDef.type).interfaces.add(callbackInterface)
-    bridge(callbackDelegate.originalClassDef.type, "patch_getQueueMediaControls", emptyList(), mediaInterface, 1, """
-        iget-object v0, p0, $callbackOwner
-        return-object v0
-    """)
-    MediaSessionSetPlaybackStateFingerprint.clearMatch()
-    val playbackState = MediaSessionSetPlaybackStateFingerprint.matchSingle()
-    val sessionType = playbackState.originalClassDef.type
-    val playbackField = playbackState.originalMethod.implementation!!.instructions.mapNotNull {
-        it.getReference<FieldReference>()
-    }.distinct().single { it.type == playbackState.originalMethod.parameterTypes.single() }
-    val sessionField = classDefBy(sessionType).fields.single { it.type == playbackField.definingClass }
-    val getCallback = classDefBy(sessionField.type).methods.single {
-        it.parameterTypes.isEmpty() && it.returnType == callback.definingClass &&
-                AccessFlags.PUBLIC.isSet(it.accessFlags) && !AccessFlags.STATIC.isSet(it.accessFlags)
-    }
-    mutableClassDefBy(sessionType).interfaces.add(sessionInterface)
-    bridge(sessionType, "patch_getQueueMediaControls", emptyList(), mediaInterface, 2, """
-        iget-object v0, p0, $sessionField
-        invoke-virtual {v0}, $getCallback
-        move-result-object v0
-        instance-of v1, v0, $callbackInterface
-        if-eqz v1, :missing
-        check-cast v0, $callbackInterface
-        invoke-interface {v0}, $callbackInterface->patch_getQueueMediaControls()$mediaInterface
-        move-result-object v0
-        return-object v0
-        :missing
-        const/4 v0, 0x0
-        return-object v0
-    """)
-    bridge(sessionType, "patch_refreshQueueNotification", emptyList(), "V", 1, """
-        iget-object v0, p0, $sessionField
-        iget-object v0, v0, $playbackField
-        if-eqz v0, :done
-        invoke-virtual {p0, v0}, ${playbackState.originalMethod}
-        :done
-        return-void
-    """)
-    // The original method reuses p0 for the platform MediaSession. Preserve the
-    // compat session receiver before passing it to our ownership bridge.
-    playbackState.method.cloneParameters(mutableClassDefBy(sessionType))
-    MediaSessionSetPlaybackStateFingerprint.clearMatch()
-    val stateUpdate = MediaSessionSetPlaybackStateFingerprint.matchSingle()
-    stateUpdate.method.apply {
-        val index = stateUpdate.instructionMatches.single().index
-        val state = getInstruction<FiveRegisterInstruction>(index).registerD
-        check(implementation!!.registerCount <= 16) {
-            "Native playlist queue: notification state hook requires low registers"
-        }
-        addInstructionsAtControlFlowLabel(index, """
-            invoke-static {p0, v$state}, $EXTENSION_CLASS->filterNotificationState(${sessionInterface}Landroid/media/session/PlaybackState;)Landroid/media/session/PlaybackState;
-            move-result-object v$state
+    installPlaylistNotificationControls(context, owner)
+    for ((match, hook) in listOf(notification to "onNotificationNext", previous to "onNotificationPrevious")) {
+        val method = match.method
+        val index = match.instructionMatches.first().index
+        val result = method.findFreeRegister(index)
+        method.addInstructionsAtControlFlowLabel(index, """
+            invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->$hook($mediaInterface)Z
+            move-result v$result
+            if-eqz v$result, :native_skip
+            return-void
+            :native_skip
+            nop
         """)
     }
-    val method = notification.method
-    val index = notification.instructionMatches.first().index
-    val result = method.findFreeRegister(index)
-    method.addInstructionsAtControlFlowLabel(index, """
-        invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onNotificationNext($mediaInterface)Z
-        move-result v$result
-        if-eqz v$result, :native_next
-        return-void
-        :native_next
-        nop
-    """)
 }

@@ -181,6 +181,7 @@ class PlaylistQueueTest {
             val last = select.invoke(repeated, 2)
             assertEquals(automatic, next.invoke(last, true))
             assertEquals(manual, next.invoke(last, false))
+            assertEquals(1, previous.invoke(last))
             assertEquals(backwards, previous.invoke(repeated))
             var edited = type.getMethod("move", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
                 .invoke(last, 0, 1)

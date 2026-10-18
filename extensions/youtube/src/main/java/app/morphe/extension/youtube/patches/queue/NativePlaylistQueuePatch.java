@@ -9,8 +9,6 @@ package app.morphe.extension.youtube.patches.queue;
 
 import static app.morphe.extension.shared.StringRef.str;
 
-import android.media.session.PlaybackState;
-
 import com.google.protobuf.MessageLite;
 
 import java.lang.ref.WeakReference;
@@ -78,18 +76,11 @@ public final class NativePlaylistQueuePatch {
         ServiceNavigator patch_getQueueNavigator();
     }
 
-    public interface NotificationCallback {
-        MediaControls patch_getQueueMediaControls();
-    }
-
-    public interface NotificationSession {
+    /** Native adapter publishes capability changes to both notification paths. */
+    public interface NotificationControls {
         MediaControls patch_getQueueMediaControls();
         void patch_refreshQueueNotification();
     }
-
-    // Main-thread only. Re-read the session's callback before filtering; casting
-    // and service replacement must not inherit another player's queue boundary.
-    private static WeakReference<NotificationSession> notificationSession = new WeakReference<>(null);
 
     public interface ServiceNavigator {
         String patch_getVideoId();
@@ -168,6 +159,7 @@ public final class NativePlaylistQueuePatch {
     private static RepeatState publishingRepeatState;
     private static final Set<RepeatHeader> repeatHeaders = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<PlayerControls> playerControls = Collections.newSetFromMap(new WeakHashMap<>());
+    private static final Set<NotificationControls> notificationControls = Collections.newSetFromMap(new WeakHashMap<>());
     // Native navigation can be rejected (for example while signed out). A failed
     // click must not authorize a much later, unrelated open of the same video.
     private static final int ROW_NAVIGATION_TIMEOUT_MILLISECONDS = 10_000;
@@ -481,31 +473,31 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static void refreshNotificationControls() {
-        NotificationSession session = notificationSession.get();
-        if (session != null) session.patch_refreshQueueNotification();
+        for (NotificationControls controls : new ArrayList<>(notificationControls)) {
+            controls.patch_refreshQueueNotification();
+        }
     }
 
-    /** Android 13+ derives notification buttons from PlaybackState's available actions. */
-    public static PlaybackState filterNotificationState(NotificationSession session, PlaybackState state) {
-        if (!Utils.isCurrentlyOnMainThread() || state == null) return state;
-        MediaControls controls = session.patch_getQueueMediaControls();
-        if (controls == null) return state;
-        if (notificationSession.get() != session) notificationSession = new WeakReference<>(session);
-        if (queue == null || !VideoInformation.getPlaylistId().isEmpty()) return state;
-        ServiceNavigator navigator = controls.patch_getQueueNavigator();
-        if (navigator == null) return state;
+    public static void onNotificationControlsCreated(NotificationControls controls) {
+        // Finish native construction before consulting its providers or publishing
+        // a refresh through the original observers.
+        Utils.runOnMainThread(() -> {
+            notificationControls.add(controls);
+            if (queue != null) controls.patch_refreshQueueNotification();
+        });
+    }
+
+    /** Bridge contract: bit 0 = Previous, bit 1 = Next; -1 keeps native flags. */
+    public static int notificationNavigationAvailability(NotificationControls controls) {
+        if (!Utils.isCurrentlyOnMainThread() || queue == null
+                || !VideoInformation.getPlaylistId().isEmpty()) return -1;
+        ServiceNavigator navigator = controls.patch_getQueueMediaControls().patch_getQueueNavigator();
+        if (navigator == null) return -1;
         String videoId = queue.currentEntry().videoId();
         if (!videoId.equals(navigator.patch_getVideoId()) || !videoId.equals(VideoInformation.getVideoId())) {
-            return state;
+            return -1;
         }
-        // Only remove an unavailable action. Never restore a control hidden by
-        // Media notification controls or change native seek/play/pause actions.
-        long actions = state.getActions();
-        if (queue.nextIndex(false) < 0 && (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0) {
-            return new PlaybackState.Builder(state)
-                    .setActions(actions & ~PlaybackState.ACTION_SKIP_TO_NEXT).build();
-        }
-        return state;
+        return (queue.previousIndex() >= 0 ? 1 : 0) | (queue.nextIndex(false) >= 0 ? 2 : 0);
     }
 
     public static boolean playerControlAvailability(PlayerControls controls, boolean next, boolean original) {
@@ -536,6 +528,14 @@ public final class NativePlaylistQueuePatch {
 
     /** Runs after native media logging, before either foreground or service skip routing. */
     public static boolean onNotificationNext(MediaControls controls) {
+        return navigateNotification(controls, true);
+    }
+
+    public static boolean onNotificationPrevious(MediaControls controls) {
+        return navigateNotification(controls, false);
+    }
+
+    private static boolean navigateNotification(MediaControls controls, boolean next) {
         if (!Utils.isCurrentlyOnMainThread() || queue == null) return false;
         ServiceNavigator navigator = controls.patch_getQueueNavigator();
         PlaylistQueue.Entry source = queue.currentEntry();
@@ -551,7 +551,7 @@ public final class NativePlaylistQueuePatch {
         }
         if (!source.videoId().equals(serviceVideoId) || !source.videoId().equals(activeVideoId)) return false;
         if (dragSession != null) return true;
-        int index = queue.nextIndex(false);
+        int index = next ? queue.nextIndex(false) : queue.previousIndex();
         if (index < 0) return true;
         PlaylistQueue.Entry target = queue.entries().get(index);
         RowSelection selection = authorizeRowSelection(target);

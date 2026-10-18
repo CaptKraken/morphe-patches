@@ -382,8 +382,8 @@ internal fun playerLoopCommandFingerprint(setter: MethodReference) = Fingerprint
 )
 
 /** Resolve the native callback name through Android, rather than its obfuscated override. */
-internal object NotificationNextCallbackFingerprint : Fingerprint(
-    name = "onSkipToNext",
+internal fun notificationSkipCallbackFingerprint(callbackName: String) = Fingerprint(
+    name = callbackName,
     returnType = "V",
     parameters = emptyList(),
     filters = listOf(
@@ -394,7 +394,8 @@ internal object NotificationNextCallbackFingerprint : Fingerprint(
     custom = { _, classDef -> classDef.superclass == "Landroid/media/session/MediaSession\$Callback;" }
 )
 
-internal fun notificationNextDelegateFingerprint(callback: MethodReference) = Fingerprint(
+internal fun notificationDelegateFingerprint(callback: MethodReference, delegateType: String? = null) = Fingerprint(
+    definingClass = delegateType,
     name = callback.name,
     returnType = "V",
     parameters = emptyList(),
@@ -448,10 +449,10 @@ internal fun playlistPlaybackDescriptorBuilderFingerprint(descriptorType: String
 )
 
 /** Only the ordinary watch-page callback is replaced; casting/no-op delegates keep control. */
-internal fun notificationForegroundNextFingerprint(callbackType: String, next: FieldReference) = Fingerprint(
+internal fun notificationForegroundSkipFingerprint(callbackType: String, request: FieldReference) = Fingerprint(
     returnType = "V",
     parameters = emptyList(),
-    filters = listOf(fieldAccess(reference = next, opcode = Opcode.SGET_OBJECT)),
+    filters = listOf(fieldAccess(reference = request, opcode = Opcode.SGET_OBJECT)),
     custom = { _, classDef -> callbackType in classDef.interfaces }
 )
 
@@ -462,4 +463,50 @@ internal fun playlistServiceLoadFingerprint(serviceType: String, descriptorType:
     returnType = "V",
     custom = { method, _ -> AccessFlags.PUBLIC.isSet(method.accessFlags) &&
             !AccessFlags.STATIC.isSet(method.accessFlags) }
+)
+
+/** Observe Previous after logging, before foreground history or service seek/skip routing. */
+internal fun notificationPreviousDispatchFingerprint(previous: MethodReference) = Fingerprint(
+    definingClass = previous.definingClass,
+    name = previous.name,
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(
+        fieldAccess(definingClass = previous.definingClass, opcode = Opcode.IGET_OBJECT),
+        opcode(Opcode.IF_NEZ, location = MatchAfterImmediately())
+    )
+)
+
+/** Stable broadcast actions identify the native notification's paired skip controls. */
+internal object NotificationSkipActionsFingerprint : Fingerprint(
+    returnType = "Ljava/lang/String;",
+    parameters = emptyList(),
+    filters = listOf(
+        string("com.google.android.libraries.youtube.player.action.controller_notification_prev"),
+        string("com.google.android.libraries.youtube.player.action.controller_notification_next")
+    )
+)
+
+/** Both native adapter variants publish Previous/Next through the same model setter. */
+internal fun notificationCapabilitiesFingerprint(
+    ownerType: String,
+    setter: MethodReference,
+    adapterType: String? = null
+) = Fingerprint(
+    definingClass = adapterType,
+    parameters = emptyList(),
+    filters = listOf(methodCall(reference = setter)),
+    custom = { method, classDef -> method.returnType in listOf("V", "I") &&
+            classDef.fields.any { it.type == ownerType } }
+)
+
+/** The newer adapter dispatches the setter's returned change flags through its native notifier. */
+internal fun notificationCapabilitiesDispatchFingerprint(computation: MethodReference) = Fingerprint(
+    definingClass = computation.definingClass,
+    filters = listOf(
+        methodCall(reference = computation),
+        opcode(Opcode.MOVE_RESULT, location = MatchAfterImmediately()),
+        methodCall(definingClass = computation.definingClass, parameters = listOf("I"), returnType = "V",
+            location = MatchAfterImmediately())
+    )
 )
