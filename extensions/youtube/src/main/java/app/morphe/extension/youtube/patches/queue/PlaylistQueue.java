@@ -64,6 +64,21 @@ public final class PlaylistQueue {
         return new PlaylistQueue(updated, selectedIndex - (index < selectedIndex ? 1 : 0));
     }
 
+    /** Move an entry with the native adapter's remove-then-insert semantics. */
+    public PlaylistQueue move(int from, int to) {
+        if (from < 0 || from >= entries.size()) throw new IndexOutOfBoundsException(from);
+        if (to < 0 || to >= entries.size()) throw new IndexOutOfBoundsException(to);
+        if (from == to) return this;
+        var updated = new ArrayList<>(entries);
+        updated.add(to, updated.remove(from));
+        // Entry identity also distinguishes duplicate videos in the same queue.
+        int selection = selectedIndex;
+        if (from == selection) selection = to;
+        else if (from < selection && to >= selection) selection--;
+        else if (from > selection && to <= selection) selection++;
+        return new PlaylistQueue(updated, selection);
+    }
+
     public static boolean isVideoId(String videoId) {
         return videoId != null && VIDEO_ID.matcher(videoId).matches();
     }

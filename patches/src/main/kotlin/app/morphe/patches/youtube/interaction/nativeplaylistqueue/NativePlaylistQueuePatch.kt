@@ -31,7 +31,8 @@ internal const val CONTROLLER_INTERFACE =
 val nativePlaylistQueuePatch = bytecodePatch(
     name = "Native playlist queue",
     description = "Adds a Play next action and a temporary queue with native playlist rows and rating actions. " +
-            "Tap a queued row to play it or swipe it to remove it. YouTube 21.20.405 only.",
+            "Tap a queued row to play it or swipe it to remove it. " +
+            "Drag its handle to reorder. YouTube 21.20.405 only.",
     default = true
 ) {
     dependsOn(

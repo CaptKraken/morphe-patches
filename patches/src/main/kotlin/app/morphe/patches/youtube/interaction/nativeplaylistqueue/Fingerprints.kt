@@ -140,3 +140,56 @@ internal object NativeButtonDispatchFingerprint : Fingerprint(
     filters = listOf(methodCall(opcode = Opcode.INVOKE_INTERFACE, returnType = "V",
         parameters = listOf("L", "Ljava/util/Map;")))
 )
+
+/** Rich playlist rows, as opposed to the compact/offline binders. */
+internal object PlaylistRichRowConstructorFingerprint : Fingerprint(
+    name = "<init>",
+    filters = listOf(resourceLiteral(ResourceType.ID, "playlist_panel_video_item"))
+)
+
+/** The native binder configures the drag handle's touch target from resources. */
+internal object PlaylistDragBinderFingerprint : Fingerprint(
+    classFingerprint = PlaylistRichRowConstructorFingerprint,
+    returnType = "V",
+    filters = listOf(resourceLiteral(ResourceType.DIMEN, "playlist_drag_handle_touch_padding_start"))
+)
+
+internal fun playlistDragStartFingerprint(holderType: String) = Fingerprint(
+    definingClass = holderType,
+    returnType = "V",
+    parameters = listOf("L", "L", "I"),
+    filters = listOf(
+        opcode(Opcode.IF_EQ),
+        fieldAccess(type = "Landroid/view/View;", opcode = Opcode.IGET_OBJECT,
+            location = MatchAfterWithin(1)),
+        methodCall("Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V",
+            location = MatchAfterWithin(1))
+    )
+)
+
+internal fun playlistDragEndFingerprint(holderType: String) = Fingerprint(
+    definingClass = holderType,
+    returnType = "V",
+    parameters = listOf("L", "L", "I", "I"),
+    filters = listOf(
+        opcode(Opcode.IF_EQ),
+        methodCall(definingClass = holderType, opcode = Opcode.INVOKE_DIRECT,
+            parameters = emptyList(), returnType = "V", location = MatchAfterWithin(1))
+    )
+)
+
+internal fun playlistDragUnbindFingerprint(holderType: String) = Fingerprint(
+    definingClass = holderType,
+    returnType = "V",
+    parameters = listOf("L"),
+    filters = listOf(
+        methodCall("Landroid/view/View;->setOnTouchListener(Landroid/view/View\$OnTouchListener;)V"),
+        methodCall("Landroid/view/View;->setOnLongClickListener(Landroid/view/View\$OnLongClickListener;)V")
+    )
+)
+
+internal object PlaylistEditEventsFingerprint : Fingerprint(
+    classFingerprint = PlaylistItemsConstructorFingerprint,
+    parameters = listOf("Ljava/lang/Class;", "Ljava/lang/Object;", "I"),
+    returnType = "[Ljava/lang/Class;"
+)

@@ -33,6 +33,9 @@ message Video {
     optional MainAppStyle main_app_style = 27;
     optional Text video_info = 31;
     repeated RatingAction action_buttons = 32;
+    // Local rows deliberately omit playlistSetVideoId (26) and edit params (37).
+    // Native drag presentation works without authorizing an account-playlist edit.
+    optional bool can_reorder = 36;
 }
 
 message RatingAction {

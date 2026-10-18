@@ -66,6 +66,32 @@ public final class NativePlaylistQueuePatch {
         boolean patch_isQueueOwned();
     }
 
+    /** Native adapter bridge; its rows are the exact accepted protobuf objects. */
+    public interface ReorderItems {
+        int patch_getSize();
+        Object patch_getQueueRow(int index);
+    }
+
+    private static final class DragSession {
+        final Object holder;
+        final ReorderItems items;
+        final Object model;
+        final PlaylistQueue snapshot;
+        final Object row;
+        final int from;
+        boolean ended;
+
+        DragSession(Object holder, ReorderItems items, Object row, int from) {
+            this.holder = holder;
+            this.items = items;
+            this.row = row;
+            this.from = from;
+            model = publishedModel;
+            snapshot = queue;
+        }
+    }
+
+    private static DragSession dragSession;
     private static WeakReference<PlaylistController> controllerRef = new WeakReference<>(null);
     private static PlaylistQueue queue;
     private static Object originalModel;
@@ -176,17 +202,20 @@ public final class NativePlaylistQueuePatch {
         if (!controller.patch_getVideoId().equals(queue.currentEntry().videoId())
                 || hasPlaylist(controller)) {
             queue = null;
+            dragSession = null;
             pendingSelection = null;
             originalModel = null;
             publishedModel = null;
             return;
         }
+        dragSession = null;
         originalModel = controller.patch_getModel();
         publish(controller, queue, false);
     }
 
     /** Runs after YouTube's click veto but before its logging decorates the endpoint. */
     public static void onRowClicked(RowClick click) {
+        if (dragSession != null) return;
         pendingSelection = null;
         PlaylistController controller = readyController();
         if (queue == null || controller == null || controller.patch_getModel() != publishedModel) return;
@@ -214,7 +243,7 @@ public final class NativePlaylistQueuePatch {
             if (index < 0 || index >= queue.entries().size()) return null;
             // Check again at activation: a previously revealed button must never
             // remove the current item or race an in-flight row navigation.
-            if (index == queue.selectedIndex() || pendingSelection != null
+            if (index == queue.selectedIndex() || pendingSelection != null || dragSession != null
                     || queue.entries().get(index).videoId().equals(VideoInformation.getVideoId())) return null;
             publish(controller, queue.remove(index), true);
             // This command is entirely local. Do not let native hide/edit logic
@@ -227,6 +256,52 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
+    /** Observe native start/end notifications; never replace the gesture listeners. */
+    public static void onReorderStarted(Object holder, ReorderItems items, int index) {
+        PlaylistController controller = readyController();
+        if (queue == null || controller == null || pendingSelection != null
+                || controller.patch_getModel() != publishedModel
+                || items.patch_getSize() != queue.entries().size()
+                || index < 0 || index >= items.patch_getSize()) return;
+        Object row = items.patch_getQueueRow(index);
+        if (row instanceof QueueRow owned && owned.patch_isQueueOwned()
+                && controller.patch_findQueueRow(row) == index) {
+            dragSession = new DragSession(holder, items, row, index);
+        }
+    }
+
+    public static void onReorderEnded(Object holder, ReorderItems items, int from, int to) {
+        DragSession session = dragSession;
+        if (session == null || session.holder != holder || session.items != items) return;
+        session.ended = true;
+        // Let all native observers and coordinator cleanup finish. Hold off metadata
+        // publication until then so it cannot rebind the adapter in mid-gesture.
+        Utils.runOnMainThread(() -> {
+            if (dragSession != session) return;
+            dragSession = null;
+            PlaylistController controller = readyController();
+            if (queue != session.snapshot || controller == null
+                    || controller.patch_getModel() != session.model) return;
+            boolean validMove = from == session.from && to >= 0 && to < items.patch_getSize()
+                    && items.patch_getSize() == queue.entries().size()
+                    && items.patch_getQueueRow(to) == session.row;
+            PlaylistQueue candidate = validMove ? queue.move(from, to) : queue;
+            if (!publish(controller, candidate, validMove)) publish(controller, session.snapshot, false);
+        });
+    }
+
+    /** Native teardown can cancel a drag without an end notification. */
+    public static void onReorderHolderUnbound(Object holder) {
+        DragSession session = dragSession;
+        if (session == null || session.holder != holder || session.ended) return;
+        dragSession = null;
+        Utils.runOnMainThread(() -> {
+            if (dragSession == null && queue == session.snapshot) {
+                refreshOwnedPanel(session.snapshot.currentEntry().videoId());
+            }
+        });
+    }
+
     /** Shared video-ID hook; prefetched player responses must not change this state. */
     public static void onVideoChanged(String videoId) {
         Utils.runOnMainThreadNowOrLater(() -> {
@@ -234,6 +309,7 @@ public final class NativePlaylistQueuePatch {
             if (pendingSelection != null && pendingSelection.entry().videoId().equals(videoId)) {
                 for (int index = 0; index < queue.entries().size(); index++) {
                     if (queue.entries().get(index) != pendingSelection.entry()) continue;
+                    dragSession = null;
                     queue = queue.select(index);
                     pendingSelection = null;
                     // Let the original navigation/response callback finish first.
@@ -251,7 +327,7 @@ public final class NativePlaylistQueuePatch {
     }
 
     public static int addFlyoutButton(Object flyoutPanel, int index, String videoId) {
-        if (!isPatchIncluded() || !PlaylistQueue.isVideoId(videoId)) return index;
+        if (!isPatchIncluded() || dragSession != null || !PlaylistQueue.isVideoId(videoId)) return index;
         PlayerType playerType = PlayerType.getCurrent();
         if (playerType.isNoneOrHidden() || playerType == PlayerType.INLINE_MINIMAL
                 || !PlaylistQueue.isVideoId(VideoInformation.getVideoId())
@@ -287,7 +363,7 @@ public final class NativePlaylistQueuePatch {
     private static void playNext(String videoId, String channelName) {
         try {
             PlaylistController controller = readyController();
-            if (controller == null) {
+            if (controller == null || dragSession != null) {
                 Utils.showToastShort(str("morphe_native_playlist_queue_not_ready"));
                 return;
             }
@@ -334,7 +410,8 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static void refreshOwnedPanel(String videoId) {
-        if (queue == null || queue.entries().stream().noneMatch(item -> item.videoId().equals(videoId))) return;
+        if (dragSession != null || queue == null
+                || queue.entries().stream().noneMatch(item -> item.videoId().equals(videoId))) return;
         PlaylistController controller = readyController();
         if (controller != null && controller.patch_getModel() == publishedModel) publish(controller, queue, false);
     }
@@ -365,6 +442,7 @@ public final class NativePlaylistQueuePatch {
         Object expectedModel = publishedModel;
         Object restoreModel = originalModel;
         queue = null;
+        dragSession = null;
         pendingSelection = null;
         originalModel = null;
         publishedModel = null;
@@ -404,7 +482,7 @@ public final class NativePlaylistQueuePatch {
                     .setUrl("https://i.ytimg.com/vi/" + entry.videoId() + "/hqdefault.jpg")
                     .setWidth(480).setHeight(360);
             var video = PlaylistQueueRenderer.Video.newBuilder()
-                    .setVideoId(entry.videoId()).setSelected(index == source.selectedIndex())
+                    .setVideoId(entry.videoId()).setSelected(index == source.selectedIndex()).setCanReorder(true)
                     .setNavigationEndpoint(PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
                             .setWatchEndpoint(PlaylistQueueRenderer.WatchEndpoint.newBuilder().setVideoId(entry.videoId())))
                     .setTitle(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(
