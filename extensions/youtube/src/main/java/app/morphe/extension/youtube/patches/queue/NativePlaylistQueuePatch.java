@@ -9,6 +9,8 @@ package app.morphe.extension.youtube.patches.queue;
 
 import static app.morphe.extension.shared.StringRef.str;
 
+import android.media.session.PlaybackState;
+
 import com.google.protobuf.MessageLite;
 
 import java.lang.ref.WeakReference;
@@ -75,6 +77,19 @@ public final class NativePlaylistQueuePatch {
     public interface MediaControls {
         ServiceNavigator patch_getQueueNavigator();
     }
+
+    public interface NotificationCallback {
+        MediaControls patch_getQueueMediaControls();
+    }
+
+    public interface NotificationSession {
+        MediaControls patch_getQueueMediaControls();
+        void patch_refreshQueueNotification();
+    }
+
+    // Main-thread only. Re-read the session's callback before filtering; casting
+    // and service replacement must not inherit another player's queue boundary.
+    private static WeakReference<NotificationSession> notificationSession = new WeakReference<>(null);
 
     public interface ServiceNavigator {
         String patch_getVideoId();
@@ -458,10 +473,39 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static void refreshPlayerControls(Object navigator) {
+        refreshNotificationControls();
         if (navigator == null) return;
         for (PlayerControls controls : new ArrayList<>(playerControls)) {
             if (controls.patch_getNavigator() == navigator) controls.patch_refreshNavigation();
         }
+    }
+
+    private static void refreshNotificationControls() {
+        NotificationSession session = notificationSession.get();
+        if (session != null) session.patch_refreshQueueNotification();
+    }
+
+    /** Android 13+ derives notification buttons from PlaybackState's available actions. */
+    public static PlaybackState filterNotificationState(NotificationSession session, PlaybackState state) {
+        if (!Utils.isCurrentlyOnMainThread() || state == null) return state;
+        MediaControls controls = session.patch_getQueueMediaControls();
+        if (controls == null) return state;
+        if (notificationSession.get() != session) notificationSession = new WeakReference<>(session);
+        if (queue == null || !VideoInformation.getPlaylistId().isEmpty()) return state;
+        ServiceNavigator navigator = controls.patch_getQueueNavigator();
+        if (navigator == null) return state;
+        String videoId = queue.currentEntry().videoId();
+        if (!videoId.equals(navigator.patch_getVideoId()) || !videoId.equals(VideoInformation.getVideoId())) {
+            return state;
+        }
+        // Only remove an unavailable action. Never restore a control hidden by
+        // Media notification controls or change native seek/play/pause actions.
+        long actions = state.getActions();
+        if (queue.nextIndex(false) < 0 && (actions & PlaybackState.ACTION_SKIP_TO_NEXT) != 0) {
+            return new PlaybackState.Builder(state)
+                    .setActions(actions & ~PlaybackState.ACTION_SKIP_TO_NEXT).build();
+        }
+        return state;
     }
 
     public static boolean playerControlAvailability(PlayerControls controls, boolean next, boolean original) {
@@ -696,6 +740,7 @@ public final class NativePlaylistQueuePatch {
                     pendingSelection = null;
                     // Let the original navigation/response callback finish first.
                     Utils.runOnMainThread(() -> {
+                        refreshNotificationControls();
                         PlaylistController controller = readyController();
                         if (controller == null) return;
                         if (controller.patch_getModel() == publishedModel) refreshOwnedPanel(videoId);
