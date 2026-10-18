@@ -469,10 +469,28 @@ public final class NativePlaylistQueuePatch {
         return PlaylistQueueRenderer.SwipeAction.newBuilder().setButtonRenderer(button).build();
     }
 
+    private static PlaylistQueueRenderer.Menu saveMenu(PlaylistQueue source) {
+        var create = PlaylistQueueRenderer.CreatePlaylistDialogEndpoint.newBuilder();
+        for (PlaylistQueue.Entry entry : source.entries()) create.addVideoIds(entry.videoId());
+        var save = PlaylistQueueRenderer.MenuNavigationItem.newBuilder()
+                .setText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(str("playlist_save")))
+                .setIcon(Icon.newBuilder().setYtIconType(YTIconType.BOOKMARK_BORDER))
+                .setNavigationEndpoint(PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
+                        .setCreatePlaylistDialogEndpoint(create));
+        return PlaylistQueueRenderer.Menu.newBuilder().setMenuRenderer(
+                PlaylistQueueRenderer.MenuRenderer.newBuilder()
+                        .addItems(PlaylistQueueRenderer.MenuItem.newBuilder().setMenuNavigationItemRenderer(save))
+                        .setAccessibility(PlaylistQueueRenderer.Accessibility.newBuilder().setAccessibilityData(
+                                PlaylistQueueRenderer.AccessibilityLabel.newBuilder()
+                                        .setLabel(str("accessibility_overflow_menu")))))
+                .build();
+    }
+
     private static byte[] renderer(PlaylistQueue source) {
         var panel = PlaylistQueueRenderer.Panel.newBuilder()
                 .setTitle(str("morphe_native_playlist_queue_title"))
-                .setSelectedIndex(source.selectedIndex()).setPlaylistId("").setVideoCount(source.entries().size());
+                .setSelectedIndex(source.selectedIndex()).setPlaylistId("").setVideoCount(source.entries().size())
+                .setMenu(saveMenu(source));
         var swipeToRemove = removalAction();
         for (int index = 0; index < source.entries().size(); index++) {
             PlaylistQueue.Entry entry = source.entries().get(index);

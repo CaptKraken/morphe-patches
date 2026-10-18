@@ -15,6 +15,27 @@ message Panel {
     optional int32 selected_index = 3;
     optional string playlist_id = 5;
     optional int32 video_count = 6;
+    optional Menu menu = 26;
+}
+
+// Native header overflow; only the save entry is supplied for a local queue.
+message Menu {
+    optional MenuRenderer menu_renderer = 66439850;
+}
+
+message MenuRenderer {
+    repeated MenuItem items = 1;
+    optional Accessibility accessibility = 10;
+}
+
+message MenuItem {
+    optional MenuNavigationItem menu_navigation_item_renderer = 66441108;
+}
+
+message MenuNavigationItem {
+    optional Text text = 1;
+    optional app.morphe.extension.youtube.innertube.Icon icon = 2;
+    optional NavigationEndpoint navigation_endpoint = 3;
 }
 
 message Item {
@@ -120,6 +141,13 @@ message Thumbnail {
 message NavigationEndpoint {
     optional WatchEndpoint watch_endpoint = 48687757;
     optional HideEnclosingAction hide_enclosing_action = 77297742;
+    optional CreatePlaylistDialogEndpoint create_playlist_dialog_endpoint = 85650004;
+}
+
+// YouTube handles sign-in, name/privacy entry, creation and result feedback.
+// Supplying IDs (rather than a playlist ID) saves the local order as a new playlist.
+message CreatePlaylistDialogEndpoint {
+    repeated string video_ids = 1;
 }
 
 message WatchEndpoint {
