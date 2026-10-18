@@ -12,5 +12,19 @@
     "commit": "7b2147f05ac0a615e12496e5a215d0d41d352249",
     "sha256": "0116302d041841b7f10133134286fee272c74769d2663345ef48a583f31c5260",
     "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step3-card-info.mpp"
+  },
+  {
+    "filename": "native-playlist-queue-21.20.405-step4-ratings.mpp",
+    "title": "Step 4: native like and dislike actions",
+    "description": "Cumulative card information plus native like/dislike buttons on the playing queue row. Reuses native watch commands and shared rating entities; no custom action UI or separate account API. Row playback and swipe removal are not included in this milestone.",
+    "phone_checks": [
+      "Like then undo; dislike then undo; switch between like and dislike. Check synchronization with the main watch-page rating buttons.",
+      "Test while Return YouTube Dislike is selected and while watch-page action buttons are hidden.",
+      "Add another video, close/reopen the player and open an account playlist; original rating paths should remain unchanged."
+    ],
+    "validation": "10 tests passed,5 existing Jam APK-dependent tests skipped. Stock21.20.405 SDK DEX/resource validation passed with11related patches with queue selected and unselected. Actual native command capture smoke and final Android MPP/default=true checks passed. Phone account actions remain unverified.",
+    "commit": "82ac8cb2ef7cf85114ee85fcb40327cda63b82ef",
+    "sha256": "bff87cba14d1c6af1b53443088f0975c7a54bdbfc42a5221879470201db37ad6",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step4-ratings.mpp"
   }
 ]
