@@ -2,6 +2,22 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## Step 14 — first queue row swipe background
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step14-swipe-background.mpp) · [Source c518eef44](https://github.com/CaptKraken/morphe-patches/tree/c518eef44cee678e0b35f119290644bd1e38b4e3)
+
+Refreshes the native swipe widget's cached foreground background after YouTube changes a local queue row's selection background. This addresses a stale playing-row drawable when the first attached item becomes removable. Keeps YouTube's original swipe layout, animation, remove button and dimensions; account playlist rows retain their native path. Visual confirmation on the phone remains pending.
+
+Phone checks:
+
+1. Create a two- or three-item queue, advance to the second video, then swipe the first row slowly and fully. The remove action should be revealed beside the moving card with no card text visible through it.
+2. Close/reopen the panel, navigate back and forward, and repeat partial/full swipes on the first and other rows. Tap remove; verify order/counter, current-item protection, native dragging and rating actions.
+3. Compare a normal account playlist, check dark/light theme, and confirm notification Previous/Next and native Loop still work. Phone validation remains pending.
+
+19 existing tests passed; 5 unrelated Jam APK-dependent tests skipped. Stock YouTube 21.20.405 APK application and SDK verification of 12 DEX files/resources/hierarchy passed standalone, with 16 related selections, and queue-unselected. Inspected emitted field/register/branch and ownership guards. Compared 158 native methods to stock; every original instruction/register/relative branch remains, with only one added background observer when selected. No new JVM UI imitation or source-snapshot tests. Final Android MPP/default=true check and exact staged-tree review gate passed. Device rendering remains unverified.
+
+SHA-256: `be5beb5a153e5b94bf9ede855cca1fcd5f9687a8f627979ee47fb4f6f9affa62`
+
 ## Step 13 — native notification queue navigation
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step13-native-notification-navigation.mpp) · [Source de98fb69c](https://github.com/CaptKraken/morphe-patches/tree/de98fb69c644cd78f0f8d64ebf7124f6bf5e1328)
