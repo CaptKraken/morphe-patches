@@ -2,6 +2,23 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## Step 10.1 — repeat-one completion fix
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step10-repeat-fix1.mpp) · [Source c4d9f2bc5](https://github.com/CaptKraken/morphe-patches/tree/c4d9f2bc540a01a8093dba42a1d8beaa6e600f52)
+
+Repeat one can restart the current item without depending on a native playlist AUTOPLAY request. Queue advancement still respects Disable playlist autoplay; replay retains the captured end sleep-timer veto and duplicate-completion protection. No changes to Morphe's separate Loop patch. Cumulative build includes all earlier queue features. This fixes a confirmed source-level replay dependency; the reported phone issue still requires retesting.
+
+Phone checks:
+
+1. Enable Repeat one from the queue header or native player Loop switch, then allow two consecutive real completions; test first/middle/last queue entries.
+2. Repeat with Disable playlist autoplay on and off. Explicit replay should work in both cases; end-of-video sleep timer should still stop playback.
+3. Disable repeat: queue advancement retains configured policy. Repeat all wraps subject to that policy; manual Next/Previous still skip.
+4. Check close/reopen/account playlists and existing Morphe Loop/fullscreen preferences retain their behavior.
+
+19 tests passed; 5 existing Jam APK-dependent tests skipped. Current combined stock-APK application with 13 related patches passed SDK DEX/hierarchy/resource checks. Native hooks and original reset paths inspected; no fingerprints or injected code changed. Android MPP/default-selection and exact staged-tree review gate passed. Standalone/unselected native paths remain unchanged from the previous verified build; those modes were not rerun for this runtime-only fix. Phone playback remains pending.
+
+SHA-256: `b1c3b5c9949c05479d79eab9adf65b943404266918010ce61e6135abe687b27f`
+
 ## Step 10 — queue repeat and native player Loop
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step10-repeat.mpp) · [Source 942a2d6ce](https://github.com/CaptKraken/morphe-patches/tree/942a2d6cee2c44b0d35c8088c6e73f869dceb8ed)
