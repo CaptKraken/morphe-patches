@@ -26,5 +26,19 @@
     "commit": "82ac8cb2ef7cf85114ee85fcb40327cda63b82ef",
     "sha256": "bff87cba14d1c6af1b53443088f0975c7a54bdbfc42a5221879470201db37ad6",
     "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step4-ratings.mpp"
+  },
+  {
+    "filename": "native-playlist-queue-21.20.405-step5-row-playback.mpp",
+    "title": "Step 5: play selected queue rows",
+    "description": "Cumulative full native card information and rating actions, plus native row navigation that retains local order and updates selection. Adds no Next/Previous or automatic progression. Account/feed actions retain original routing. Swipe removal is not included in this milestone.",
+    "phone_checks": [
+      "Tap later, earlier and last queue rows in portrait/fullscreen. Check playback, selected row and retained queue.",
+      "After selecting a later row, add another video using Play next and check its position.",
+      "Test rapid/repeated taps, external video/account-playlist opens and closing/reopening the player."
+    ],
+    "validation": "11 tests passed,5 existing Jam APK-dependent tests skipped. Stock21.20.405 patch application and SDK DEX/resource verification passed with11related patches and with queue unselected. Native click control flow and watch-endpoint wire fields inspected; finalMPP/default=true passed. Phone playback still requires testing.",
+    "commit": "cfabd1c968b66ffaee45955c961294b2313b3a22",
+    "sha256": "686e1457977c7757e1b6dbb4ee8cdcd5b0f38b11987fc216a482acba438b801f",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step5-row-playback.mpp"
   }
 ]
