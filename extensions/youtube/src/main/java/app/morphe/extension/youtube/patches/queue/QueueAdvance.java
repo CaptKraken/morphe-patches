@@ -35,6 +35,12 @@ final class QueueAdvance {
         dispatched = false;
     }
 
+    /** Explicit replay is independent of the native playlist-advance request and its policy. */
+    PlaylistQueue.Entry takeRepeatTarget(PlaylistQueue queue) {
+        if (!isFor(queue) || queue.repeatMode() != PlaylistQueue.REPEAT_ONE) return null;
+        return takePlaybackTarget(queue);
+    }
+
     /** Select the target only once, using the current order after any completed drag. */
     PlaylistQueue.Entry takePlaybackTarget(PlaylistQueue queue) {
         if (!isFor(queue) || sleepTimerEnding || dispatched) return null;

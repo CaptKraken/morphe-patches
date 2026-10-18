@@ -202,6 +202,38 @@ class PlaylistQueueTest {
     }
 
     @Test
+    fun `repeat one can replay without requesting playlist advancement and still honors the timer`() = withQueue { type ->
+        val initial = type.getConstructor(String::class.java, String::class.java)
+            .newInstance("abcdefghijk", "Playing video")
+        val queue = type.getMethod("playNext", String::class.java).invoke(initial, "lmnopqrstuv")
+        val repeat = type.getMethod("withRepeatMode", Int::class.javaPrimitiveType)
+        val completion = type.classLoader.loadClass("app.morphe.extension.youtube.patches.queue.QueueAdvance")
+        val constructor = completion.getDeclaredConstructor(type, Boolean::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+        fun call(instance: Any, name: String, source: Any): Any? = completion.getDeclaredMethod(name, type)
+            .apply { isAccessible = true }.invoke(instance, source)
+        for (index in listOf(0, 1)) {
+            val selected = type.getMethod("select", Int::class.javaPrimitiveType).invoke(queue, index)
+            val one = repeat.invoke(selected, 2)
+            val ended = constructor.newInstance(one, false)
+            // No native AUTOPLAY request is needed to claim the repeat target.
+            assertEquals(type.getMethod("currentEntry").invoke(one), call(ended, "takeRepeatTarget", one))
+            assertEquals(null, call(ended, "takeRepeatTarget", one))
+            assertEquals(false, call(ended, "beginRequest", one))
+            assertEquals(null, call(ended, "takePlaybackTarget", one))
+            assertEquals(null, call(constructor.newInstance(one, true), "takeRepeatTarget", one))
+        }
+        for (mode in listOf(0, 1)) {
+            val source = repeat.invoke(queue, mode)
+            val ended = constructor.newInstance(source, false)
+            assertEquals(null, call(ended, "takeRepeatTarget", source))
+            assertEquals(true, call(ended, "beginRequest", source))
+            val target = call(ended, "takePlaybackTarget", source)!!
+            assertEquals("lmnopqrstuv", target.javaClass.getMethod("videoId").invoke(target))
+        }
+    }
+
+    @Test
     fun `changing repeat after the end re-arms one completion but keeps the sleep timer authoritative`() = withQueue { type ->
         val initial = type.getConstructor(String::class.java, String::class.java)
             .newInstance("abcdefghijk", "Playing video")
