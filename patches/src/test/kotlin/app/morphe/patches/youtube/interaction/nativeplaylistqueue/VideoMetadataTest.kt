@@ -30,6 +30,10 @@ class VideoMetadataTest {
         ): List<String>? = (method.invoke(null, url, title, info, channel, avatarLabel, description) as Array<*>?)
             ?.map { it as String }
 
+        fun merge(json: String, videoId: String): List<String> =
+            (searchMethod.declaringClass.getMethod("merge", String::class.java, String::class.java)
+                .invoke(null, json, videoId) as Array<*>).map { it as String }
+
         fun search(json: String, videoId: String): List<String>? =
             (searchMethod.invoke(null, json, videoId) as Array<*>?)?.map { it as String }
     }
@@ -68,6 +72,15 @@ class VideoMetadataTest {
                         if (parsed == null) return null;
                         parsed = parsed.withChannelName(channel);
                         return new String[]{parsed.videoId(), parsed.title(), parsed.channelName(), parsed.videoInfo()};
+                    }
+                    public static String[] merge(String json, String videoId) throws Exception {
+                        var card = new VideoMetadata(videoId, "Native title", "Starbound Extra", "157 views · 46 minutes ago", "29:04", false);
+                        var lookup = VideoMetadata.fromSearch(new org.json.JSONObject(json), videoId);
+                        var merged = card.withLookup(lookup).withCapture(card).withChannelName("Starbound Extra");
+                        var reverse = lookup.withCapture(card).withChannelName("Starbound Extra");
+                        merged = merged.withLookup(card);
+                        return new String[]{Boolean.toString(card.isComplete()), merged.channelName(),
+                            reverse.channelName(), merged.title(), Boolean.toString(merged.isComplete())};
                     }
                     public static String[] search(String json, String videoId) throws Exception {
                         var parsed = VideoMetadata.fromSearch(new org.json.JSONObject(json), videoId);
@@ -113,6 +126,20 @@ class VideoMetadataTest {
             parse.search(response, "waZyE4Xl6bo"))
         assertNull(parse.search(response, "abcdefghijk"))
         assertNull(parse.search("{}", "waZyE4Xl6bo"))
+    }
+
+    @Test
+    fun `uploader-only cards require full byline lookup and cannot overwrite its collaborators`() = withParser { parse ->
+        val response = """
+            {"contents":{"sectionListRenderer":{"contents":[{"itemSectionRenderer":{"contents":[
+                {"compactVideoRenderer":{"videoId":"waZyE4Xl6bo", "title":{"runs":[{"text":"Search title"}]},
+                    "longBylineText":{"runs":[{"text":"Starbound Extra"},{"text":" and "},{"text":"Starbound HFY"}]},
+                    "shortViewCountText":{"runs":[{"text":"157 views"}]},
+                    "publishedTimeText":{"runs":[{"text":"46 minutes ago"}]}}}
+            ]}}]}}}
+        """.trimIndent()
+        assertEquals(listOf("false", "Starbound Extra and Starbound HFY", "Starbound Extra and Starbound HFY",
+            "Native title", "true"), parse.merge(response, "waZyE4Xl6bo"))
     }
 
     @Test

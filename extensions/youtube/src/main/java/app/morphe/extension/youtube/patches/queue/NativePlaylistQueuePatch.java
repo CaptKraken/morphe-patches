@@ -115,15 +115,8 @@ public final class NativePlaylistQueuePatch {
         try {
             VideoMetadata metadata = VideoMetadata.fromElement(bytes);
             if (metadata != null) {
-                metadataCache.compute(metadata.videoId(), (videoId, previous) -> {
-                    if (previous == null) return metadata;
-                    if (!metadata.isComplete() && previous.isComplete()) {
-                        return new VideoMetadata(videoId, metadata.title(), previous.channelName(),
-                                previous.videoInfo(), metadata.duration().isEmpty()
-                                ? previous.duration() : metadata.duration());
-                    }
-                    return metadata.withChannelName(previous.channelName());
-                });
+                metadataCache.compute(metadata.videoId(), (videoId, previous) ->
+                        previous == null ? metadata : previous.withCapture(metadata));
             }
         } catch (Exception exception) {
             Logger.printException(() -> "Could not read native queue card metadata", exception);
@@ -133,9 +126,9 @@ public final class NativePlaylistQueuePatch {
 
     private static void rememberChannel(String videoId, String title, String channelName) {
         metadataCache.compute(videoId, (id, metadata) -> {
-            if (metadata == null) return new VideoMetadata(id, title, channelName, "", "");
+            if (metadata == null) return new VideoMetadata(id, title, channelName, "", "", false);
             if (metadata.title().equals(id) && !title.equals(id)) {
-                metadata = new VideoMetadata(id, title, metadata.channelName(), metadata.videoInfo(), metadata.duration());
+                metadata = new VideoMetadata(id, title, metadata.channelName(), metadata.videoInfo(), metadata.duration(), metadata.fullByline());
             }
             return metadata.withChannelName(channelName);
         });
@@ -332,13 +325,8 @@ public final class NativePlaylistQueuePatch {
                 Utils.runOnMainThread(() -> {
                     pendingMetadata.remove(key);
                     if (fetched == null || !Locale.getDefault().equals(locale)) return;
-                    metadataCache.compute(entry.videoId(), (videoId, previous) -> {
-                        if (previous == null || previous.title().equals(videoId)) return fetched;
-                        if (previous.isComplete()) return previous;
-                        // Preserve the captured/player title and title-patch processing.
-                        return new VideoMetadata(videoId, previous.title(), fetched.channelName(),
-                                fetched.videoInfo(), fetched.duration());
-                    });
+                    metadataCache.compute(entry.videoId(), (videoId, previous) ->
+                            previous == null ? fetched : previous.withLookup(fetched));
                     refreshOwnedPanel(entry.videoId());
                 });
             });

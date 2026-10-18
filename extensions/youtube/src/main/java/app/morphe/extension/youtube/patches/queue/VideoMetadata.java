@@ -17,7 +17,7 @@ import java.util.List;
 import app.morphe.extension.youtube.innertube.queue.QueueCardRenderer;
 
 /** Server-formatted display text for a native playlist row. */
-record VideoMetadata(String videoId, String title, String channelName, String videoInfo, String duration) {
+record VideoMetadata(String videoId, String title, String channelName, String videoInfo, String duration, boolean fullByline) {
     private static final String WATCH_URL_PREFIX = "https://www.youtube.com/watch?v=";
     private static final String METADATA_SEPARATOR = " · ";
 
@@ -47,7 +47,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
             if (!parts.isEmpty()) rows.add(String.join(METADATA_SEPARATOR, parts));
         }
         VideoMetadata result = new VideoMetadata(videoId, title, "", String.join("\n", rows),
-                video.getThumbnail().getTimestampText());
+                video.getThumbnail().getTimestampText(), false);
         return result.withChannelLabel(video.getAvatar().getAccessibilityText(), card.getAccessibilityText());
     }
 
@@ -68,6 +68,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
                 if (video == null || !videoId.equals(video.optString("videoId"))) continue;
                 String title = text(video.optJSONObject("title"));
                 String channel = text(video.optJSONObject("longBylineText"));
+                boolean fullByline = !channel.isEmpty();
                 if (channel.isEmpty()) channel = text(video.optJSONObject("shortBylineText"));
                 if (title.isEmpty() || channel.isEmpty()) continue;
                 List<String> info = new ArrayList<>();
@@ -76,7 +77,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
                 if (!views.isEmpty()) info.add(views);
                 if (!age.isEmpty()) info.add(age);
                 return new VideoMetadata(videoId, title, channel, String.join(METADATA_SEPARATOR, info),
-                        text(video.optJSONObject("lengthText")));
+                        text(video.optJSONObject("lengthText")), fullByline);
             }
         }
         return null;
@@ -98,7 +99,26 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     }
 
     boolean isComplete() {
-        return !title.isEmpty() && !title.equals(videoId) && !channelName.isEmpty() && !videoInfo.isEmpty();
+        // A card/player can expose only the uploading channel, even when its other
+        // details are complete. Only the native long byline confirms all collaborators.
+        return fullByline && !title.isEmpty() && !title.equals(videoId)
+                && !channelName.isEmpty() && !videoInfo.isEmpty();
+    }
+
+    VideoMetadata withCapture(VideoMetadata captured) {
+        if (!fullByline) return captured.withChannelName(channelName);
+        // Later feed/player captures must not downgrade an authoritative byline.
+        return new VideoMetadata(videoId, captured.title().equals(videoId) ? title : captured.title(),
+                channelName, videoInfo, captured.duration().isEmpty() ? duration : captured.duration(), true);
+    }
+
+    VideoMetadata withLookup(VideoMetadata fetched) {
+        if (fullByline && !fetched.fullByline()) return this;
+        // Preserve captured titles and their title-patch processing, but prefer
+        // the lookup's native long byline over an uploader-only fallback.
+        return new VideoMetadata(videoId, title.equals(videoId) ? fetched.title() : title,
+                fetched.channelName(), fetched.videoInfo(),
+                fetched.duration().isEmpty() ? duration : fetched.duration(), fetched.fullByline());
     }
 
     private VideoMetadata withChannelLabel(String avatarLabel, String description) {
@@ -121,16 +141,16 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     }
 
     VideoMetadata withChannelName(String name) {
-        if (name.isEmpty() || name.equals(channelName)) return this;
+        if (fullByline || name.isEmpty() || name.equals(channelName)) return this;
         if (videoInfo.isEmpty() || videoInfo.equals(name)) {
-            return new VideoMetadata(videoId, title, name, "", duration);
+            return new VideoMetadata(videoId, title, name, "", duration, false);
         }
         // Cards may combine the channel, views and age into one text. Split only an
         // exact known channel prefix; channel names themselves can contain separators.
         for (String separator : List.of(METADATA_SEPARATOR, "\n")) {
             String prefix = name + separator;
             if (videoInfo.startsWith(prefix)) {
-                return new VideoMetadata(videoId, title, name, videoInfo.substring(prefix.length()), duration);
+                return new VideoMetadata(videoId, title, name, videoInfo.substring(prefix.length()), duration, false);
             }
         }
         return this;
