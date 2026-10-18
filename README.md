@@ -2,6 +2,23 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## Step 8 — native Save playlist
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step8-save-playlist.mpp) · [Source c8856c224](https://github.com/CaptKraken/morphe-patches/tree/c8856c22411332b33dd49b39665360221250fe2b)
+
+The queue header's existing three-dot button opens YouTube's native bottom sheet with only Save playlist. The action supplies the queue's current video order to YouTube's native create-playlist dialog, which handles sign-in, playlist name, privacy and creation. No custom UI, new injected callbacks or request helpers. Saving creates a new account playlist from the temporary queue rather than bookmarking a server Mix ID.
+
+Phone checks:
+
+1. Open Queue, tap the three-dot button beside Repeat/Shuffle, and confirm the native bottom flyout has only Save playlist and no Share action.
+2. Tap Save playlist and cancel the native name/privacy dialog. The playing video, queue and order should remain unchanged.
+3. Reorder/remove items, then save using a recognizable name and chosen privacy. Check the new playlist in Library contains the expected videos in order, including the playing item. Confirm the temporary queue and playback remain usable.
+4. Confirm ordinary account playlist menus retain their normal actions. If convenient, check that signed-out use reaches YouTube's own sign-in prompt.
+
+Review gate passed. JVM regression suite: 14 passed, 5 existing Jam APK-dependent tests skipped. Actual YouTube 21.20.405 patch application and SDK DEX/resource checks passed with 11 related patches and with queue unselected; no new native hook sites. Native menu schema, one-item create command and supplied video-ID ordering checked against stock code and captured native data. Android MPP built and default selection verified. Native dialog interaction and account playlist persistence still require the phone checks above.
+
+SHA-256: `00657d10901ef8fd1d0d0be9eabbece41cb2745a651949cc5dd964b30bc438e0`
+
 ## Step 7 — native drag reordering
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step7-reordering.mpp) · [Source 1a679ff3c](https://github.com/CaptKraken/morphe-patches/tree/1a679ff3c05d77b8a5b4ca06c752be0eeda12dc5)
