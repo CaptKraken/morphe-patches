@@ -2,6 +2,24 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## Step 9: queue playback navigation
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step9-playback-navigation.mpp) · [Source 71a0def7b](https://github.com/CaptKraken/morphe-patches/tree/71a0def7bd08b257dd5a2287452dd93b4662ee53)
+
+Adds automatic advancement through the displayed temporary queue and player Next/Previous navigation, including native cached eligibility and history-delegate paths. The queue stops at its last entry. Existing Loop video, end-of-video sleep timer, Disable playlist autoplay, fullscreen and button-visibility policies retain their effect. Includes prior native cards, ratings, row playback, swipe removal, reordering and Save playlist.
+
+Phone checks:
+
+1. Create a queue with three different videos. Seek near the end and let playback finish: the next displayed item should play once. Let the last video finish: retain the queue and stop.
+2. Use player Next/Previous in portrait/fullscreen with the queue expanded/collapsed. Verify the selected row follows playback and first/last boundaries do not open recommendations.
+3. Reorder/remove/add queue entries while the current video plays. Verify button availability refreshes and navigation follows the new order. Try an end while holding a drag.
+4. Enable Loop video, then disable it; test the end-of-video sleep timer and Disable playlist autoplay. Auto suppression should stop advancement while manual navigation still works. Check hide-button/fullscreen settings.
+5. Close/reopen the player, replay the last item, and open ordinary videos/account playlists. Verify original behavior and no stale queue takeover.
+
+Focused JVM tests, real 21.20.405 APK application with Android SDK DEX/resource verification in standalone/combined/unselected modes, native hook/control-flow inspection, local pre-commit review gate, and Android MPP/default=true verification passed. Phone playback checks remain pending; no device reproduction is claimed.
+
+SHA-256: `1e9a45c067afef4ef4ba49e617e13f56d532ca11e6cd450b5db02ba540df89fa`
+
 ## Step 8 — native Save playlist
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step8-save-playlist.mpp) · [Source c8856c224](https://github.com/CaptKraken/morphe-patches/tree/c8856c22411332b33dd49b39665360221250fe2b)
