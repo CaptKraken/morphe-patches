@@ -26,7 +26,8 @@ class PlaylistQueueTest {
         val output = createTempDirectory("playlist-queue-state").toFile()
         try {
             assertEquals(0, ToolProvider.getSystemJavaCompiler().run(
-                null, null, null, "--release", "17", "-d", output.path, source.path
+                null, null, null, "--release", "17", "-d", output.path, source.path,
+                File(source.parentFile, "QueueAdvance.java").path
             ))
             URLClassLoader(arrayOf(output.toURI().toURL()), null).use { loader ->
                 block(loader.loadClass("app.morphe.extension.youtube.patches.queue.PlaylistQueue"))
@@ -114,6 +115,53 @@ class PlaylistQueueTest {
             val failure = assertFailsWith<InvocationTargetException> { move.invoke(populated, from, to) }
             assertIs<IndexOutOfBoundsException>(failure.cause)
         }
+    }
+
+    @Test
+    fun `one completion cannot dispatch twice or target a reopened duplicate entry`() = withQueue { type ->
+        val initial = type.getConstructor(String::class.java, String::class.java)
+            .newInstance("abcdefghijk", "abcdefghijk")
+        val queue = type.getMethod("playNext", String::class.java).invoke(initial, "abcdefghijk")
+        val completion = type.classLoader.loadClass("app.morphe.extension.youtube.patches.queue.QueueAdvance")
+        val constructor = completion.getDeclaredConstructor(type, Boolean::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+        fun call(instance: Any, name: String, source: Any): Any? = completion.getDeclaredMethod(name, type)
+            .apply { isAccessible = true }.invoke(instance, source)
+        val ended = constructor.newInstance(queue, false)
+        assertEquals(true, call(ended, "beginRequest", queue))
+        assertEquals(false, call(ended, "beginRequest", queue))
+        val target = call(ended, "takeNext", queue)
+        assertEquals("abcdefghijk", target!!.javaClass.getMethod("videoId").invoke(target))
+        assertEquals(null, call(ended, "takeNext", queue))
+        val selected = type.getMethod("select", Int::class.javaPrimitiveType).invoke(queue, 1)
+        assertEquals(false, call(ended, "isFor", selected))
+        val reopened = type.getConstructor(String::class.java, String::class.java)
+            .newInstance("abcdefghijk", "abcdefghijk")
+        assertEquals(false, call(ended, "isFor", reopened))
+    }
+
+    @Test
+    fun `completion follows reordered queue and stops at its end or an end sleep timer`() = withQueue { type ->
+        val initial = type.getConstructor(String::class.java, String::class.java)
+            .newInstance("abcdefghijk", "Playing video")
+        val insert = type.getMethod("playNext", String::class.java)
+        val queue = insert.invoke(insert.invoke(initial, "lmnopqrstuv"), "0123456789_")
+        val completion = type.classLoader.loadClass("app.morphe.extension.youtube.patches.queue.QueueAdvance")
+        val constructor = completion.getDeclaredConstructor(type, Boolean::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+        fun call(instance: Any, name: String, source: Any): Any? = completion.getDeclaredMethod(name, type)
+            .apply { isAccessible = true }.invoke(instance, source)
+        val ended = constructor.newInstance(queue, false)
+        val moved = type.getMethod("move", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+            .invoke(queue, 2, 1)
+        val target = call(ended, "takeNext", moved)
+        assertEquals("lmnopqrstuv", target!!.javaClass.getMethod("videoId").invoke(target))
+        assertEquals(0, type.getMethod("selectedIndex").invoke(moved))
+        val last = type.getMethod("select", Int::class.javaPrimitiveType).invoke(queue, 2)
+        assertEquals(null, call(constructor.newInstance(last, false), "takeNext", last))
+        val timer = constructor.newInstance(queue, true)
+        assertEquals(false, call(timer, "beginRequest", queue))
+        assertEquals(null, call(timer, "takeNext", queue))
     }
 
     @Test

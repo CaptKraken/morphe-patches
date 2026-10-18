@@ -8,6 +8,7 @@
 package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 
 import app.morphe.patcher.Fingerprint
+import app.morphe.patcher.checkCast
 import app.morphe.patcher.InstructionLocation.MatchAfterImmediately
 import app.morphe.patcher.InstructionLocation.MatchAfterWithin
 import app.morphe.patcher.resource.ResourceType
@@ -16,6 +17,7 @@ import app.morphe.patcher.fieldAccess
 import app.morphe.patcher.methodCall
 import app.morphe.patcher.opcode
 import app.morphe.patcher.string
+import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
@@ -192,4 +194,87 @@ internal object PlaylistEditEventsFingerprint : Fingerprint(
     classFingerprint = PlaylistItemsConstructorFingerprint,
     parameters = listOf("Ljava/lang/Class;", "Ljava/lang/Object;", "I"),
     returnType = "[Ljava/lang/Class;"
+)
+
+internal fun playlistNavigationRequestFingerprint(enumType: String) = Fingerprint(
+    name = "<init>",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(enumType, "L", "L")
+)
+
+internal fun playlistNavigationIntentFingerprint(enumType: String, intent: String) = Fingerprint(
+    definingClass = enumType,
+    name = "<clinit>",
+    filters = listOf(
+        string(intent),
+        fieldAccess(type = enumType, opcode = Opcode.SPUT_OBJECT, location = MatchAfterWithin(3))
+    )
+)
+
+internal fun playlistNavigationSingletonFingerprint(wrapperType: String, intent: FieldReference) = Fingerprint(
+    definingClass = wrapperType,
+    name = "<clinit>",
+    filters = listOf(
+        fieldAccess(reference = intent, opcode = Opcode.SGET_OBJECT),
+        methodCall(definingClass = wrapperType, name = "<init>", parameters = listOf(intent.type),
+            location = MatchAfterImmediately()),
+        fieldAccess(type = wrapperType, opcode = Opcode.SPUT_OBJECT, location = MatchAfterImmediately())
+    )
+)
+
+/** The same native dispatch family used by Disable playlist autoplay. */
+internal fun playlistNavigationDispatchFingerprint(wrapperType: String) = Fingerprint(
+    returnType = "V",
+    parameters = listOf(wrapperType),
+    custom = { method, classDef ->
+        method.implementation != null && classDef.methods.any { sibling ->
+            sibling.implementation != null && sibling.returnType == "I" &&
+                    sibling.parameterTypes.singleOrNull() == wrapperType
+        }
+    }
+)
+
+/** Resolve the playlist controller's own scoped navigator, not a global last-created instance. */
+internal fun playlistNavigatorProviderFingerprint(controllerType: String, navigatorType: String) = Fingerprint(
+    definingClass = controllerType,
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(
+        fieldAccess(definingClass = controllerType, opcode = Opcode.IGET_OBJECT),
+        fieldAccess(opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = emptyList(),
+            returnType = "Ljava/lang/Object;", location = MatchAfterWithin(1)),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+        // The native factory allocates controls before invocation and aliases its result before casting.
+        checkCast(navigatorType, location = MatchAfterWithin(1))
+    )
+)
+
+/** Native player control eligibility, including its alternate history callbacks. */
+internal fun playlistControlAvailabilityFingerprint(navigatorType: String, request: FieldReference) = Fingerprint(
+    accessFlags = listOf(AccessFlags.PRIVATE, AccessFlags.FINAL),
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(
+        fieldAccess(opcode = Opcode.IGET_OBJECT),
+        opcode(Opcode.IF_EQZ, location = MatchAfterImmediately()),
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = emptyList(), returnType = "Z",
+            location = MatchAfterImmediately()),
+        opcode(Opcode.MOVE_RESULT, location = MatchAfterImmediately()),
+        fieldAccess(type = navigatorType, opcode = Opcode.IGET_OBJECT),
+        fieldAccess(reference = request, opcode = Opcode.SGET_OBJECT, location = MatchAfterImmediately()),
+        methodCall(definingClass = navigatorType, parameters = listOf(request.type), returnType = "Z",
+            location = MatchAfterImmediately()),
+        opcode(Opcode.MOVE_RESULT, location = MatchAfterImmediately()),
+        fieldAccess(type = "Z", opcode = Opcode.IGET_BOOLEAN, location = MatchAfterImmediately()),
+        opcode(Opcode.IF_EQ, location = MatchAfterImmediately())
+    )
+)
+
+internal fun playlistControlPressFingerprint(controlsType: String, request: FieldReference) = Fingerprint(
+    definingClass = controlsType,
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(fieldAccess(reference = request, opcode = Opcode.SGET_OBJECT)),
+    custom = { method, _ -> AccessFlags.PUBLIC.isSet(method.accessFlags) }
 )

@@ -16,6 +16,7 @@ import app.morphe.patches.youtube.misc.settings.PreferenceScreen
 import app.morphe.patches.youtube.misc.settings.settingsPatch
 import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
 import app.morphe.util.cloneParameters
+import app.morphe.util.setExtensionIsPatchIncluded
 import app.morphe.util.findFreeRegister
 import com.android.tools.smali.dexlib2.AccessFlags
 
@@ -35,6 +36,7 @@ val disablePlaylistAutoplayPatch = bytecodePatch(
     compatibleWith(COMPATIBILITY_YOUTUBE)
 
     execute {
+        setExtensionIsPatchIncluded(EXTENSION_CLASS)
         PreferenceScreen.PLAYER.addPreferences(
             SwitchPreference("morphe_disable_playlist_autoplay", summary = true)
         )

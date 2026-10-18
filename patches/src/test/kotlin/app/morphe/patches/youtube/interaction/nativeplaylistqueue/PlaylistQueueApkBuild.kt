@@ -18,6 +18,8 @@ import app.morphe.patches.youtube.layout.buttons.action.hideVideoActionButtonsPa
 import app.morphe.patches.youtube.layout.buttons.overlay.hidePlayerOverlayButtonsPatch
 import app.morphe.patches.youtube.layout.dearrow.deArrowPatch
 import app.morphe.patches.youtube.layout.flyout.addToQueuePatch
+import app.morphe.patches.youtube.layout.player.fullscreen.exitFullscreenPatch
+import app.morphe.patches.youtube.layout.player.fullscreen.openVideosFullscreenPatch
 import app.morphe.patches.youtube.layout.livering.openChannelOfLiveAvatarPatch
 import app.morphe.patches.youtube.layout.hide.relatedvideos.hideRelatedVideosPatch
 import app.morphe.patches.youtube.layout.originaltitles.restoreOriginalTitlesPatch
@@ -41,7 +43,7 @@ fun main(arguments: Array<String>) {
         addToQueuePatch, saveToWatchLaterButtonPatch, loopVideoPatch,
         disablePlaylistAutoplayPatch, hidePlayerOverlayButtonsPatch, hideVideoActionButtonsPatch,
         restoreOriginalTitlesPatch, deArrowPatch, openChannelOfLiveAvatarPatch, returnYouTubeDislikePatch,
-        hideRelatedVideosPatch
+        hideRelatedVideosPatch, exitFullscreenPatch, openVideosFullscreenPatch
     )
     val selected = when (mode) {
         "standalone" -> setOf(nativePlaylistQueuePatch)

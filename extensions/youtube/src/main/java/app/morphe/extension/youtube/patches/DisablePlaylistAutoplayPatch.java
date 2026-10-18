@@ -12,6 +12,10 @@ import app.morphe.extension.youtube.settings.Settings;
 @SuppressWarnings("unused")
 public class DisablePlaylistAutoplayPatch {
 
+    public static boolean isPatchIncluded() {
+        return false; // Modified during patching.
+    }
+
     /**
      * Injection point.
      */

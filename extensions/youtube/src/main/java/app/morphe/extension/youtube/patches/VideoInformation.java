@@ -221,6 +221,11 @@ public final class VideoInformation {
         return currentQuality;
     }
 
+    /** True only for the currently registered non-casting playback controller. */
+    public static boolean isActivePlaybackController(Object controller) {
+        return controller != null && playerControllerRef.get() == controller;
+    }
+
     /**
      * Injection point.
      *
