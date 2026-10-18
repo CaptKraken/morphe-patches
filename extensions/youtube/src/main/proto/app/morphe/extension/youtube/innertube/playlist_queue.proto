@@ -16,6 +16,9 @@ message Panel {
     optional string playlist_id = 5;
     optional int32 video_count = 6;
     optional Menu menu = 26;
+    // Native counters add selected_index - local_selected_index to the row position.
+    // A local queue contains the complete playlist, without a paginated prefix.
+    optional int32 local_selected_index = 27;
 }
 
 // Native header overflow; only the save entry is supplied for a local queue.

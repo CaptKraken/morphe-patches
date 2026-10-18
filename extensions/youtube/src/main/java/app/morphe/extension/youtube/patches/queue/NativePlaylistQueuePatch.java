@@ -884,6 +884,7 @@ public final class NativePlaylistQueuePatch {
         var panel = PlaylistQueueRenderer.Panel.newBuilder()
                 .setTitle(str("morphe_native_playlist_queue_title"))
                 .setSelectedIndex(source.selectedIndex()).setPlaylistId("").setVideoCount(source.entries().size())
+                .setLocalSelectedIndex(source.selectedIndex())
                 .setMenu(saveMenu(source));
         var swipeToRemove = removalAction();
         for (int index = 0; index < source.entries().size(); index++) {
