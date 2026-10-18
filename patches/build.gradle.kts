@@ -51,6 +51,12 @@ tasks {
             rootProject.file("extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/VideoMetadata.java"),
             rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/queue_card.proto")
         ).withPropertyName("playlistQueueMetadataSources")
+        inputs.files(
+            rootProject.file("extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueRatingActions.java"),
+            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/playlist_queue.proto"),
+            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/next_response.proto"),
+            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/icon.proto")
+        ).withPropertyName("playlistQueueRatingSources")
     }
 
     register<JavaExec>("checkStringResources") {

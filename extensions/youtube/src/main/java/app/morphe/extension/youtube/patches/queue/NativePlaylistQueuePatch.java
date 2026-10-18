@@ -9,6 +9,8 @@ package app.morphe.extension.youtube.patches.queue;
 
 import static app.morphe.extension.shared.StringRef.str;
 
+import com.google.protobuf.MessageLite;
+
 import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.HashSet;
@@ -21,6 +23,7 @@ import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.ResourceType;
 import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.shared.Utils;
+import app.morphe.extension.youtube.innertube.NextResponseOuterClass.SingleColumnWatchNextResults;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
@@ -36,6 +39,8 @@ public final class NativePlaylistQueuePatch {
             Collections.synchronizedMap(Utils.createSizeRestrictedMap(1000));
     // Accessed only on the main thread; shared lookups may outlive the queue.
     private static final Set<String> pendingMetadata = new HashSet<>();
+    private static final Map<String, QueueRatingActions> ratingActions =
+            Collections.synchronizedMap(Utils.createSizeRestrictedMap(50));
 
     /** Implemented on the native playlist controller during patching. */
     public interface PlaylistController {
@@ -58,6 +63,31 @@ public final class NativePlaylistQueuePatch {
 
     public static boolean isPatchIncluded() {
         return false; // Modified during patching.
+    }
+
+    /** Read-only response hook; captures commands even when the action bar is hidden. */
+    public static void onWatchNextResponse(MessageLite response) {
+        if (response == null) return;
+        try {
+            var results = SingleColumnWatchNextResults.parseFrom(response.toByteArray());
+            for (var section : results.getPrimaryResults().getSecondaryResults().getSecondaryContentsList()) {
+                if (!section.hasSlimVideoMetadataSectionRenderer()) continue;
+                var metadata = section.getSlimVideoMetadataSectionRenderer();
+                for (var content : metadata.getTertiaryContentsList()) {
+                    QueueRatingActions actions = QueueRatingActions.fromElement(
+                            content.getElementRenderer().getNewElement());
+                    if (actions == null || (!metadata.getVideoId().isEmpty()
+                            && !metadata.getVideoId().equals(actions.videoId()))) continue;
+                    ratingActions.put(actions.videoId(), actions);
+                    // Finish the native response parse before updating any panel.
+                    Utils.runOnMainThread(() -> {
+                        if (actions.videoId().equals(VideoInformation.getVideoId())) refreshOwnedPanel(actions.videoId());
+                    });
+                }
+            }
+        } catch (Exception exception) {
+            Logger.printException(() -> "Could not read native playlist rating actions", exception);
+        }
     }
 
     /** Read-only shared element hook; preserves bytes and every other patch's changes. */
@@ -231,15 +261,16 @@ public final class NativePlaylistQueuePatch {
                         return new VideoMetadata(videoId, previous.title(), fetched.channelName(),
                                 fetched.videoInfo(), fetched.duration());
                     });
-                    if (queue == null || queue.entries().stream()
-                            .noneMatch(item -> item.videoId().equals(entry.videoId()))) return;
-                    PlaylistController controller = readyController();
-                    if (controller != null && controller.patch_getModel() == publishedModel) {
-                        publish(controller, queue, false);
-                    }
+                    refreshOwnedPanel(entry.videoId());
                 });
             });
         }
+    }
+
+    private static void refreshOwnedPanel(String videoId) {
+        if (queue == null || queue.entries().stream().noneMatch(item -> item.videoId().equals(videoId))) return;
+        PlaylistController controller = readyController();
+        if (controller != null && controller.patch_getModel() == publishedModel) publish(controller, queue, false);
     }
 
     private static boolean publish(PlaylistController controller, PlaylistQueue candidate, boolean reportFailure) {
@@ -301,6 +332,12 @@ public final class NativePlaylistQueuePatch {
                 video.setShortBylineText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.channelName()))
                         .setVideoInfo(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.videoInfo()))
                         .setLengthText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.duration()));
+            }
+            QueueRatingActions actions = ratingActions.get(entry.videoId());
+            if (index == 0 && actions != null && entry.videoId().equals(VideoInformation.getVideoId())) {
+                video.addAllActionButtons(actions.buttons(
+                        str("offline_playlist_panel_like_button_accessibility_text"),
+                        str("offline_playlist_panel_dislike_button_accessibility_text")));
             }
             panel.addItems(PlaylistQueueRenderer.Item.newBuilder().setVideo(video));
         }

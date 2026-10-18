@@ -58,6 +58,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
             throw PatchException("Native playlist queue currently supports YouTube 21.20.405 only")
         }
         installPlaylistPanel(this)
+        installRatingCapture(this)
         hookElement("$EXTENSION_CLASS->onElementLoaded")
         hookVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
