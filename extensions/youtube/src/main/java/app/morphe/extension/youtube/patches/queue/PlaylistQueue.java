@@ -56,6 +56,14 @@ public final class PlaylistQueue {
         return new PlaylistQueue(updated, selectedIndex);
     }
 
+    public PlaylistQueue remove(int index) {
+        if (index < 0 || index >= entries.size()) throw new IndexOutOfBoundsException(index);
+        if (index == selectedIndex) return this;
+        var updated = new ArrayList<>(entries);
+        updated.remove(index);
+        return new PlaylistQueue(updated, selectedIndex - (index < selectedIndex ? 1 : 0));
+    }
+
     public static boolean isVideoId(String videoId) {
         return videoId != null && VIDEO_ID.matcher(videoId).matches();
     }

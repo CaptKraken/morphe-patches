@@ -23,6 +23,8 @@ import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.ResourceType;
 import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.shared.Utils;
+import app.morphe.extension.youtube.innertube.IconOuterClass.Icon;
+import app.morphe.extension.youtube.innertube.IconOuterClass.YTIconType;
 import app.morphe.extension.youtube.innertube.NextResponseOuterClass.SingleColumnWatchNextResults;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.patches.VideoInformation;
@@ -47,7 +49,8 @@ public final class NativePlaylistQueuePatch {
         String patch_getVideoId();
         String patch_getPlaylistId();
         Object patch_getModel();
-        int patch_findQueueRow(Object endpoint);
+        int patch_findQueueRow(Object target);
+        void patch_markQueueRows();
         boolean patch_isAttached();
         Object patch_updatePanel(byte[] panel);
         void patch_restorePanel(Object expectedModel, Object originalModel);
@@ -56,6 +59,11 @@ public final class NativePlaylistQueuePatch {
     /** Native listener bridge retains the bound endpoint before logging decorates it. */
     public interface RowClick {
         Object patch_getQueueEndpoint();
+    }
+
+    /** Nonserialized ownership bit on native rows from an accepted local panel. */
+    public interface QueueRow {
+        boolean patch_isQueueOwned();
     }
 
     private static WeakReference<PlaylistController> controllerRef = new WeakReference<>(null);
@@ -199,6 +207,33 @@ public final class NativePlaylistQueuePatch {
         }, ROW_NAVIGATION_TIMEOUT_MILLISECONDS);
     }
 
+    /** Intercepts only our native swipe button, after native disabled/template checks. */
+    public static MessageLite onSwipeCommand(MessageLite endpoint, Map<?, ?> context) {
+        if (endpoint == null || context == null) return endpoint;
+        Object row = context.get("com.google.android.libraries.youtube.innertube.endpoint.tag");
+        if (!(row instanceof QueueRow queueRow) || !queueRow.patch_isQueueOwned()) return endpoint;
+        try {
+            var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
+            if (!command.hasHideEnclosingAction() || command.hasWatchEndpoint()) return endpoint;
+            PlaylistController controller = readyController();
+            if (queue == null || controller == null || controller.patch_getModel() != publishedModel) return null;
+            int index = controller.patch_findQueueRow(row);
+            if (index < 0 || index >= queue.entries().size()) return null;
+            // Check again at activation: a previously revealed button must never
+            // remove the current item or race an in-flight row navigation.
+            if (index == queue.selectedIndex() || pendingSelection != null
+                    || queue.entries().get(index).videoId().equals(VideoInformation.getVideoId())) return null;
+            publish(controller, queue.remove(index), true);
+            // This command is entirely local. Do not let native hide/edit logic
+            // mutate a second adapter snapshot or send an account-playlist edit.
+            return null;
+        } catch (Exception exception) {
+            Logger.printException(() -> "Could not remove native playlist queue item", exception);
+            Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+            return null;
+        }
+    }
+
     /** Shared video-ID hook; prefetched player responses must not change this state. */
     public static void onVideoChanged(String videoId) {
         Utils.runOnMainThreadNowOrLater(() -> {
@@ -326,6 +361,7 @@ public final class NativePlaylistQueuePatch {
             }
             queue = candidate;
             publishedModel = acceptedModel;
+            controller.patch_markQueueRows();
             return true;
         } catch (Exception exception) {
             Logger.printException(() -> "Could not display native playlist queue", exception);
@@ -354,10 +390,24 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
+    private static PlaylistQueueRenderer.SwipeAction removalAction() {
+        var label = PlaylistQueueRenderer.Accessibility.newBuilder().setAccessibilityData(
+                PlaylistQueueRenderer.AccessibilityLabel.newBuilder().setLabel(str("remove")));
+        var endpoint = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setHideEnclosingAction(
+                PlaylistQueueRenderer.HideEnclosingAction.newBuilder().setHack(true));
+        var button = PlaylistQueueRenderer.SwipeButton.newBuilder()
+                .setStyle(PlaylistQueueRenderer.SwipeButton.Style.BLACK_FILLED)
+                .setSize(PlaylistQueueRenderer.SwipeButton.Size.DEFAULT).setIsDisabled(false)
+                .setIcon(Icon.newBuilder().setYtIconType(YTIconType.VISIBILITY_OFF))
+                .setAccessibilityData(label).setServiceEndpoint(endpoint);
+        return PlaylistQueueRenderer.SwipeAction.newBuilder().setButtonRenderer(button).build();
+    }
+
     private static byte[] renderer(PlaylistQueue source) {
         var panel = PlaylistQueueRenderer.Panel.newBuilder()
                 .setTitle(str("morphe_native_playlist_queue_title"))
                 .setSelectedIndex(source.selectedIndex()).setPlaylistId("").setVideoCount(source.entries().size());
+        var swipeToRemove = removalAction();
         for (int index = 0; index < source.entries().size(); index++) {
             PlaylistQueue.Entry entry = source.entries().get(index);
             VideoMetadata metadata = metadataCache.get(entry.videoId());
@@ -378,6 +428,10 @@ public final class NativePlaylistQueuePatch {
                 video.setShortBylineText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.channelName()))
                         .setVideoInfo(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.videoInfo()))
                         .setLengthText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.duration()));
+            }
+            if (index != source.selectedIndex()
+                    && !entry.videoId().equals(VideoInformation.getVideoId())) {
+                video.addSwipeButtons(swipeToRemove);
             }
             QueueRatingActions actions = ratingActions.get(entry.videoId());
             if (index == source.selectedIndex() && actions != null && entry.videoId().equals(VideoInformation.getVideoId())) {

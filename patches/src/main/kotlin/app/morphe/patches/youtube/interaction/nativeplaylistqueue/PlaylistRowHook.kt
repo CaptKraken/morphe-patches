@@ -84,8 +84,10 @@ internal fun installPlaylistRowPlayback(
             check-cast v2, ${itemVideo.definingClass}
             iget-object v2, v2, $itemVideo
             if-eqz v2, :skip
+            if-eq v2, p1, :found
             iget-object v2, v2, $videoEndpoint
             if-ne v2, p1, :skip
+            :found
             return v1
             :skip
             add-int/lit8 v1, v1, 0x1
@@ -93,6 +95,49 @@ internal fun installPlaylistRowPlayback(
             :missing
             const/4 v0, -0x1
             return v0
+        """)
+    })
+    // A nonserialized bit belongs to the exact native object, survives a stale
+    // view callback, and disappears with that object. No native model is retained
+    // in an extension cache, and protobuf equality/serialization stay unchanged.
+    val video = mutableClassDefBy(videoType)
+    val ownedField = ImmutableField(videoType, "patch_queueOwned", "Z",
+        AccessFlags.PUBLIC.value, null, null, null).toMutable()
+    video.fields.add(ownedField)
+    video.interfaces.add("Lapp/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch\$QueueRow;")
+    video.methods.add(ImmutableMethod(videoType, "patch_isQueueOwned", emptyList(), "Z",
+        AccessFlags.PUBLIC.value or AccessFlags.FINAL.value, null, null,
+        MutableMethodImplementation(2)).toMutable().apply {
+        addInstructionsWithLabels(0, """
+            iget-boolean v0, p0, $ownedField
+            return v0
+        """)
+    })
+    controller.methods.add(ImmutableMethod(controller.type, "patch_markQueueRows", emptyList(),
+        "V", AccessFlags.PUBLIC.value or AccessFlags.FINAL.value, null, null,
+        MutableMethodImplementation(5)).toMutable().apply {
+        addInstructionsWithLabels(0, """
+            iget-object v0, p0, $modelField
+            if-eqz v0, :done
+            iget-object v0, v0, $panelField
+            if-eqz v0, :done
+            iget-object v0, v0, $contents
+            invoke-interface {v0}, Ljava/util/List;->iterator()Ljava/util/Iterator;
+            move-result-object v0
+            const/4 v1, 0x1
+            :next
+            invoke-interface {v0}, Ljava/util/Iterator;->hasNext()Z
+            move-result v3
+            if-eqz v3, :done
+            invoke-interface {v0}, Ljava/util/Iterator;->next()Ljava/lang/Object;
+            move-result-object v2
+            check-cast v2, ${itemVideo.definingClass}
+            iget-object v2, v2, $itemVideo
+            if-eqz v2, :next
+            iput-boolean v1, v2, $ownedField
+            goto :next
+            :done
+            return-void
         """)
     })
     // Logging can replace the listener's endpoint after a click. Retain the

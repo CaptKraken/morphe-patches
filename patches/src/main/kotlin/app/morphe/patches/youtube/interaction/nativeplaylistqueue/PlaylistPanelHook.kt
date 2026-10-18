@@ -30,7 +30,8 @@ import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodParameter
 
 // The native model factory initializes queueMode to 1 before accepting a watch response.
-// Keep that neutral mode while this preview supplies presentation without playback navigation.
+// Keep that neutral mode: rows use ordinary watch endpoints, without attaching
+// a native playlist navigator through navigationSets.
 private const val DEFAULT_QUEUE_MODE = 1
 
 /** Adds presentation-only access to the accepted native model; never changes the player backend. */

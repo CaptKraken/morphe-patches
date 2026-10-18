@@ -71,6 +71,24 @@ class PlaylistQueueTest {
     }
 
     @Test
+    fun `removal protects playing entry and preserves its identity when earlier items disappear`() = withQueue { type ->
+        val initial = type.getConstructor(String::class.java, String::class.java)
+            .newInstance("abcdefghijk", "Playing video")
+        val insert = type.getMethod("playNext", String::class.java)
+        val populated = insert.invoke(insert.invoke(initial, "lmnopqrstuv"), "0123456789_")
+        val selected = type.getMethod("select", Int::class.javaPrimitiveType).invoke(populated, 1)
+        val remove = type.getMethod("remove", Int::class.javaPrimitiveType)
+        val protected = remove.invoke(selected, 1)
+        assertEquals(videos(selected), videos(protected))
+        val earlierRemoved = remove.invoke(selected, 0)
+        assertEquals(listOf("0123456789_", "lmnopqrstuv"), videos(earlierRemoved))
+        assertEquals(0, type.getMethod("selectedIndex").invoke(earlierRemoved))
+        val onlyPlaying = remove.invoke(earlierRemoved, 1)
+        assertEquals(listOf("0123456789_"), videos(onlyPlaying))
+        assertEquals(listOf("abcdefghijk", "0123456789_", "lmnopqrstuv"), videos(selected))
+    }
+
+    @Test
     fun `invalid insertion cannot corrupt a valid queue`() = withQueue { type ->
         val queue = type.getConstructor(String::class.java, String::class.java)
             .newInstance("abcdefghijk", "Playing video")

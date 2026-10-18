@@ -123,3 +123,20 @@ internal fun playlistNativeClickFingerprint(listenerType: String) = Fingerprint(
     returnType = "V",
     filters = listOf(string("com.google.android.libraries.youtube.logging.interaction_logger"))
 )
+
+/** The standard button click context retains the native enclosing row identity. */
+internal object NativeButtonContextFingerprint : Fingerprint(
+    returnType = "Ljava/util/Map;",
+    parameters = listOf("L", "Z"),
+    filters = listOf(string("anchor_view")),
+    custom = { _, classDef -> "Landroid/view/View\$OnClickListener;" in classDef.interfaces }
+)
+
+internal object NativeButtonDispatchFingerprint : Fingerprint(
+    classFingerprint = NativeButtonContextFingerprint,
+    name = "onClick",
+    returnType = "V",
+    parameters = listOf("Landroid/view/View;"),
+    filters = listOf(methodCall(opcode = Opcode.INVOKE_INTERFACE, returnType = "V",
+        parameters = listOf("L", "Ljava/util/Map;")))
+)

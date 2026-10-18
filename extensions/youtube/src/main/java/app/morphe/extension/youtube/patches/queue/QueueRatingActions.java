@@ -96,8 +96,8 @@ record QueueRatingActions(String videoId, String entityKey, int initialStatus,
                 .build();
     }
 
-    private static PlaylistQueueRenderer.RatingAccessibility accessibility(String label) {
-        return PlaylistQueueRenderer.RatingAccessibility.newBuilder()
-                .setAccessibilityData(PlaylistQueueRenderer.RatingLabel.newBuilder().setLabel(label)).build();
+    private static PlaylistQueueRenderer.Accessibility accessibility(String label) {
+        return PlaylistQueueRenderer.Accessibility.newBuilder()
+                .setAccessibilityData(PlaylistQueueRenderer.AccessibilityLabel.newBuilder().setLabel(label)).build();
     }
 }
