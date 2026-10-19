@@ -266,7 +266,8 @@ public final class NativePlaylistQueuePatch {
         // The service can advance while a retained watch screen still describes the
         // previous video. Only the active-ID hooks can commit background selection.
         if (queue != null && !controller.patch_getVideoId().equals(VideoInformation.getVideoId())) return;
-        if (publishedModel != null && controller.patch_getModel() == publishedModel) {
+        if (publishedModel != null && controllerRef.get() == controller
+                && controller.patch_getModel() == publishedModel) {
             if (selectionNeedsPublishing && readyController() == controller) {
                 publish(controller, queue, false);
             }
@@ -278,7 +279,10 @@ public final class NativePlaylistQueuePatch {
         PlaylistController previous = controllerRef.get();
         if (queue != null && previous != controller) {
             if (previous != null && previous.patch_isAttached()) return;
-            releasePanel();
+            // Recreating a watch screen must not discard an owned background
+            // session. Its new controller still needs a fresh native baseline.
+            if (hasPlaylist(controller) || !serviceOwnsQueue()) releasePanel();
+            else publishedModel = null;
         }
         controllerRef = new WeakReference<>(controller);
         if (queue == null) return;
@@ -322,7 +326,11 @@ public final class NativePlaylistQueuePatch {
                 boolean returningFromShorts = shortsSession.isSuspended();
                 if (updateShortsSession(controller)) return;
                 PlayerType type = PlayerType.getCurrent();
-                if (type.isNoneOrHidden() || type == PlayerType.INLINE_MINIMAL) releasePanel();
+                // NONE describes the watch UI, not the playback service. Its
+                // controller can be cleared while audio continues in the background.
+                if (type == PlayerType.INLINE_MINIMAL || (type == PlayerType.NONE
+                        && (controller == null || controller.patch_getVideoId().isEmpty())
+                        && !serviceOwnsQueue())) releasePanel();
                 else if (returningFromShorts && controller != null) updateController(controller);
             });
         });
@@ -338,7 +346,8 @@ public final class NativePlaylistQueuePatch {
         QueueShortsSession.Action action = shortsSession.update(ShortsPlayerState.isOpen(),
                 type == PlayerType.HIDDEN, !type.isNoneOrHidden() && type != PlayerType.INLINE_MINIMAL,
                 queue.currentEntry().videoId(), VideoInformation.getVideoId(),
-                controller == null ? "" : controller.patch_getVideoId(), controller != null && hasPlaylist(controller));
+                controller == null ? "" : controller.patch_getVideoId(), controller != null && hasPlaylist(controller),
+                serviceOwnsQueue());
         switch (action) {
             case SUSPEND -> {
                 completion = null;
@@ -355,7 +364,7 @@ public final class NativePlaylistQueuePatch {
             case RESUME -> {
                 // A recreated watch controller needs its own restoration baseline.
                 // Claim it only after its regular video matches active playback.
-                if (controllerRef.get() != controller) {
+                if (controller != null && controllerRef.get() != controller) {
                     if (controller.patch_getModel() != publishedModel) {
                         originalModel = controller.patch_getModel();
                         publishedModel = null;
@@ -364,6 +373,7 @@ public final class NativePlaylistQueuePatch {
                 }
                 shortsControllerRef.clear();
                 selectionNeedsPublishing = true;
+                refreshNotificationControls();
             }
             case NONE -> { }
         }
@@ -384,6 +394,18 @@ public final class NativePlaylistQueuePatch {
     private static boolean isQueueSuspended() {
         return shortsSession.isSuspended() || ShortsPlayerState.isOpen()
                 || PlayerType.getCurrent() == PlayerType.HIDDEN;
+    }
+
+    /** Resolve live playback, without treating a retained watch model as a service owner. */
+    private static boolean serviceOwnsQueue() {
+        if (queue == null || !VideoInformation.getPlaylistId().isEmpty()) return false;
+        String videoId = queue.currentEntry().videoId();
+        if (!videoId.equals(VideoInformation.getVideoId())) return false;
+        for (NotificationControls controls : new ArrayList<>(notificationControls)) {
+            ServiceNavigator navigator = controls.patch_getQueueMediaControls().patch_getQueueNavigator();
+            if (navigator != null && videoId.equals(navigator.patch_getVideoId())) return true;
+        }
+        return false;
     }
 
     /** Runs after YouTube's click veto but before its logging decorates the endpoint. */
@@ -632,7 +654,11 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static boolean navigateNotification(MediaControls controls, boolean next) {
-        if (!Utils.isCurrentlyOnMainThread() || queue == null || isQueueSuspended()) return false;
+        if (!Utils.isCurrentlyOnMainThread() || queue == null) return false;
+        // A background return need not produce another watch-view callback.
+        // Reconcile live service ownership before rejecting a suspended queue.
+        if (shortsSession.isSuspended() && updateShortsSession(returningController())) return false;
+        if (isQueueSuspended()) return false;
         ServiceNavigator navigator = controls.patch_getQueueNavigator();
         PlaylistQueue.Entry source = queue.currentEntry();
         if (navigator == null || !VideoInformation.getPlaylistId().isEmpty()) return false;

@@ -19,13 +19,16 @@ class QueueShortsSessionTest {
         private val instance = type.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
         private val update = type.getDeclaredMethod("update",
             Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
-            String::class.java, String::class.java, String::class.java, Boolean::class.javaPrimitiveType
+            String::class.java, String::class.java, String::class.java, Boolean::class.javaPrimitiveType,
+            Boolean::class.javaPrimitiveType
         ).apply { isAccessible = true }
         private val reset = type.getDeclaredMethod("reset").apply { isAccessible = true }
 
         fun update(open: Boolean = false, hidden: Boolean = false, visible: Boolean = true,
-                   active: String = "abcdefghijk", regular: String = "abcdefghijk", accountPlaylist: Boolean = false) =
-            update.invoke(instance, open, hidden, visible, "abcdefghijk", active, regular, accountPlaylist).toString()
+                   active: String = "abcdefghijk", regular: String = "abcdefghijk", accountPlaylist: Boolean = false,
+                   ownedByService: Boolean = false) =
+            update.invoke(instance, open, hidden, visible, "abcdefghijk", active, regular,
+                accountPlaylist, ownedByService).toString()
 
         fun reset() { reset.invoke(instance) }
     }
@@ -71,6 +74,23 @@ class QueueShortsSessionTest {
         assertEquals("WAIT", session.update(hidden = true, visible = false))
         assertEquals("WAIT", session.update(visible = false))
         assertEquals("RESUME", session.update())
+    }
+
+    @Test
+    fun `confirmed background queue resumes without its watch screen`() = withSession { session ->
+        assertEquals("SUSPEND", session.update(open = true))
+        assertEquals("WAIT", session.update(visible = false, regular = ""))
+        assertEquals("RESUME", session.update(visible = false, regular = "", ownedByService = true))
+        assertEquals("NONE", session.update(visible = false, regular = "", ownedByService = true))
+    }
+
+    @Test
+    fun `service evidence cannot override Shorts ownership or an account playlist`() = withSession { session ->
+        assertEquals("SUSPEND", session.update(open = true, ownedByService = true))
+        assertEquals("WAIT", session.update(open = true, ownedByService = true))
+        assertEquals("WAIT", session.update(hidden = true, visible = false, ownedByService = true))
+        assertEquals("WAIT", session.update(visible = false, accountPlaylist = true, ownedByService = true))
+        assertEquals("RELEASE", session.update(accountPlaylist = true))
     }
 
     @Test

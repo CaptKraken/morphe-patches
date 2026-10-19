@@ -22,13 +22,21 @@ final class QueueShortsSession {
     }
 
     Action update(boolean shortsOpen, boolean playerHidden, boolean regularPlayerVisible,
-                  String queueVideoId, String activeVideoId, String regularVideoId, boolean accountPlaylist) {
+                  String queueVideoId, String activeVideoId, String regularVideoId, boolean accountPlaylist,
+                  boolean queueOwnedByService) {
         if (shortsOpen || playerHidden) {
             if (suspended) return Action.WAIT;
             suspended = true;
             return Action.SUSPEND;
         }
         if (!suspended) return Action.NONE;
+        // A regular background session can resume before its watch view/controller.
+        // The caller must confirm both the service's current ID and active ID;
+        // UI visibility alone cannot establish that playback has ended.
+        if (queueOwnedByService && !accountPlaylist) {
+            suspended = false;
+            return Action.RESUME;
+        }
         if (!regularPlayerVisible && activeVideoId.isEmpty() && regularVideoId.isEmpty()) {
             suspended = false;
             return Action.RELEASE;
