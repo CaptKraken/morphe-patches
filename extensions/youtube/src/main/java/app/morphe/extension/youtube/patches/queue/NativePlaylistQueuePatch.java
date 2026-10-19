@@ -461,6 +461,9 @@ public final class NativePlaylistQueuePatch {
             selectionNeedsPublishing = true;
             playback.patch_updateSnapshot(renderer(queue));
         }
+        // A playback transition resets the native notification model even if its
+        // capabilities are unchanged. Republish without requiring a watch panel.
+        refreshNotificationControls();
     }
 
     /** Runs after YouTube's click veto but before its logging decorates the endpoint. */
