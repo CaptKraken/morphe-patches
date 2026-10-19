@@ -24,6 +24,10 @@ import app.morphe.extension.youtube.shared.ShortsPlayerState;
 @SuppressWarnings("unused")
 public final class OpenSystemShareSheetPatch {
 
+    public static boolean isPatchIncluded() {
+        return false;
+    }
+
     public interface ActionSheetControllerInterface {
         // Method is added during patching.
         void patch_dismissActionSheet();

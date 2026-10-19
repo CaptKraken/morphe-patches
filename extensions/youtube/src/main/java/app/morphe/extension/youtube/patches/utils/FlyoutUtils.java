@@ -334,6 +334,7 @@ public final class FlyoutUtils {
     private static boolean videoMarkedAsForKids;
     private static boolean isMyTabHistoryFlyout;
     private static boolean isShortFlyout;
+    private static boolean isNativeQueueRowFlyout;
     private static ChannelIdRequest flyoutChannelIdRequest;
 
     public static byte[] getAsciiBytes(String string) {
@@ -503,6 +504,7 @@ public final class FlyoutUtils {
                                         flyoutChannelName = "";
                                         isMyTabHistoryFlyout = false;
                                         isShortFlyout = false;
+                                        isNativeQueueRowFlyout = false;
 
                                         flyoutVisibilityHandlerRunning = false;
                                         flyoutIdsResetHandlerRunning = false;
@@ -531,7 +533,8 @@ public final class FlyoutUtils {
         final String flyoutVideoId = getFlyoutVideoId();
 
         if (NativePlaylistQueuePatch.isPatchIncluded()
-                && !PlayerFlyoutMenuComponentsFilter.getTopFlyoutMenuVisible() && !isShortFlyout) {
+                && !PlayerFlyoutMenuComponentsFilter.getTopFlyoutMenuVisible() && !isShortFlyout
+                && !isNativeQueueRowFlyout) {
             nextButtonIndex = NativePlaylistQueuePatch.addFlyoutButton(
                     flyoutPanel, nextButtonIndex, flyoutVideoId);
         }
@@ -981,6 +984,8 @@ public final class FlyoutUtils {
      * Injection point.
      */
     public static void extractFlyoutIdFromObject(@Nullable Object bufferObject) {
+        isNativeQueueRowFlyout = bufferObject instanceof NativePlaylistQueuePatch.QueueRow row
+                && row.patch_isQueueOwned();
         Logger.printDebug(() -> "Flyout buffer class: " + ((bufferObject == null)
                 ? null : bufferObject.getClass()));
 

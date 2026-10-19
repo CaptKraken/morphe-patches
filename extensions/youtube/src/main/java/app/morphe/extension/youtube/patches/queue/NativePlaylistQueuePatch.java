@@ -33,6 +33,7 @@ import app.morphe.extension.youtube.innertube.IconOuterClass.YTIconType;
 import app.morphe.extension.youtube.innertube.NextResponseOuterClass.SingleColumnWatchNextResults;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.patches.VideoInformation;
+import app.morphe.extension.youtube.patches.OpenSystemShareSheetPatch;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
@@ -609,13 +610,19 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
-    /** Intercepts only our queue-owned native hide action after template checks. */
-    public static MessageLite onRemoveCommand(MessageLite endpoint, Map<?, ?> context) {
+    /** Dispatches only local row overrides after native validation and logging. */
+    public static MessageLite onRowCommand(MessageLite endpoint, Map<?, ?> context) {
         if (endpoint == null || context == null) return endpoint;
         Object row = context.get("com.google.android.libraries.youtube.innertube.endpoint.tag");
         if (!(row instanceof QueueRow queueRow) || !queueRow.patch_isQueueOwned()) return endpoint;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
+            if (command.hasShareEntityEndpoint()) {
+                // The player uses the navigation share endpoint, which opens its
+                // native screen. Preserve the optional system-sheet override too.
+                return OpenSystemShareSheetPatch.isPatchIncluded()
+                        && OpenSystemShareSheetPatch.openSystemShareSheet() ? null : endpoint;
+            }
             if (!command.hasHideEnclosingAction() || command.hasWatchEndpoint()) return endpoint;
             PlaylistController controller = readyController();
             if (queue == null || controller == null || controller.patch_getModel() != publishedModel) return null;
@@ -630,7 +637,7 @@ public final class NativePlaylistQueuePatch {
             // mutate a second adapter snapshot or send an account-playlist edit.
             return null;
         } catch (Exception exception) {
-            Logger.printException(() -> "Could not remove native playlist queue item", exception);
+            Logger.printException(() -> "Could not run native playlist queue row action", exception);
             Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
             return null;
         }
@@ -947,11 +954,15 @@ public final class NativePlaylistQueuePatch {
         String entity = Base64.encodeToString(
                 PlaylistQueueRenderer.ShareEntity.newBuilder().setVideoId(videoId).build().toByteArray(), Base64.NO_WRAP);
         String escapedEntity = Uri.encode(entity);
-        var share = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setShareEntityServiceEndpoint(
-                PlaylistQueueRenderer.ShareEntityServiceEndpoint.newBuilder()
+        var share = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setShareEntityEndpoint(
+                PlaylistQueueRenderer.ShareEntityEndpoint.newBuilder()
                         .setSerializedShareEntity(escapedEntity)
-                        .setPanelType(PlaylistQueueRenderer.ShareEntityServiceEndpoint.PanelType.UNIFIED));
-        items.addItems(serviceMenuItem(str("share"), YTIconType.SHARE, share.build()));
+                        .setPanelType(PlaylistQueueRenderer.ShareEntityEndpoint.PanelType.UNIFIED));
+        items.addItems(PlaylistQueueRenderer.MenuItem.newBuilder().setMenuNavigationItemRenderer(
+                PlaylistQueueRenderer.MenuNavigationItem.newBuilder()
+                        .setText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(str("accessibility_share_video")))
+                        .setIcon(Icon.newBuilder().setYtIconType(YTIconType.SHARE))
+                        .setNavigationEndpoint(share)));
 
         if (index != source.selectedIndex() && !videoId.equals(VideoInformation.getVideoId())) {
             var remove = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setHideEnclosingAction(

@@ -123,7 +123,7 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
         method.implementation?.instructions?.toList()?.let { instructions ->
             instructions.indexOfFirst { instruction ->
                 (instruction as? ReferenceInstruction)?.reference?.toString()?.startsWith(
-                    "L$extensionOwner;->onRemoveCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)") == true
+                    "L$extensionOwner;->onRowCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)") == true
             }.takeIf { index -> index >= 0 && instructions.getOrNull(index + 2)?.opcode == Opcode.IF_NEZ &&
                     instructions.getOrNull(index + 3)?.opcode == Opcode.GOTO_16 }
                 ?.let { Triple(owner, method, instructions) }
@@ -197,7 +197,7 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
     val dispatchInstructions = dispatch.third
     val removeIndex = dispatchInstructions.indexOfFirst { instruction ->
         (instruction as? ReferenceInstruction)?.reference?.toString()?.startsWith(
-            "L$extensionOwner;->onRemoveCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)") == true
+            "L$extensionOwner;->onRowCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)") == true
     }
     check(removeIndex >= 0 && dispatchInstructions[removeIndex + 1].opcode == Opcode.MOVE_RESULT_OBJECT &&
             dispatchInstructions[removeIndex + 2].opcode == Opcode.IF_NEZ &&

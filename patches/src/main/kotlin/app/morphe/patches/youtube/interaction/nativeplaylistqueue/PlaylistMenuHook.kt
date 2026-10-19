@@ -107,7 +107,7 @@ internal fun installPlaylistMenuDispatch(context: BytecodePatchContext, videoTyp
     val endpointType = callbackSignature.first()
     val registers = dispatch.second
     mutableDispatchMethod.addInstructionsAtControlFlowLabel(dispatch.first, """
-        invoke-static {v${registers.registerD}, v${registers.registerE}}, $EXTENSION_CLASS->onRemoveCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;
+        invoke-static {v${registers.registerD}, v${registers.registerE}}, $EXTENSION_CLASS->onRowCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;
         move-result-object v${registers.registerD}
         if-nez v${registers.registerD}, :native_menu_dispatch
         goto :native_menu_dismiss
