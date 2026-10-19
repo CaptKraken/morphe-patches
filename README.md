@@ -2,6 +2,22 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## Step 16 — retain background playback ownership after Shorts
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step16-background-handoff.mpp) · [Source 1f35e10b8](https://github.com/CaptKraken/morphe-patches/tree/1f35e10b8ca29d41ef4fad87a90da163e3a63156)
+
+Retains the local queue when the live playback service confirms the same queued video while its watch UI is absent. A return from Shorts can resume queue ownership without a visible watch controller; notification skips reconcile that ownership before rejecting the press. A recreated detached watch controller gets a fresh native model baseline. The current implementation still uses native playlist UI with local queue navigation; attaching the native playlist playback engine is separate research. This is an interim lifecycle fix, not device-confirmed resolution of every background failure.
+
+Phone checks:
+
+1. Create a fresh three-item queue, use notification Next and Previous while YouTube is visible, then press Home and use them without reopening. Repeat paused and playing, and on the lock screen.
+2. Open several Shorts, return with Back, press Home, then use notification Next/Previous before reopening YouTube. Verify actual playback follows the queue and that its order, selected row/counter and saved position survive repeated trips.
+3. Check first/middle/last-item boundaries, recreated watch screen, actual player dismissal and an unrelated/account playlist. Native Shorts/casting and Loop, autoplay, sleep timer, background screen-lock pause and media visibility settings must retain their behavior.
+
+25 tests passed, including two new focused service-resume/ownership regressions; five unrelated Jam APK-dependent tests skipped. Real stock 21.20.405 APK application, 12-DEX SDK/hierarchy and resource checks passed standalone, with 17 related selections including Remove background playback restrictions, and queue-unselected. Native notification callbacks/bridges and stock fallthrough inspected; 376 host/shared methods and 14 interface sets match the prior validated build. A temporary-disk resource-packaging failure was resolved by retrying unchanged source on workspace storage. Final Android MPP/default=true loader and exact staged-tree review gate passed. No attached phone; playback timing remains for device testing.
+
+SHA-256: `966d0b14634a7529f212d1da24cf8fc2956b0737b3efa7ce462d770bbd686a71`
+
 ## Step 15 — retain the queue across Shorts
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step15-shorts-retention.mpp) · [Source b2b998e5d](https://github.com/CaptKraken/morphe-patches/tree/b2b998e5d70fc9346b9213158638c088481feab5)
