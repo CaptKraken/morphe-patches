@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC 21 — notification playback-state completion
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc21-notification-state-completion.mpp) · [Source 6239139bb](https://github.com/CaptKraken/morphe-patches/tree/6239139bbfcf8ceaeb216df2a325aba02802c082)
+
+PoC 20 still lost notification navigation after background skips. This candidate recomputes the active queue's native navigation after YouTube finishes its notification playback-state handler, including its per-video reset. It removes the earlier selection-time refresh and changes neither Background playback policy nor the final Media notification controls filter. Device resolution is unconfirmed.
+
+Phone check: create three queued videos, press Home, then notification Next twice and Previous twice without reopening YouTube. Navigation should track first/middle/last positions and remain available. Repeat paused, locked and after Shorts; compare ordinary/account playlists.
+
+20 tests passed; five unrelated Jam APK-dependent tests skipped. Stock 21.20.405 APK application and SDK DEX/hierarchy/resource verification passed with the queue plus 17 related patches and with queue unselected. Actual DEX analysis checks both native state handlers' five normal exits and preserved receiver types; the same check rejects PoC 20. Final MPP/default-selection/integrity and source review gate passed. No phone/emulator playback test performed.
+
+SHA-256: `00d074938cbb96a646509d7423f252a3e1ad7ca910f707205ec35f0d920fd26a`
+
 ## Step 16 — retain background playback ownership after Shorts
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step16-background-handoff.mpp) · [Source 1f35e10b8](https://github.com/CaptKraken/morphe-patches/tree/1f35e10b8ca29d41ef4fad87a90da163e3a63156)
