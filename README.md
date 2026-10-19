@@ -2,6 +2,22 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## Step 15 — retain the queue across Shorts
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step15-shorts-retention.mpp) · [Source b2b998e5d](https://github.com/CaptKraken/morphe-patches/tree/b2b998e5d70fc9346b9213158638c088481feab5)
+
+Suspends the regular local queue while Shorts owns playback, preserving its order, selected occurrence and repeat mode. Returning waits for the regular controller and active video ID to agree, then refreshes the native queue rows and controls. Shorts playback and notification controls retain their native handling. A confirmed different regular video/account playlist ends the old temporary queue. No new UI or shared Shorts/Loop patch changes.
+
+Phone checks:
+
+1. Create a three-item queue and go to the middle item. Open Shorts from a shelf or tab, swipe through several Shorts, then return with Back. Verify the same queue order, position and repeat mode, without forcing the panel open. Repeat the trip with the queue collapsed and expanded.
+2. After returning, verify row selection, player/notification Previous and Next, automatic advance, and repeat-one. While Shorts is open, its controls must not navigate the retained regular queue. Also try opening Shorts immediately after pressing Next.
+3. Open a different regular video or account playlist after Shorts, and dismiss the regular player. Confirm the old queue no longer controls playback. Check the first/last item, duplicate IDs, native dragging/removal, background/PiP, Loop, sleep timer and autoplay/visibility settings. Phone validation remains pending.
+
+23 tests passed, including four new tests of the actual Shorts suspension policy; five unrelated Jam APK-dependent tests skipped. Current stock YouTube 21.20.405 APK application and SDK verification of 12 DEX files/resources/hierarchy passed standalone, with 16 related selections, and queue-unselected. Emitted ownership/suspension and notification guards inspected. 376 native/shared methods and 14 interface sets matched the validated previous build; native discovery and injection code are unchanged. Final Android MPP/default=true check and exact staged-tree review gate passed. Device transition timing and playback still require phone testing.
+
+SHA-256: `b413b9b70f214989270db154aa761fefbb013885f2e7177598e5a45f17b2b6c9`
+
 ## Step 14 — first queue row swipe background
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-step14-swipe-background.mpp) · [Source c518eef44](https://github.com/CaptKraken/morphe-patches/tree/c518eef44cee678e0b35f119290644bd1e38b4e3)
