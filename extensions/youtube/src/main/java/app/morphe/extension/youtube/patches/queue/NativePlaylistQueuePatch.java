@@ -532,7 +532,12 @@ public final class NativePlaylistQueuePatch {
 
     /** Bridge contract: bit 0 = Previous, bit 1 = Next; -1 keeps native flags. */
     public static int notificationNavigationAvailability(NotificationControls controls) {
-        return -1; // The native sequencer publishes its own media capabilities.
+        ServiceNavigator service = controls.patch_getQueueMediaControls().patch_getQueueNavigator();
+        if (!ownsNativePlayback(service)) return -1;
+        // Both native notification adapters let watch-screen delegates override
+        // sequencer events. Query the same service that handles our skip clicks.
+        return (service.patch_canNavigateQueue(false) ? 1 : 0)
+                | (service.patch_canNavigateQueue(true) ? 2 : 0);
     }
 
     public static boolean playerControlAvailability(PlayerControls controls, boolean next, boolean original) {
