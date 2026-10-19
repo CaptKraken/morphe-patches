@@ -61,7 +61,7 @@ message Video {
     optional NavigationEndpoint navigation_endpoint = 7;
     optional string video_id = 10;
     // Native per-row overflow actions are supplied only for local queue rows.
-    optional Menu menu = 18;
+    optional Menu menu = 19;
     repeated SwipeAction swipe_buttons = 22;
     optional MainAppStyle main_app_style = 27;
     optional Text video_info = 31;
