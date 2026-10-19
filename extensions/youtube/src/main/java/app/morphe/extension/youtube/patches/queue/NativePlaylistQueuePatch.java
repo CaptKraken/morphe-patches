@@ -7,6 +7,9 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import android.net.Uri;
+import android.util.Base64;
+
 import static app.morphe.extension.shared.StringRef.str;
 
 import com.google.protobuf.MessageLite;
@@ -606,8 +609,8 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
-    /** Intercepts only our native swipe button, after native disabled/template checks. */
-    public static MessageLite onSwipeCommand(MessageLite endpoint, Map<?, ?> context) {
+    /** Intercepts only our queue-owned native hide action after template checks. */
+    public static MessageLite onRemoveCommand(MessageLite endpoint, Map<?, ?> context) {
         if (endpoint == null || context == null) return endpoint;
         Object row = context.get("com.google.android.libraries.youtube.innertube.endpoint.tag");
         if (!(row instanceof QueueRow queueRow) || !queueRow.patch_isQueueOwned()) return endpoint;
@@ -630,6 +633,16 @@ public final class NativePlaylistQueuePatch {
             Logger.printException(() -> "Could not remove native playlist queue item", exception);
             Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
             return null;
+        }
+    }
+
+    /** Native row overflow creates its menu context directly, outside shared feed hooks. */
+    public static void onRowMenuOpened(Map<?, ?> context) {
+        if (context == null) return;
+        Object row = context.get("com.google.android.libraries.youtube.innertube.endpoint.tag");
+        if (row instanceof QueueRow owned && owned.patch_isQueueOwned()
+                && row instanceof FlyoutUtils.FlyoutMenuVideoIdInterface) {
+            FlyoutUtils.extractFlyoutIdFromMap(context);
         }
     }
 
@@ -910,6 +923,57 @@ public final class NativePlaylistQueuePatch {
                 .build();
     }
 
+    private static PlaylistQueueRenderer.Menu rowMenu(PlaylistQueue source, int index) {
+        PlaylistQueue.Entry entry = source.entries().get(index);
+        String videoId = entry.videoId();
+        var items = PlaylistQueueRenderer.MenuRenderer.newBuilder();
+        items.addItems(PlaylistQueueRenderer.MenuItem.newBuilder().setMenuNavigationItemRenderer(
+                PlaylistQueueRenderer.MenuNavigationItem.newBuilder()
+                        .setText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(str("accessibility_save_to_playlists")))
+                        .setIcon(Icon.newBuilder().setYtIconType(YTIconType.BOOKMARK_BORDER))
+                        .setNavigationEndpoint(PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
+                                .setAddToPlaylistEndpoint(PlaylistQueueRenderer.AddToPlaylistEndpoint.newBuilder()
+                                        .setVideoId(videoId)))));
+
+        var download = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setOfflineVideoEndpoint(
+                PlaylistQueueRenderer.OfflineVideoEndpoint.newBuilder().setVideoId(videoId)
+                        .setAction(PlaylistQueueRenderer.OfflineVideoEndpoint.Action.INFER_AUTOMATICALLY)
+                        .setOnAdd(PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
+                                .setGetDownloadActionCommand(PlaylistQueueRenderer.GetDownloadActionCommand.newBuilder()
+                                        // Captured native GetDownloadActionCommand parameters for a row action.
+                                        .setVideoId(videoId).setParams("CAIQAA%3D%3D"))));
+        items.addItems(serviceMenuItem(str("download"), YTIconType.OFFLINE_DOWNLOAD, download.build()));
+
+        String entity = Base64.encodeToString(
+                PlaylistQueueRenderer.ShareEntity.newBuilder().setVideoId(videoId).build().toByteArray(), Base64.NO_WRAP);
+        String escapedEntity = Uri.encode(entity);
+        var share = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setShareEntityServiceEndpoint(
+                PlaylistQueueRenderer.ShareEntityServiceEndpoint.newBuilder()
+                        .setSerializedShareEntity(escapedEntity)
+                        .setPanelType(PlaylistQueueRenderer.ShareEntityServiceEndpoint.PanelType.UNIFIED));
+        items.addItems(serviceMenuItem(str("share"), YTIconType.SHARE, share.build()));
+
+        if (index != source.selectedIndex() && !videoId.equals(VideoInformation.getVideoId())) {
+            var remove = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setHideEnclosingAction(
+                    PlaylistQueueRenderer.HideEnclosingAction.newBuilder().setHack(true));
+            items.addItems(serviceMenuItem(str("remove"), YTIconType.VISIBILITY_OFF, remove.build()));
+        }
+        return PlaylistQueueRenderer.Menu.newBuilder().setMenuRenderer(items
+                .setAccessibility(PlaylistQueueRenderer.Accessibility.newBuilder().setAccessibilityData(
+                        PlaylistQueueRenderer.AccessibilityLabel.newBuilder()
+                                .setLabel(str("accessibility_overflow_menu")))))
+                .build();
+    }
+
+    private static PlaylistQueueRenderer.MenuItem serviceMenuItem(
+            String label, YTIconType icon, PlaylistQueueRenderer.NavigationEndpoint endpoint) {
+        return PlaylistQueueRenderer.MenuItem.newBuilder().setMenuServiceItemRenderer(
+                PlaylistQueueRenderer.MenuServiceItem.newBuilder()
+                        .setText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(label))
+                        .setIcon(Icon.newBuilder().setYtIconType(icon))
+                        .setServiceEndpoint(endpoint)).build();
+    }
+
     private static byte[] renderer(PlaylistQueue source) {
         var panel = PlaylistQueueRenderer.Panel.newBuilder()
                 .setTitle(str("morphe_native_playlist_queue_title"))
@@ -926,6 +990,7 @@ public final class NativePlaylistQueuePatch {
                     .setWidth(480).setHeight(360);
             var video = PlaylistQueueRenderer.Video.newBuilder()
                     .setVideoId(entry.videoId()).setSelected(index == source.selectedIndex()).setCanReorder(true)
+                    .setMenu(rowMenu(source, index))
                     .setNavigationEndpoint(PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
                             .setWatchEndpoint(PlaylistQueueRenderer.WatchEndpoint.newBuilder().setVideoId(entry.videoId())))
                     .setTitle(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(

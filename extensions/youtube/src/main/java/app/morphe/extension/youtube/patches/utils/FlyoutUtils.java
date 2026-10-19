@@ -986,8 +986,13 @@ public final class FlyoutUtils {
 
         if (bufferObject instanceof FlyoutMenuVideoIdInterface videoIdInterface) {
             String videoId = videoIdInterface.patch_getVideoId();
-            if (videoId != null) {
+            if (videoId != null && !videoId.isEmpty()) {
                 flyoutVideoId = videoId;
+                flyoutPlaylistId = "";
+                flyoutPostId = "";
+                flyoutCommentId = "";
+                isMyTabHistoryFlyout = false;
+                isShortFlyout = false;
             }
             return;
         }

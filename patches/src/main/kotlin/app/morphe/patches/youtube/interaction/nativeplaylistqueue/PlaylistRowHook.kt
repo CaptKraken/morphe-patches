@@ -9,6 +9,7 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
+import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.proxy.mutableTypes.MutableField.Companion.toMutable
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
@@ -18,6 +19,7 @@ import app.morphe.util.matchSingle
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.immutable.ImmutableField
@@ -35,15 +37,42 @@ internal fun installPlaylistRowPlayback(
     PlaylistPanelVideoBindFingerprint.clearMatch()
     val binders = PlaylistPanelVideoBindFingerprint.matchAll().toList()
     check(binders.isNotEmpty()) { "Native playlist queue: playlist row binders are missing" }
-    val videoType = binders.map {
-        it.instructionMatches[2].instruction.getReference<FieldReference>()!!.definingClass
-    }.distinct().single()
+    val videoIdFields = binders.map {
+        it.instructionMatches[2].instruction.getReference<FieldReference>()!!
+    }.distinct()
+    check(videoIdFields.size == 1) {
+        "Native playlist queue: row binders disagree on the native video ID field: $videoIdFields"
+    }
+    val videoIdField = videoIdFields.single()
+    val videoType = videoIdField.definingClass
+    installPlaylistMenuDispatch(context, videoType)
+    val nativeRowMenu = playlistRowMenuOpenFingerprint(videoType).matchSingle()
+    val contextCreations = nativeRowMenu.method.implementation!!.instructions.mapIndexedNotNull { index, instruction ->
+        val reference = instruction.getReference<MethodReference>() ?: return@mapIndexedNotNull null
+        if (!reference.returnType.startsWith("L") || reference.parameterTypes.size != 4 ||
+                reference.parameterTypes.any { it != "Ljava/lang/Object;" }) return@mapIndexedNotNull null
+        val next = nativeRowMenu.method.implementation!!.instructions.getOrNull(index + 1)
+        if (next?.opcode != com.android.tools.smali.dexlib2.Opcode.MOVE_RESULT_OBJECT) return@mapIndexedNotNull null
+        index to (reference to next)
+    }
+    check(contextCreations.size == 1) {
+        "Native playlist queue: expected one native row context map creation, found ${contextCreations.size}: " +
+                contextCreations.map { it.second.first }
+    }
+    val nativeContextCreation = contextCreations.single().let { it.first to it.second.second }
+    val contextRegister = (nativeContextCreation.second as OneRegisterInstruction).registerA
+    nativeRowMenu.method.addInstruction(nativeContextCreation.first + 2,
+        "invoke-static {v$contextRegister}, $EXTENSION_CLASS->onRowMenuOpened(Ljava/util/Map;)V")
     installPlaylistReordering(context, videoType)
-    val listenerType = binders.flatMap { binder ->
+    val listenerTypes = binders.flatMap { binder ->
         binder.originalClassDef.fields.map { it.type }.distinct().filter { type ->
             classDefByOrNull(type)?.interfaces?.contains("Landroid/view/View\$OnClickListener;") == true
         }
-    }.distinct().filter { playlistNativeClickFingerprint(it).originalMethodOrNull != null }.single()
+    }.distinct().filter { playlistNativeClickFingerprint(it).originalMethodOrNull != null }
+    check(listenerTypes.size == 1) {
+        "Native playlist queue: expected one native playlist row listener, found ${listenerTypes.size}: $listenerTypes"
+    }
+    val listenerType = listenerTypes.single()
     val click = classDefBy(listenerType).methods.single {
         it.name == "onClick" && it.parameterTypes == listOf("Landroid/view/View;")
     }
@@ -139,6 +168,18 @@ internal fun installPlaylistRowPlayback(
     // view callback, and disappears with that object. No native model is retained
     // in an extension cache, and protobuf equality/serialization stay unchanged.
     val video = mutableClassDefBy(videoType)
+    val nativeVideoId = video.fields.single { it.name == videoIdField.name && it.type == videoIdField.type }
+    val flyoutVideoInterface =
+        "Lapp/morphe/extension/youtube/patches/utils/FlyoutUtils\$FlyoutMenuVideoIdInterface;"
+    video.interfaces.add(flyoutVideoInterface)
+    video.methods.add(ImmutableMethod(videoType, "patch_getVideoId", emptyList(),
+        "Ljava/lang/String;", AccessFlags.PUBLIC.value or AccessFlags.FINAL.value, null, null,
+        MutableMethodImplementation(2)).toMutable().apply {
+        addInstructionsWithLabels(0, """
+            iget-object v0, p0, $nativeVideoId
+            return-object v0
+        """)
+    })
     val ownedField = ImmutableField(videoType, "patch_queueOwned", "Z",
         AccessFlags.PUBLIC.value, null, null, null).toMutable()
     video.fields.add(ownedField)
