@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC 24 — native player Share action and row menu context
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc24-row-menu-share-fix.mpp) · [Source 995b0bfc6](https://github.com/CaptKraken/morphe-patches/tree/995b0bfc6fb8f688025f533883fb7139604d54c7)
+
+Suppresses Play next in native queue in the queue's own row menus, preserving its outside entry points. Uses YouTube's localized Share video string instead of the missing share resource key. Share now uses the same navigation endpoint as the captured player Share button and native playlist row, opening the native unified share screen for the tapped video. The previous service-only action is removed. The optional System Share override is retained only when its patch is included and its setting enabled.
+
+Phone checks: queue row has no redundant Play next; Share video label is localized; Share opens the player share screen with the correct nonplaying video, with System Share off/on. Check outside-menu Play next, Remove/swipe, ordinary playlists and background queue navigation. Phone/server outcome remains pending.
+
+20 tests passed, five unrelated Jam APK-dependent skips. Actual stock21.20.405 combinedqueue+19related and queue-unselected SDK DEX/hierarchy/resources plus emitted context/dismissal checks passed. Captured native row Share endpoint/panel/video-ID wire check passed. Final MPP/default=true/payload/CRC and exact staged-tree gate passed. No agents or Android emulator used.
+
+SHA-256: `70912f45ad130db398836326c33c903b12ce3ba2d6db996d61bb1079de771d9f`
+
 ## PoC 23 — correct native row menu field
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc23-row-menu-field-fix.mpp) · [Source 7e39c8f59](https://github.com/CaptKraken/morphe-patches/tree/7e39c8f59d9884959000a5db5bb381d1adc2e9a7)
