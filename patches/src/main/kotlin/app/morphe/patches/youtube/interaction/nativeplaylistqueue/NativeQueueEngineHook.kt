@@ -150,6 +150,7 @@ internal fun installNativeQueueEngine(
         move-result-object v2
         invoke-static {v1, p1, v2}, $parser
         move-result-object v1
+        check-cast v1, $panelType
         iput-object v1, v0, $responsePanel
         return-object v0
         :missing

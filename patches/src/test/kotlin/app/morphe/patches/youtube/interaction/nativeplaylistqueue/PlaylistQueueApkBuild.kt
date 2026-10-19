@@ -10,6 +10,7 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 import app.morphe.patcher.Patcher
 import app.morphe.patcher.PatcherConfig
 import app.morphe.patcher.apk.ApkUtils.applyTo
+import app.morphe.patcher.dex.DexVerifier
 import app.morphe.patcher.dex.SdkDexVerifier
 import app.morphe.patcher.patch.Patch
 import app.morphe.patches.youtube.interaction.loop.loopVideoPatch
@@ -29,6 +30,17 @@ import app.morphe.patches.youtube.misc.medianotification.mediaNotificationContro
 import app.morphe.patches.youtube.misc.backgroundplayback.backgroundPlaybackPatch
 import app.morphe.patches.youtube.misc.spoof.spoofVideoStreamsPatch
 import app.morphe.patches.youtube.misc.fix.videoactionbar.restoreOldVideoActionBarPatch
+import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.Opcodes
+import com.android.tools.smali.dexlib2.analysis.ClassPath
+import com.android.tools.smali.dexlib2.analysis.ClassProvider
+import com.android.tools.smali.dexlib2.analysis.DexClassProvider
+import com.android.tools.smali.dexlib2.analysis.MethodAnalyzer
+import com.android.tools.smali.dexlib2.analysis.RegisterType
+import com.android.tools.smali.dexlib2.dexbacked.DexBackedDexFile
+import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.runBlocking
@@ -62,7 +74,14 @@ fun main(arguments: Array<String>) {
         "Unrelated patches must not select Native playlist queue as a dependency"
     }
     val workspace = createTempDirectory("playlist-queue-$mode").toFile()
-    Patcher(PatcherConfig(input, workspace, verifier = SdkDexVerifier(File(sdk)))).use { patcher ->
+    val sdkVerifier = SdkDexVerifier(File(sdk))
+    val verifier = object : DexVerifier by sdkVerifier {
+        override fun verifyDexDirectory(dexDir: File) {
+            sdkVerifier.verifyDexDirectory(dexDir)
+            verifyNativePanelAssignment(dexDir, mode != "unselected")
+        }
+    }
+    Patcher(PatcherConfig(input, workspace, verifier = verifier)).use { patcher ->
         patcher += selected
         runBlocking {
             patcher().collect { result ->
@@ -74,4 +93,32 @@ fun main(arguments: Array<String>) {
         arguments.getOrNull(2)?.let { result.applyTo(File(it)) }
         println("$mode: APK patched and SDK DEX/resource verification completed: $workspace")
     }
+}
+
+/** SDK structural checks do not catch a base protobuf value stored in a concrete panel field. */
+private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
+    val dexFiles = directory.listFiles()!!.filter { it.extension == "dex" }.map { file ->
+        file.inputStream().buffered().use { DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it) }
+    }
+    val playbackInterface = EXTENSION_CLASS.removeSuffix(";") + "\$NativePlayback;"
+    val owners = dexFiles.flatMap { it.classes }.filter { playbackInterface in it.interfaces }
+    check(owners.size == if (selected) 1 else 0) { "Unexpected native playback bridge inclusion" }
+    if (!selected) return
+    val providers: List<ClassProvider> = dexFiles.map(::DexClassProvider)
+    val classPath = ClassPath(providers)
+    val bridge = owners.single().methods.single { it.name == "patch_localPanel" }
+    val analyzer = MethodAnalyzer(classPath, bridge, null, false)
+    analyzer.analysisException?.let { throw it }
+    for (instruction in analyzer.analyzedInstructions) {
+        val store = instruction.instruction
+        if (store.opcode != Opcode.IPUT_OBJECT) continue
+        val field = (store as ReferenceInstruction).reference as FieldReference
+        val value = instruction.getPreInstructionRegisterType((store as TwoRegisterInstruction).registerA)
+        val valueType = value.type
+        check(value.category == RegisterType.NULL || value.category == RegisterType.REFERENCE &&
+                valueType != null && classPath.getClass(field.type).getCommonSuperclass(valueType).type == field.type) {
+            "Native playback bridge stores $value in incompatible field $field"
+        }
+    }
+    println("Native playback panel field assignments: compatible register types")
 }
