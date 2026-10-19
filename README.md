@@ -2,6 +2,16 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC 23 — correct native row menu field
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc23-row-menu-field-fix.mpp) · [Source 7e39c8f59](https://github.com/CaptKraken/morphe-patches/tree/7e39c8f59d9884959000a5db5bb381d1adc2e9a7)
+
+PoC22 failed on the phone: no per-video three-dot buttons appeared. The local protobuf wrote menu at field18, which stock21.20.405 treats as text. The native menu is field19. This bundle changes only that field number and preserves the existing native menu/actions.
+
+Actual captured native row verification now decodes its populated menu, verifies the regenerated writer emits19 and confirms broken18 has no menu. Existing tests20passed/5unrelatedJamAPK-skips, MPP build/default=true/integrity and commit gate passed. No native hook changes or new APK application run. Phone check first: do the per-video three-dot buttons now appear? Then test Save/Download/Share/Remove; these actions are not device-verified yet.
+
+SHA-256: `7497f7c2932ac25c5b66b47db3d4dfca21f1793c2090fea2c3d1729ae802ef03`
+
 ## PoC 22 — native video row menu
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc22-row-menu.mpp) · [Source 3c48ce2a9](https://github.com/CaptKraken/morphe-patches/tree/3c48ce2a94fd08b04200cb75aa196189122aafa7)
