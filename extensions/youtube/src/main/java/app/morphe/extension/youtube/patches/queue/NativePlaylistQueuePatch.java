@@ -461,9 +461,6 @@ public final class NativePlaylistQueuePatch {
             selectionNeedsPublishing = true;
             playback.patch_updateSnapshot(renderer(queue));
         }
-        // A playback transition resets the native notification model even if its
-        // capabilities are unchanged. Republish without requiring a watch panel.
-        refreshNotificationControls();
     }
 
     /** Runs after YouTube's click veto but before its logging decorates the endpoint. */
@@ -531,6 +528,14 @@ public final class NativePlaylistQueuePatch {
             notificationControls.add(controls);
             if (queue != null) controls.patch_refreshQueueNotification();
         });
+    }
+
+    public static void onNotificationPlaybackChanged(NotificationControls controls) {
+        // The state handler can reset navigation after selection was published.
+        // Use the active service, independently of foreground video/panel callbacks.
+        if (ownsNativePlayback(controls.patch_getQueueMediaControls().patch_getQueueNavigator())) {
+            controls.patch_refreshQueueNotification();
+        }
     }
 
     /** Bridge contract: bit 0 = Previous, bit 1 = Next; -1 keeps native flags. */

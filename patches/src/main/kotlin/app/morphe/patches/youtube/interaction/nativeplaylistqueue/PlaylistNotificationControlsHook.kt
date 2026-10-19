@@ -14,6 +14,7 @@ import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMuta
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import app.morphe.util.cloneParameters
 import app.morphe.util.findFreeRegister
+import app.morphe.util.findInstructionIndicesReversedOrThrow
 import app.morphe.util.getReference
 import app.morphe.util.matchSingle
 import com.android.tools.smali.dexlib2.AccessFlags
@@ -37,6 +38,9 @@ internal fun installPlaylistNotificationControls(context: BytecodePatchContext, 
     check(adapters.size == 2 && adapters.map { it.originalMethod.returnType }.toSet() == setOf("V", "I")) {
         "Native playlist queue: expected both native notification capability adapters"
     }
+    val playbackState = notificationPlaybackStateFingerprint(
+        adapters.single { it.originalMethod.returnType == "V" }.originalClassDef.type
+    ).matchSingle().originalMethod
     val controlsInterface = "Lapp/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch\$NotificationControls;"
     val mediaInterface = "Lapp/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch\$MediaControls;"
     for (match in adapters) {
@@ -71,6 +75,17 @@ internal fun installPlaylistNotificationControls(context: BytecodePatchContext, 
             .single { it.value.opcode == Opcode.RETURN_VOID }.index
         constructor.addInstructionsAtControlFlowLabel(returnIndex,
             "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onNotificationControlsCreated($controlsInterface)V")
+
+        // NEW clears the model's skip flags after the sequencer commits selection.
+        // In background playback there need not be another watch-screen update.
+        // Recompute only after the original state handler finishes clearing its
+        // model and delegates; preserve its receiver because native code reuses p0.
+        val stateMethod = notificationPlaybackStateFingerprint(adapterType, playbackState).matchSingle()
+            .method.cloneParameters(adapter)
+        stateMethod.findInstructionIndicesReversedOrThrow(Opcode.RETURN_VOID).forEach { index ->
+            stateMethod.addInstructionsAtControlFlowLabel(index,
+                "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onNotificationPlaybackChanged($controlsInterface)V")
+        }
 
         // Both original computations reuse p0 before the setter. Keep the receiver
         // and resolve the call again after cloning instead of retaining its index.

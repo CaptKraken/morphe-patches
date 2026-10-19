@@ -478,3 +478,19 @@ internal fun notificationCapabilitiesDispatchFingerprint(computation: MethodRefe
             location = MatchAfterImmediately())
     )
 )
+
+/** PCU is the native player-controls update trace in the original notification adapter. */
+internal fun notificationPlaybackStateFingerprint(adapterType: String) = Fingerprint(
+    definingClass = adapterType,
+    returnType = "V",
+    parameters = listOf("L"),
+    filters = listOf(string("PCU"))
+)
+
+/** The newer adapter implements the same playback-state callback without the trace. */
+internal fun notificationPlaybackStateFingerprint(adapterType: String, callback: MethodReference) = Fingerprint(
+    definingClass = adapterType,
+    name = callback.name,
+    returnType = callback.returnType,
+    parameters = callback.parameterTypes.map { it.toString() }
+)
