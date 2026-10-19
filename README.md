@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC 22 — native video row menu
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc22-row-menu.mpp) · [Source 3c48ce2a9](https://github.com/CaptKraken/morphe-patches/tree/3c48ce2a94fd08b04200cb75aa196189122aafa7)
+
+Adds YouTube's native three-dot menu to local queue rows: Save to Playlists, Download, Share, and Remove for nonplaying rows. Save targets the tapped video; Download uses the native eligibility action and respects the configured downloader override; Share retains the native/System Share setting and uses the tapped row's ID. Remove reuses guarded local queue removal, preserves native dismissal and never removes the playing row. Uses YouTube's localized Remove text; Premium queue wording is unverified.
+
+Phone checks: open playing/nonplaying row menus; Save/Download/Share the nonplaying video and confirm its ID. Test native/external Download and native/System Share settings, including after opening another playlist/post menu. Remove should be absent on the playing row, reject stale selection, close the sheet, and preserve playback/order. Retest swipe, reorder, header Save, ordinary playlist menus and background notification Next/Previous.
+
+20 tests passed; five unrelated Jam APK-dependent tests skipped. Stock 21.20.405 APK application and SDK DEX/hierarchy/resources passed with queue plus 19 related patches and queue unselected; queue-only application also passed (full standalone log was not saved). Review corrected interface context and label issues before publication. Focused emitted-DEX checks accept corrected outputs and reject an earlier wrong-interface guard. Final MPP/default=true/integrity and exact staged-tree gate passed. Native dialogs, server actions and device behavior still need phone testing.
+
+SHA-256: `82cd06ccead051752a8ae9a218ce2409001dcc2e17e92ea79384cebd00d202ff`
+
 ## PoC 21 — notification playback-state completion
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc21-notification-state-completion.mpp) · [Source 6239139bb](https://github.com/CaptKraken/morphe-patches/tree/6239139bbfcf8ceaeb216df2a325aba02802c082)
