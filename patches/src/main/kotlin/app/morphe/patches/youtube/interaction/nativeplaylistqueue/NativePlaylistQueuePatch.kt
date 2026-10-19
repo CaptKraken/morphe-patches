@@ -12,14 +12,12 @@ import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.shared.misc.fix.proto.fixProtoLibraryPatch
 import app.morphe.patches.shared.misc.proto.hookElement
-import app.morphe.patches.youtube.interaction.loop.sleepTimerHookPatch
 import app.morphe.patches.youtube.layout.flyout.flyoutPatch
 import app.morphe.patches.youtube.misc.extension.sharedExtensionPatch
 import app.morphe.patches.youtube.misc.playertype.playerTypeHookPatch
 import app.morphe.patches.youtube.misc.settings.settingsPatch
 import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
 import app.morphe.patches.youtube.video.information.videoInformationPatch
-import app.morphe.patches.youtube.video.information.playerStatusHook
 import app.morphe.patches.youtube.video.videoid.hookBackgroundPlayVideoId
 import app.morphe.patches.youtube.video.videoid.hookVideoId
 import app.morphe.patches.youtube.video.videoid.videoIdPatch
@@ -33,7 +31,7 @@ internal const val CONTROLLER_INTERFACE =
 @Suppress("unused")
 val nativePlaylistQueuePatch = bytecodePatch(
     name = "Native playlist queue",
-    description = "Adds a Play next action and a temporary queue with native playlist rows and rating actions. " +
+    description = "Experimental native playback engine PoC. Adds a Play next action and a temporary queue with native playlist rows and rating actions. " +
             "Tap a queued row to play it or swipe it to remove it. " +
             "Drag its handle to reorder or use the queue menu to save it as a playlist. " +
             "Playback follows the queue and its repeat mode, synchronized with the player Loop switch. " +
@@ -47,7 +45,6 @@ val nativePlaylistQueuePatch = bytecodePatch(
         videoInformationPatch,
         videoIdPatch,
         playerTypeHookPatch,
-        sleepTimerHookPatch,
         fixProtoLibraryPatch
     )
 
@@ -67,7 +64,6 @@ val nativePlaylistQueuePatch = bytecodePatch(
         installPlaylistPanel(this)
         installRatingCapture(this)
         installPlaylistRemoval(this)
-        playerStatusHook(EXTENSION_CLASS, "onPlayerStatus", includeController = true)
         hookElement("$EXTENSION_CLASS->onElementLoaded")
         hookVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")
         hookBackgroundPlayVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")

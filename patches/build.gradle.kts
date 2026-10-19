@@ -48,9 +48,6 @@ tasks {
             "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/PlaylistQueue.java"
         )).withPropertyName("playlistQueueStateSource")
         inputs.file(rootProject.file(
-            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueAdvance.java"
-        )).withPropertyName("playlistQueueAdvanceSource")
-        inputs.file(rootProject.file(
             "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueShortsSession.java"
         )).withPropertyName("playlistQueueShortsSessionSource")
         inputs.files(

@@ -29,8 +29,6 @@ import app.morphe.extension.youtube.innertube.IconOuterClass.Icon;
 import app.morphe.extension.youtube.innertube.IconOuterClass.YTIconType;
 import app.morphe.extension.youtube.innertube.NextResponseOuterClass.SingleColumnWatchNextResults;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
-import app.morphe.extension.youtube.patches.DisablePlaylistAutoplayPatch;
-import app.morphe.extension.youtube.patches.LoopVideoPatch;
 import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
@@ -55,12 +53,10 @@ public final class NativePlaylistQueuePatch {
         String patch_getPlaylistId();
         Object patch_getModel();
         Object patch_getPanel();
-        RepeatState patch_getRepeatState();
         int patch_findQueueRow(Object target);
         void patch_markQueueRows();
         boolean patch_isAttached();
         Object patch_getNavigator();
-        void patch_requestAutomaticAdvance();
         boolean patch_playQueueRow(int index);
         Object patch_updatePanel(byte[] panel);
         void patch_restorePanel(Object expectedModel, Object originalModel);
@@ -85,25 +81,24 @@ public final class NativePlaylistQueuePatch {
 
     public interface ServiceNavigator {
         String patch_getVideoId();
-        void patch_playQueueVideo(byte[] command);
+        NativePlayback patch_getQueuePlayback();
+        void patch_navigateQueue(boolean next);
+        boolean patch_canNavigateQueue(boolean next);
     }
 
-    /** YouTube's shared repeat/shuffle observer, also used by the player's Loop switch. */
-    public interface RepeatState {
-        Object patch_getRepeatContext();
+    /** PoC bridge to YouTube's mutable playback queue, independent of the watch view. */
+    public interface NativePlayback {
+        boolean patch_isLocalQueue();
+        boolean patch_attachQueue(byte[] panel);
+        void patch_updateSnapshot(byte[] panel);
+        int patch_getSelectedIndex();
         int patch_getRepeatMode();
-        void patch_notifyRepeatMode(int mode);
     }
 
     public interface RepeatHeader {
         Object patch_getNavigator();
         Object patch_getPanel();
         void patch_enableRepeat();
-    }
-
-    /** Native navigation request; the enum is read without assuming its obfuscated fields. */
-    public interface NavigationRequest {
-        Enum<?> patch_getNavigationIntent();
     }
 
     /** Native listener bridge retains the bound endpoint before logging decorates it. */
@@ -149,6 +144,7 @@ public final class NativePlaylistQueuePatch {
     private static DragSession dragSession;
     private static WeakReference<PlaylistController> controllerRef = new WeakReference<>(null);
     private static PlaylistQueue queue;
+    private static WeakReference<NativePlayback> nativePlaybackRef = new WeakReference<>(null);
     private static Object originalModel;
     private static Object publishedModel;
     // Background playback can confirm selection before the watch screen catches up.
@@ -161,12 +157,6 @@ public final class NativePlaylistQueuePatch {
     private static WeakReference<PlaylistController> shortsControllerRef = new WeakReference<>(null);
     private record RowSelection(PlaylistQueue.Entry entry) {}
     private static RowSelection pendingSelection;
-    private static QueueAdvance completion;
-    private static final Set<RepeatState> repeatStates = Collections.newSetFromMap(new WeakHashMap<>());
-    private static final Map<Object, Integer> nativeRepeatModes = new WeakHashMap<>();
-    private static final Map<RepeatState, Integer> repeatProjections = new WeakHashMap<>();
-    private static Object repeatGeneration;
-    private static RepeatState publishingRepeatState;
     private static final Set<RepeatHeader> repeatHeaders = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<PlayerControls> playerControls = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<NotificationControls> notificationControls = Collections.newSetFromMap(new WeakHashMap<>());
@@ -256,6 +246,7 @@ public final class NativePlaylistQueuePatch {
         // A queued callback may arrive after our synchronous update has returned. Never
         // treat our own accepted model as a new native baseline or publish it again.
         if (publishing) return;
+        syncNativeSelection(VideoInformation.getVideoId());
         // A regular return response can arrive before the shared video ID changes.
         // Only native controller callbacks update this candidate; lifecycle rechecks
         // must not overwrite it with the old owner while waiting for that ID.
@@ -266,13 +257,13 @@ public final class NativePlaylistQueuePatch {
         // The service can advance while a retained watch screen still describes the
         // previous video. Only the active-ID hooks can commit background selection.
         if (queue != null && !controller.patch_getVideoId().equals(VideoInformation.getVideoId())) return;
+        if (waitingForNativeSelection(VideoInformation.getVideoId())) return;
         if (publishedModel != null && controllerRef.get() == controller
                 && controller.patch_getModel() == publishedModel) {
             if (selectionNeedsPublishing && readyController() == controller) {
                 publish(controller, queue, false);
             }
-            refreshRepeatState(controller, false);
-            requestAutomaticAdvance();
+            refreshRepeatHeaders();
             return;
         }
 
@@ -294,11 +285,10 @@ public final class NativePlaylistQueuePatch {
         if (!controller.patch_getVideoId().equals(queue.currentEntry().videoId())
                 || hasPlaylist(controller)) {
             Object navigator = controller.patch_getNavigator();
-            releaseRepeatState();
             queue = null;
             shortsSession.reset();
             shortsControllerRef.clear();
-            completion = null;
+
             dragSession = null;
             pendingSelection = null;
             originalModel = null;
@@ -310,7 +300,7 @@ public final class NativePlaylistQueuePatch {
         dragSession = null;
         originalModel = controller.patch_getModel();
         publish(controller, queue, false);
-        requestAutomaticAdvance();
+
     }
 
     private static void onPlaybackContextChanged() {
@@ -328,9 +318,9 @@ public final class NativePlaylistQueuePatch {
                 PlayerType type = PlayerType.getCurrent();
                 // NONE describes the watch UI, not the playback service. Its
                 // controller can be cleared while audio continues in the background.
-                if (type == PlayerType.INLINE_MINIMAL || (type == PlayerType.NONE
-                        && (controller == null || controller.patch_getVideoId().isEmpty())
-                        && !serviceOwnsQueue())) releasePanel();
+                if ((type == PlayerType.INLINE_MINIMAL || (type == PlayerType.NONE
+                        && (controller == null || controller.patch_getVideoId().isEmpty())))
+                        && !serviceOwnsQueue()) releasePanel();
                 else if (returningFromShorts && controller != null) updateController(controller);
             });
         });
@@ -350,7 +340,7 @@ public final class NativePlaylistQueuePatch {
                 serviceOwnsQueue());
         switch (action) {
             case SUSPEND -> {
-                completion = null;
+
                 pendingSelection = null;
                 dragSession = null;
                 refreshPlayerControls(previous == null ? null : previous.patch_getNavigator());
@@ -399,6 +389,8 @@ public final class NativePlaylistQueuePatch {
     /** Resolve live playback, without treating a retained watch model as a service owner. */
     private static boolean serviceOwnsQueue() {
         if (queue == null || !VideoInformation.getPlaylistId().isEmpty()) return false;
+        NativePlayback playback = nativePlaybackRef.get();
+        if (playback != null && playback.patch_isLocalQueue()) return true;
         String videoId = queue.currentEntry().videoId();
         if (!videoId.equals(VideoInformation.getVideoId())) return false;
         for (NotificationControls controls : new ArrayList<>(notificationControls)) {
@@ -406,6 +398,69 @@ public final class NativePlaylistQueuePatch {
             if (navigator != null && videoId.equals(navigator.patch_getVideoId())) return true;
         }
         return false;
+    }
+
+    private static NativePlayback playbackFor(PlaylistController controller) {
+        if (controller != null && controller.patch_getNavigator() instanceof ServiceNavigator service) {
+            NativePlayback playback = service.patch_getQueuePlayback();
+            if (playback != null) return playback;
+        }
+        for (NotificationControls controls : new ArrayList<>(notificationControls)) {
+            ServiceNavigator service = controls.patch_getQueueMediaControls().patch_getQueueNavigator();
+            if (service == null || !service.patch_getVideoId().equals(VideoInformation.getVideoId())) continue;
+            NativePlayback playback = service.patch_getQueuePlayback();
+            if (playback != null) return playback;
+        }
+        return null;
+    }
+
+    /** Rebind after native service restoration; UI visibility does not own this sequence. */
+    public static void onNativeQueueResponse(NativePlayback playback) {
+        Utils.runOnMainThread(() -> {
+            if (queue == null || playback.patch_isLocalQueue()
+                    || !queue.currentEntry().videoId().equals(VideoInformation.getVideoId())
+                    || !VideoInformation.getPlaylistId().isEmpty()) return;
+            boolean current = playbackFor(returningController()) == playback;
+            for (NotificationControls controls : new ArrayList<>(notificationControls)) {
+                ServiceNavigator service = controls.patch_getQueueMediaControls().patch_getQueueNavigator();
+                if (service != null && service.patch_getVideoId().equals(VideoInformation.getVideoId())
+                        && service.patch_getQueuePlayback() == playback) current = true;
+            }
+            if (!current) return;
+            try {
+                if (playback.patch_attachQueue(renderer(queue))) nativePlaybackRef = new WeakReference<>(playback);
+            } catch (Exception exception) {
+                Logger.printException(() -> "Could not restore native queue playback", exception);
+            }
+        });
+    }
+
+    public static void onNativeQueueSelection() {
+        Utils.runOnMainThread(() -> {
+            if (queue == null || isQueueSuspended()) return;
+            syncNativeSelection(VideoInformation.getVideoId());
+            if (selectionNeedsPublishing) refreshOwnedPanel(VideoInformation.getVideoId());
+        });
+    }
+
+    private static boolean waitingForNativeSelection(String videoId) {
+        NativePlayback playback = nativePlaybackRef.get();
+        return queue != null && playback != null && playback.patch_isLocalQueue()
+                && !queue.currentEntry().videoId().equals(videoId)
+                && queue.entries().stream().anyMatch(entry -> entry.videoId().equals(videoId));
+    }
+
+    private static void syncNativeSelection(String videoId) {
+        NativePlayback playback = nativePlaybackRef.get();
+        if (queue == null || playback == null || !playback.patch_isLocalQueue()) return;
+        int index = playback.patch_getSelectedIndex();
+        if (index < 0 || index >= queue.entries().size() || !queue.entries().get(index).videoId().equals(videoId)) return;
+        pendingSelection = null;
+        if (queue.selectedIndex() != index || queue.repeatMode() != playback.patch_getRepeatMode()) {
+            queue = queue.select(index).withRepeatMode(playback.patch_getRepeatMode());
+            selectionNeedsPublishing = true;
+            playback.patch_updateSnapshot(renderer(queue));
+        }
     }
 
     /** Runs after YouTube's click veto but before its logging decorates the endpoint. */
@@ -429,102 +484,12 @@ public final class NativePlaylistQueuePatch {
         return selection;
     }
 
-    /** Runs through the shared player-status hook, after Loop video's early-return guard. */
-    public static void onPlayerStatus(Object player, Enum<?> status) {
-        if (status == null || !VideoInformation.isActivePlaybackController(player)) return;
-        String videoId = VideoInformation.getVideoId();
-        Utils.runOnMainThreadNowOrLater(() -> {
-            if (isQueueSuspended() || !VideoInformation.isActivePlaybackController(player)
-                    || !videoId.equals(VideoInformation.getVideoId())) return;
-            if ("VIDEO_PLAYING".equals(status.name()) && pendingSelection == null) completion = null;
-            if (!"ENDED".equals(status.name()) || queue == null || pendingSelection != null) return;
-            PlaylistController controller = readyController();
-            if (controller == null || controller.patch_getModel() != publishedModel) return;
-            if (completion == null || !completion.isFor(queue)) {
-                // Capture before the native end event can reset its sleep timer.
-                completion = new QueueAdvance(queue, LoopVideoPatch.isSleepTimerEndingVideo());
-            }
-            requestAutomaticAdvance();
-        });
-    }
-
-    private static void requestAutomaticAdvance() {
-        QueueAdvance ended = completion;
-        if (ended == null || !ended.isFor(queue) || queue.repeatMode() == PlaylistQueue.REPEAT_ONE
-                || dragSession != null || pendingSelection != null) return;
-        PlaylistController controller = readyController();
-        if (controller == null || controller.patch_getModel() != publishedModel) return;
-        Utils.runOnMainThread(() -> {
-            if (completion != ended || dragSession != null || pendingSelection != null
-                    || readyController() != controller || controller.patch_getModel() != publishedModel) return;
-            if (controller.patch_getNavigator() == null || !ended.beginRequest(queue)) return;
-            // Advancing to another item still respects Disable playlist autoplay.
-            controller.patch_requestAutomaticAdvance();
-        });
-    }
-
-    private static int initialRepeatMode(PlaylistController controller) {
-        RepeatState state = controller.patch_getRepeatState();
-        if (state == null) return PlaylistQueue.REPEAT_OFF;
-        // A new queue may start before the previous queue's deferred view-state restoration.
-        return nativeRepeatModes.getOrDefault(state.patch_getRepeatContext(), state.patch_getRepeatMode());
-    }
-
-    public static void onRepeatStateCreated(RepeatState state) {
-        Utils.runOnMainThreadNowOrLater(() -> repeatStates.add(state));
-    }
-
-    /** Keep native backend updates intact, projecting local repeat only into the owned watch context. */
-    public static int resolveRepeatMode(RepeatState state, int mode) {
-        if (!Utils.isCurrentlyOnMainThread()) return mode;
-        Object context = state.patch_getRepeatContext();
-        if (context == null) return mode;
-        // Remember native state even before the first queue panel binds its controls.
-        // Other observers in this watch context can then inherit the player's Loop mode.
-        if (state != publishingRepeatState) nativeRepeatModes.put(context, mode);
-        PlaylistController controller = readyController();
-        boolean owned = queue != null && controller != null && controller.patch_getModel() == publishedModel
-                && sameRepeatContext(state, controller);
-        if (!owned) return mode;
-        repeatProjections.put(state, queue.repeatMode());
-        return queue.repeatMode();
-    }
-
-    private static boolean sameRepeatContext(RepeatState state, PlaylistController controller) {
-        RepeatState boundState = controller.patch_getRepeatState();
-        Object context = state.patch_getRepeatContext();
-        return context != null && boundState != null && context == boundState.patch_getRepeatContext();
-    }
-
-    /** Both native controls enter here; ordinary playback keeps the original request unchanged. */
-    public static int onRepeatControlRequested(Object navigator, int mode) {
-        if (!Utils.isCurrentlyOnMainThread()) return mode;
-        PlaylistController controller = ownedNavigator(navigator);
-        if (controller == null || mode < PlaylistQueue.REPEAT_OFF || mode > PlaylistQueue.REPEAT_ONE) return mode;
-        if (dragSession == null && queue.repeatMode() != mode) {
-            queue = queue.withRepeatMode(mode);
-            if (completion != null && completion.isFor(queue)) completion.repeatChanged();
-            PlaylistQueue requestedQueue = queue;
-            // Native notification can itself request playback when Loop is enabled on
-            // an ended video. Let the original repeat setter finish before projecting UI.
-            Utils.runOnMainThread(() -> {
-                if (queue != requestedQueue || ownedNavigator(navigator) != controller) return;
-                refreshRepeatState(controller, false);
-                refreshPlayerControls(navigator);
-                requestAutomaticAdvance();
-            });
-        }
-        // The ordinary-video backend has no knowledge of our multi-item sequence.
-        // Leave its native off/one handling in place; local repeat-all uses backend off.
-        return queue.repeatMode() == PlaylistQueue.REPEAT_ALL ? PlaylistQueue.REPEAT_OFF : queue.repeatMode();
-    }
-
     public static void onRepeatHeaderBound(RepeatHeader header) {
         Utils.runOnMainThreadNowOrLater(() -> {
             repeatHeaders.add(header);
             PlaylistController controller = ownedNavigator(header.patch_getNavigator());
             if (controller != null && header.patch_getPanel() == controller.patch_getPanel()) {
-                refreshRepeatState(controller, false);
+                refreshRepeatHeaders();
             }
         });
     }
@@ -534,48 +499,8 @@ public final class NativePlaylistQueuePatch {
         if (controller != null && header.patch_getPanel() == controller.patch_getPanel()) header.patch_enableRepeat();
     }
 
-    private static void notifyRepeatMode(RepeatState state, int mode) {
-        if (state.patch_getRepeatMode() == mode) return;
-        RepeatState previous = publishingRepeatState;
-        publishingRepeatState = state;
-        try {
-            state.patch_notifyRepeatMode(mode);
-        } finally {
-            publishingRepeatState = previous;
-        }
-    }
-
-    private static void refreshRepeatState(PlaylistController controller, boolean startingQueue) {
-        if (startingQueue || repeatGeneration == null) repeatGeneration = new Object();
-        for (RepeatState state : new ArrayList<>(repeatStates)) {
-            if (!sameRepeatContext(state, controller)) continue;
-            nativeRepeatModes.putIfAbsent(state.patch_getRepeatContext(), state.patch_getRepeatMode());
-            repeatProjections.put(state, queue.repeatMode());
-            notifyRepeatMode(state, queue.repeatMode());
-        }
+    private static void refreshRepeatHeaders() {
         for (RepeatHeader header : new ArrayList<>(repeatHeaders)) refreshRepeatHeader(header);
-    }
-
-    private static void releaseRepeatState() {
-        Object previous = repeatGeneration;
-        if (previous == null) return;
-        // Finish native close/handoff callbacks first. A new queue gets a fresh generation,
-        // even when its controls share the same watch context, so it cannot be overwritten.
-        Utils.runOnMainThread(() -> {
-            if (queue != null || repeatGeneration != previous) return;
-            for (RepeatState state : new ArrayList<>(repeatProjections.keySet())) {
-                if (queue != null || repeatGeneration != previous) return;
-                Integer mode = repeatProjections.get(state);
-                Integer nativeMode = nativeRepeatModes.get(state.patch_getRepeatContext());
-                if (mode != null && nativeMode != null && state.patch_getRepeatMode() == mode) {
-                    notifyRepeatMode(state, nativeMode);
-                }
-            }
-            if (repeatGeneration == previous && queue == null) {
-                repeatGeneration = null;
-                repeatProjections.clear();
-            }
-        });
     }
 
     public static void onPlayerControlsCreated(PlayerControls controls) {
@@ -607,170 +532,50 @@ public final class NativePlaylistQueuePatch {
 
     /** Bridge contract: bit 0 = Previous, bit 1 = Next; -1 keeps native flags. */
     public static int notificationNavigationAvailability(NotificationControls controls) {
-        if (!Utils.isCurrentlyOnMainThread() || queue == null || isQueueSuspended()
-                || !VideoInformation.getPlaylistId().isEmpty()) return -1;
-        ServiceNavigator navigator = controls.patch_getQueueMediaControls().patch_getQueueNavigator();
-        if (navigator == null) return -1;
-        String videoId = queue.currentEntry().videoId();
-        if (!videoId.equals(navigator.patch_getVideoId()) || !videoId.equals(VideoInformation.getVideoId())) {
-            return -1;
-        }
-        return (queue.previousIndex() >= 0 ? 1 : 0) | (queue.nextIndex(false) >= 0 ? 2 : 0);
+        return -1; // The native sequencer publishes its own media capabilities.
     }
 
     public static boolean playerControlAvailability(PlayerControls controls, boolean next, boolean original) {
-        if (!Utils.isCurrentlyOnMainThread() || ownedNavigator(controls.patch_getNavigator()) == null) return original;
-        return (next ? queue.nextIndex(false) : queue.previousIndex()) >= 0;
+        if (controls.patch_getNavigator() instanceof ServiceNavigator service && ownsNativePlayback(service)) {
+            return service.patch_canNavigateQueue(next);
+        }
+        return original;
     }
 
     public static boolean onNextPressed(PlayerControls controls) {
-        return navigateManually(controls.patch_getNavigator(), 1);
+        return controls.patch_getNavigator() instanceof ServiceNavigator service && navigateNative(service, true);
     }
 
     public static boolean onPreviousPressed(PlayerControls controls) {
-        return navigateManually(controls.patch_getNavigator(), -1);
-    }
-
-    private static boolean navigateManually(Object navigator, int direction) {
-        if (!Utils.isCurrentlyOnMainThread()) return false;
-        PlaylistController controller = ownedNavigator(navigator);
-        if (controller == null) return false;
-        if (dragSession != null || pendingSelection != null) return true;
-        int index = direction > 0 ? queue.nextIndex(false) : queue.previousIndex();
-        if (index >= 0 && index < queue.entries().size()) {
-            completion = null;
-            playQueueEntry(controller, index, queue.entries().get(index));
-        }
-        return true;
+        return controls.patch_getNavigator() instanceof ServiceNavigator service && navigateNative(service, false);
     }
 
     /** Runs after native media logging, before either foreground or service skip routing. */
     public static boolean onNotificationNext(MediaControls controls) {
-        return navigateNotification(controls, true);
+        return navigateNative(controls.patch_getQueueNavigator(), true);
     }
 
     public static boolean onNotificationPrevious(MediaControls controls) {
-        return navigateNotification(controls, false);
+        return navigateNative(controls.patch_getQueueNavigator(), false);
     }
 
-    private static boolean navigateNotification(MediaControls controls, boolean next) {
-        if (!Utils.isCurrentlyOnMainThread() || queue == null) return false;
-        // A background return need not produce another watch-view callback.
-        // Reconcile live service ownership before rejecting a suspended queue.
-        if (shortsSession.isSuspended() && updateShortsSession(returningController())) return false;
-        if (isQueueSuspended()) return false;
-        ServiceNavigator navigator = controls.patch_getQueueNavigator();
-        PlaylistQueue.Entry source = queue.currentEntry();
-        if (navigator == null || !VideoInformation.getPlaylistId().isEmpty()) return false;
-        String serviceVideoId = navigator.patch_getVideoId();
-        String activeVideoId = VideoInformation.getVideoId();
-        if (pendingSelection != null) {
-            // A second press can arrive after the service switches but before the
-            // background active-ID callback commits our authorized target.
-            String targetId = pendingSelection.entry().videoId();
-            return (source.videoId().equals(serviceVideoId) || targetId.equals(serviceVideoId))
-                    && (source.videoId().equals(activeVideoId) || targetId.equals(activeVideoId));
-        }
-        if (!source.videoId().equals(serviceVideoId) || !source.videoId().equals(activeVideoId)) return false;
-        if (dragSession != null) return true;
-        int index = next ? queue.nextIndex(false) : queue.previousIndex();
-        if (index < 0) return true;
-        PlaylistQueue.Entry target = queue.entries().get(index);
-        RowSelection selection = authorizeRowSelection(target);
-        completion = null;
-        Utils.runOnMainThread(() -> {
-            if (pendingSelection != selection || queue == null || isQueueSuspended()) return;
-            if (queue.currentEntry() != source || queue.entries().stream().noneMatch(entry -> entry == target)
-                    || !source.videoId().equals(navigator.patch_getVideoId())
-                    || !source.videoId().equals(VideoInformation.getVideoId())
-                    || !VideoInformation.getPlaylistId().isEmpty()) {
-                pendingSelection = null;
-                return;
-            }
-            try {
-                // Use the native service load entry point. A watch-screen command may
-                // wait for activity resume; selection waits for the shared active-ID hook.
-                var endpoint = PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
-                        .setWatchEndpoint(PlaylistQueueRenderer.WatchEndpoint.newBuilder().setVideoId(target.videoId()));
-                navigator.patch_playQueueVideo(endpoint.build().toByteArray());
-            } catch (Exception exception) {
-                pendingSelection = null;
-                Logger.printException(() -> "Could not skip native playlist queue from media controls", exception);
-                Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
-            }
-        });
+    private static boolean ownsNativePlayback(ServiceNavigator service) {
+        if (queue == null || service == null || ShortsPlayerState.isOpen()) return false;
+        NativePlayback playback = service.patch_getQueuePlayback();
+        return playback != null && playback.patch_isLocalQueue() && playback == nativePlaybackRef.get();
+    }
+
+    /** Bypass watch-history shortcuts, retaining the native queue's validation and ordering. */
+    private static boolean navigateNative(ServiceNavigator service, boolean next) {
+        if (!ownsNativePlayback(service)) return false;
+        service.patch_navigateQueue(next);
         return true;
-    }
-
-    /** Native controls retain their visibility logic, including Hide previous/next settings. */
-    public static int navigationAvailability(Object navigator, NavigationRequest request) {
-        Enum<?> intent = request.patch_getNavigationIntent();
-        if (intent == null || !Utils.isCurrentlyOnMainThread()) return -1;
-        PlaylistController controller = ownedNavigator(navigator);
-        if (controller == null) return -1;
-        return switch (intent.name()) {
-            case "NEXT" -> queue.nextIndex(false) >= 0 ? 1 : 0;
-            case "PREVIOUS" -> queue.previousIndex() >= 0 ? 1 : 0;
-            default -> -1;
-        };
     }
 
     private static PlaylistController ownedNavigator(Object navigator) {
         PlaylistController controller = readyController();
         return queue != null && controller != null && controller.patch_getModel() == publishedModel
                 && controller.patch_getNavigator() == navigator ? controller : null;
-    }
-
-    /** Only local NEXT/PREVIOUS/AUTOPLAY events are consumed; account playlists fall through. */
-    public static boolean onQueueNavigation(Object navigator, NavigationRequest request) {
-        Enum<?> intent = request.patch_getNavigationIntent();
-        if (intent == null || !Utils.isCurrentlyOnMainThread()) return false;
-        String name = intent.name();
-        if (!("NEXT".equals(name) || "PREVIOUS".equals(name)
-                || "AUTOPLAY".equals(name) || "AUTONAV".equals(name))) return false;
-        PlaylistController controller = ownedNavigator(navigator);
-        if (controller == null) return false;
-        // The native repeat-one backend already owns replay, including its ended-player
-        // restart. Consuming either automatic event here blocks that original path.
-        if (queue.repeatMode() == PlaylistQueue.REPEAT_ONE
-                && ("AUTOPLAY".equals(name) || "AUTONAV".equals(name))) return false;
-        if ("AUTONAV".equals(name) || dragSession != null || pendingSelection != null) return true;
-        if ("AUTOPLAY".equals(name)) {
-            // The existing patch's policy stays authoritative in either hook order.
-            if (DisablePlaylistAutoplayPatch.isPatchIncluded()
-                    && DisablePlaylistAutoplayPatch.shouldSkipPlaylistAutoplay(intent)) return false;
-            QueueAdvance ended = completion;
-            PlaylistQueue.Entry target = ended == null ? null : ended.takePlaybackTarget(queue);
-            if (target != null) playQueueEntry(controller, queue.nextIndex(true), target);
-        } else {
-            return navigateManually(navigator, "NEXT".equals(name) ? 1 : -1);
-        }
-        return true;
-    }
-
-    private static void playQueueEntry(PlaylistController controller, int index, PlaylistQueue.Entry target) {
-        RowSelection selection = authorizeRowSelection(target);
-        // Finish native end/navigation callbacks first. The active-ID hook, not
-        // this command, commits selection when playback actually changes.
-        Utils.runOnMainThread(() -> {
-            if (pendingSelection != selection || queue == null) return;
-            if (readyController() != controller || controller.patch_getModel() != publishedModel
-                    || index >= queue.entries().size() || queue.entries().get(index) != target) {
-                pendingSelection = null;
-                return;
-            }
-            try {
-                if (target == queue.currentEntry()) {
-                    // A repeat restarts this playback, without a new watch request or selection change.
-                    pendingSelection = null;
-                    if (VideoInformation.seekTo(0)) return;
-                } else if (controller.patch_playQueueRow(index)) return;
-            } catch (Exception exception) {
-                Logger.printException(() -> "Could not play native playlist queue item", exception);
-            }
-            pendingSelection = null;
-            Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
-        });
     }
 
     /** Keep the swipe restore drawable in sync when an attached queue row changes selection. */
@@ -846,7 +651,7 @@ public final class NativePlaylistQueuePatch {
                     && items.patch_getQueueRow(to) == session.row;
             PlaylistQueue candidate = validMove ? queue.move(from, to) : queue;
             if (!publish(controller, candidate, validMove)) publish(controller, session.snapshot, false);
-            requestAutomaticAdvance();
+
         });
     }
 
@@ -858,7 +663,7 @@ public final class NativePlaylistQueuePatch {
         Utils.runOnMainThread(() -> {
             if (dragSession == null && queue == session.snapshot) {
                 refreshOwnedPanel(session.snapshot.currentEntry().videoId());
-                requestAutomaticAdvance();
+
             }
         });
     }
@@ -867,6 +672,8 @@ public final class NativePlaylistQueuePatch {
     public static void onVideoChanged(String videoId) {
         Utils.runOnMainThread(() -> {
             if (!videoId.equals(VideoInformation.getVideoId()) || queue == null) return;
+            // This is a presentation snapshot of native selection, not a second navigator.
+            syncNativeSelection(videoId);
             boolean returningFromShorts = shortsSession.isSuspended();
             PlaylistController returningController = returningController();
             if (updateShortsSession(returningController)) return;
@@ -874,13 +681,14 @@ public final class NativePlaylistQueuePatch {
                 if (returningController != null) updateController(returningController);
                 return;
             }
+            if (waitingForNativeSelection(videoId)) return;
             if (pendingSelection != null && pendingSelection.entry().videoId().equals(videoId)) {
                 for (int index = 0; index < queue.entries().size(); index++) {
                     if (queue.entries().get(index) != pendingSelection.entry()) continue;
                     dragSession = null;
                     queue = queue.select(index);
                     selectionNeedsPublishing = true;
-                    completion = null;
+
                     pendingSelection = null;
                     // Let the original navigation/response callback finish first.
                     Utils.runOnMainThread(() -> {
@@ -989,24 +797,42 @@ public final class NativePlaylistQueuePatch {
 
     private static boolean publish(PlaylistController controller, PlaylistQueue candidate, boolean reportFailure) {
         publishing = true;
+        Object previousModel = controller.patch_getModel();
+        Object acceptedModel = null;
         try {
-            Object acceptedModel = controller.patch_updatePanel(renderer(candidate));
+            NativePlayback playback = playbackFor(controller);
+            if (playback == null) {
+                if (reportFailure) Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+                return false;
+            }
+            byte[] panel = renderer(candidate);
+            acceptedModel = controller.patch_updatePanel(panel);
             if (acceptedModel == null) {
                 if (reportFailure) Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
                 return false;
             }
-            boolean startingQueue = queue == null;
-            // The first accepted panel binds native controls; inherit Loop only now,
-            // when its watch-context observer exists. Repeat is not row-renderer data.
-            if (startingQueue) candidate = candidate.withRepeatMode(initialRepeatMode(controller));
+            boolean changedItems = queue == null || !queue.entries().equals(candidate.entries());
+            if (!playback.patch_isLocalQueue() || changedItems) {
+                if (!playback.patch_attachQueue(panel)) {
+                    controller.patch_restorePanel(acceptedModel, previousModel);
+                    if (reportFailure) Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+                    return false;
+                }
+            } else playback.patch_updateSnapshot(panel);
+            nativePlaybackRef = new WeakReference<>(playback);
+            // The native sequencer, including its inherited Loop mode, is authoritative.
+            candidate = candidate.withRepeatMode(playback.patch_getRepeatMode());
             queue = candidate;
             publishedModel = acceptedModel;
             selectionNeedsPublishing = false;
             controller.patch_markQueueRows();
-            refreshRepeatState(controller, startingQueue);
+            refreshRepeatHeaders();
             refreshPlayerControls(controller.patch_getNavigator());
             return true;
         } catch (Exception exception) {
+            if (acceptedModel != null && controller.patch_getModel() == acceptedModel) {
+                controller.patch_restorePanel(acceptedModel, previousModel);
+            }
             Logger.printException(() -> "Could not display native playlist queue", exception);
             if (reportFailure) Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
             return false;
@@ -1020,11 +846,11 @@ public final class NativePlaylistQueuePatch {
         Object expectedModel = publishedModel;
         Object restoreModel = originalModel;
         Object navigator = controller == null ? null : controller.patch_getNavigator();
-        releaseRepeatState();
         queue = null;
+        nativePlaybackRef.clear();
         shortsSession.reset();
         shortsControllerRef.clear();
-        completion = null;
+
         dragSession = null;
         pendingSelection = null;
         originalModel = null;

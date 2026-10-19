@@ -86,7 +86,6 @@ internal fun installPlaylistNotification(
         it.name == "<init>" && it.parameterTypes.size == 3 && it.parameterTypes.first() == enumType
     }
     val descriptorType = constructor.parameterTypes[1].toString()
-    val load = playlistServiceLoadFingerprint(navigatorType, descriptorType).matchSingle()
     val descriptor = playlistPlaybackDescriptorBuilderFingerprint(descriptorType).matchSingle()
     val builderType = descriptor.originalClassDef.type
     val builderConstructor = classDefBy(builderType).methods.single {
@@ -95,16 +94,8 @@ internal fun installPlaylistNotification(
     val command = classDefBy(builderType).fields.single {
         AccessFlags.PUBLIC.isSet(it.accessFlags) && it.type == commandType
     }
-    val defaultCommand = classDefBy(commandType).fields.single {
-        it.type == commandType && AccessFlags.STATIC.isSet(it.accessFlags)
-    }
-    val parser = generateSequence(classDefBy(commandType)) { type -> type.superclass?.let { classDefByOrNull(it) } }
-        .firstNotNullOfOrNull { type ->
-            Fingerprint(definingClass = type.type, name = "parseFrom", returnType = type.type,
-                parameters = listOf(type.type, "[B", "Lcom/google/protobuf/ExtensionRegistryLite;"),
-                custom = { method, _ -> AccessFlags.PUBLIC.isSet(method.accessFlags) &&
-                        AccessFlags.STATIC.isSet(method.accessFlags) }).originalMethodOrNull
-        } ?: throw PatchException("Native playlist queue: native watch-command parser is missing")
+    installNativeQueueEngine(context, navigatorType, descriptorType, commandType,
+        builderConstructor, command, descriptor.originalMethod)
     val navigatorInterface = "Lapp/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch\$ServiceNavigator;"
     val mediaInterface = "Lapp/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch\$MediaControls;"
     fun bridge(type: String, name: String, parameters: List<String>, returnType: String, locals: Int, body: String) {
@@ -128,21 +119,25 @@ internal fun installPlaylistNotification(
         const/4 v0, 0x0
         return-object v0
     """)
-    bridge(navigatorType, "patch_playQueueVideo", listOf("[B"), "V", 2, """
-        sget-object v0, $defaultCommand
-        invoke-static {}, Lcom/google/protobuf/ExtensionRegistryLite;->getGeneratedRegistry()Lcom/google/protobuf/ExtensionRegistryLite;
-        move-result-object v1
-        invoke-static {v0, p1, v1}, $parser
-        move-result-object v0
-        check-cast v0, $commandType
-        new-instance v1, $builderType
-        invoke-direct {v1}, $builderConstructor
-        iput-object v0, v1, $command
-        invoke-virtual {v1}, ${descriptor.originalMethod}
-        move-result-object v0
-        invoke-virtual {p0, v0}, ${load.originalMethod}
-        return-void
-    """)
+    val canNavigate = classDefBy(navigatorType).methods.single {
+        it.returnType == "Z" && it.parameterTypes == listOf(wrapperType)
+    }
+    for ((name, resultType, target) in listOf(
+        Triple("patch_navigateQueue", "V", service.originalMethod),
+        Triple("patch_canNavigateQueue", "Z", canNavigate)
+    )) {
+        val result = if (resultType == "Z") "move-result v0\nreturn v0" else "return-void"
+        bridge(navigatorType, name, listOf("Z"), resultType, 1, """
+            if-eqz p1, :previous
+            sget-object v0, $nextRequest
+            goto :dispatch
+            :previous
+            sget-object v0, $previousRequest
+            :dispatch
+            invoke-virtual {p0, v0}, $target
+            $result
+        """)
+    }
     mutableClassDefBy(owner).interfaces.add(mediaInterface)
     bridge(owner, "patch_getQueueNavigator", emptyList(), navigatorInterface, 2, """
         iget-object v0, p0, $foregroundCallback

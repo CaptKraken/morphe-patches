@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
-/** Immutable order and selection for the local playlist queue. */
+/** Immutable playlist presentation; selection and repeat mirror the native playback queue. */
 public final class PlaylistQueue {
     // YouTube's native repeat observer uses off=0, all=1, one=2.
     public static final int REPEAT_OFF = 0;
@@ -59,18 +59,6 @@ public final class PlaylistQueue {
     public PlaylistQueue withRepeatMode(int mode) {
         if (mode < REPEAT_OFF || mode > REPEAT_ONE) throw new IllegalArgumentException("Invalid repeat mode");
         return mode == repeatMode ? this : new PlaylistQueue(entries, selectedIndex, mode);
-    }
-
-    /** Repeat-one applies only to completion; manual Next still skips. -1 means no target. */
-    public int nextIndex(boolean afterCompletion) {
-        if (afterCompletion && repeatMode == REPEAT_ONE) return selectedIndex;
-        if (selectedIndex + 1 < entries.size()) return selectedIndex + 1;
-        return repeatMode == REPEAT_ALL ? 0 : -1;
-    }
-
-    public int previousIndex() {
-        if (selectedIndex > 0) return selectedIndex - 1;
-        return repeatMode == REPEAT_ALL ? entries.size() - 1 : -1;
     }
 
     public PlaylistQueue select(int index) {

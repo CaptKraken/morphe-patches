@@ -817,18 +817,11 @@ fun userSelectedPlaybackSpeedHook(targetMethodClass: String, targetMethodName: S
 }
 
 fun playerStatusHook(targetMethodClass: String, targetMethodName: String) {
-    playerStatusHook(targetMethodClass, targetMethodName, includeController = false)
-}
-
-/** Include the native sender when a callback must reject an obsolete player instance. */
-fun playerStatusHook(targetMethodClass: String, targetMethodName: String, includeController: Boolean) {
     playerStatusMethodRef.get()!!.apply {
         val insertIndex = indexOfFirstInstructionOrThrow(Opcode.SGET_OBJECT) + 1
-        val arguments = if (includeController) "p0 .. p1" else "p1 .. p1"
-        val signature = if (includeController) "Ljava/lang/Object;Ljava/lang/Enum;" else "Ljava/lang/Enum;"
         addInstruction(
             insertIndex,
-            "invoke-static/range { $arguments }, $targetMethodClass->$targetMethodName($signature)V"
+            "invoke-static/range { p1 .. p1 }, $targetMethodClass->$targetMethodName(Ljava/lang/Enum;)V"
         )
     }
 }

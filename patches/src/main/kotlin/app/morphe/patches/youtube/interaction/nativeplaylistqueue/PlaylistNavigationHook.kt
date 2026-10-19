@@ -11,8 +11,6 @@ import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLa
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
 import app.morphe.patches.youtube.layout.playlistautoplay.NavigationIntentEnumFingerprint
-import app.morphe.util.cloneParameters
-import app.morphe.util.findFreeRegister
 import app.morphe.util.getReference
 import app.morphe.util.matchSingle
 import com.android.tools.smali.dexlib2.AccessFlags
@@ -21,15 +19,10 @@ import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
 
-/** Preserve ordinary native routing; intercept only this controller's local queue navigation. */
+/** Resolve the shared native navigation owner for controls and the playback-engine bridge. */
 internal fun installPlaylistNavigation(context: BytecodePatchContext, controllerType: String, commandType: String) = with(context) {
     val enumType = NavigationIntentEnumFingerprint.matchSingle().originalClassDef.type
     val wrapperType = playlistNavigationRequestFingerprint(enumType).matchSingle().originalClassDef.type
-    val intent = classDefBy(wrapperType).fields.single { it.type == enumType }
-    val automaticIntent = playlistNavigationIntentFingerprint(enumType, "AUTOPLAY").matchSingle()
-        .instructionMatches.last().instruction.getReference<FieldReference>()!!
-    val automaticRequest = playlistNavigationSingletonFingerprint(wrapperType, automaticIntent).matchSingle()
-        .instructionMatches.last().instruction.getReference<FieldReference>()!!
     val dispatchers = playlistNavigationDispatchFingerprint(wrapperType).matchAll().toList()
     check(dispatchers.size == 3) { "Native playlist queue: expected the three 21.20.405 navigation dispatchers" }
     fun interfaces(types: Collection<String>): Set<String> {
@@ -48,9 +41,6 @@ internal fun installPlaylistNavigation(context: BytecodePatchContext, controller
         commonInterfaces.none { other ->
             other != candidate && candidate in interfaces(classDefBy(other).interfaces)
         }
-    }
-    val dispatch = classDefBy(navigatorType).methods.single {
-        it.returnType == "V" && it.parameterTypes == listOf(wrapperType)
     }
     val provider = playlistNavigatorProviderFingerprint(controllerType, navigatorType).matchSingle()
     val factoryField = provider.instructionMatches[0].instruction.getReference<FieldReference>()!!
@@ -82,59 +72,7 @@ internal fun installPlaylistNavigation(context: BytecodePatchContext, controller
         const/4 v0, 0x0
         return-object v0
     """)
-    bridge("patch_requestAutomaticAdvance", "V", """
-        invoke-virtual {p0}, $controllerType->patch_getNavigator()Ljava/lang/Object;
-        move-result-object v0
-        if-eqz v0, :done
-        check-cast v0, $navigatorType
-        sget-object v1, $automaticRequest
-        invoke-interface {v0, v1}, $dispatch
-        :done
-        return-void
-    """)
-    val requestInterface = "Lapp/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch\$NavigationRequest;"
-    mutableClassDefBy(wrapperType).apply {
-        interfaces.add(requestInterface)
-        methods.add(ImmutableMethod(wrapperType, "patch_getNavigationIntent", emptyList(), "Ljava/lang/Enum;",
-            AccessFlags.PUBLIC.value or AccessFlags.FINAL.value, null, null,
-            MutableMethodImplementation(2)).toMutable().apply {
-            addInstructionsWithLabels(0, """
-                iget-object v0, p0, $intent
-                return-object v0
-            """)
-        })
-    }
     installPlaylistNotification(context, wrapperType, enumType, commandType)
-    installPlaylistRepeat(context, controllerType, controlsField, navigatorType)
+    installPlaylistRepeat(context, navigatorType)
     installPlaylistPlayerControls(context, navigatorType, enumType, wrapperType)
-    dispatchers.forEach { match ->
-        for (returnType in listOf("Z", "I")) {
-            val capability = mutableClassDefBy(match.originalClassDef.type).methods.single {
-                it.returnType == returnType && it.parameterTypes == listOf(wrapperType)
-            }
-            val method = if (capability.implementation!!.registerCount <= 2) capability.cloneParameters() else capability
-            val resultRegister = method.findFreeRegister(0)
-            val encodeAvailability = if (returnType == "I") "add-int/lit8 v$resultRegister, v$resultRegister, 0x1" else ""
-            method.addInstructionsWithLabels(0, """
-                invoke-static/range {p0 .. p1}, $EXTENSION_CLASS->navigationAvailability(Ljava/lang/Object;$requestInterface)I
-                move-result v$resultRegister
-                if-ltz v$resultRegister, :native_availability
-                $encodeAvailability
-                return v$resultRegister
-                :native_availability
-                nop
-            """)
-        }
-        var method = match.method
-        if (method.implementation!!.registerCount <= 2) method = method.cloneParameters()
-        val freeRegister = method.findFreeRegister(0)
-        method.addInstructionsWithLabels(0, """
-            invoke-static/range {p0 .. p1}, $EXTENSION_CLASS->onQueueNavigation(Ljava/lang/Object;$requestInterface)Z
-            move-result v$freeRegister
-            if-eqz v$freeRegister, :native_navigation
-            return-void
-            :native_navigation
-            nop
-        """)
-    }
 }
