@@ -942,7 +942,7 @@ public final class NativePlaylistQueuePatch {
         return PlaylistQueueRenderer.Menu.newBuilder().setMenuRenderer(
                 PlaylistQueueRenderer.MenuRenderer.newBuilder()
                         .addItems(PlaylistQueueRenderer.MenuItem.newBuilder().setMenuNavigationItemRenderer(save))
-                        .addItems(serviceMenuItem(str("morphe_native_playlist_queue_clear"), YTIconType.DELETE_SWEEP,
+                        .addItems(serviceMenuItem(str("morphe_native_playlist_queue_clear"), YTIconType.DELETE,
                                 PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setHideEnclosingAction(
                                         PlaylistQueueRenderer.HideEnclosingAction.newBuilder().setHack(true)).build()))
                         .setAccessibility(PlaylistQueueRenderer.Accessibility.newBuilder().setAccessibilityData(
