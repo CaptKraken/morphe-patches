@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC 32 — use current playlist context for menu visibility
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc32-menu-visibility.mpp) · [Source e1a6ef238](https://github.com/CaptKraken/morphe-patches/commit/e1a6ef238d461d6847f91f0f83fc44d1c1b9798d)
+
+The Play next in native queue visibility guard previously treated the latest fetched player-response playlist ID as current playback context. A response for another video could therefore suppress the option. It now checks the accepted native controller only when its video ID matches the playing video. Real account playlists remain excluded, and the click still revalidates the active controller. Morphe's separate queue can remain disabled. Shared flyout timers/extraction and other queue actions are unchanged. Includes PoC31's insert-after-current behavior.
+
+Validation:21existing tests passed,5unrelatedAPK-dependent tests skipped; actual21.20.405 standalone patch application with separate Add to queue excluded passed SDK12DEX/crosshierarchy/resources/native-bridge checks. Build/defaulttrue/currentMPE/all31Kotlinpayloads/CRC verified. No phone/emulator; the intermittent user symptom was not reproduced, and this corrects one concrete unsafe source path rather than claiming its only possible cause.
+
+Phone checks: while standalone regular video plays, open another video's menu without restarting the player; repeat after browsing account playlists/Shorts and minimized playback. Verify the option works and actual account-playlist/current-video/Shorts menus still exclude it. No additional logs requested. Shared flyout timing remains a separate unconfirmed possibility if missing items persist.
+
+SHA-256: `00cabb0c98277c94d01e7a0549e7867d3bf0bdd2f1a4d97ed994296021e8126b`
+
 ## PoC 31 — insert opened videos immediately after current
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc31-insert-opened-video-next.mpp) · [Source b4cb9588d](https://github.com/CaptKraken/morphe-patches/commit/b4cb9588d78d59a174f61a232f1035fce8a86e24)
