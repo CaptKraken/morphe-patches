@@ -2,6 +2,16 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC 29 — supported native header icons
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc29-header-icons.mpp) · [Source 1d6f9989d](https://github.com/CaptKraken/morphe-patches/commit/1d6f9989d)
+
+Keeps the native bookmark icon for Save playlist and replaces Clear queue's unmapped DELETE_SWEEP enum with native DELETE, which has a drawable in21.20.405. Uses the same native menu layout and actions. Includes PoC28's guarded clear preserving playback. No text-only menu changes retained.
+
+Build/default selection/current payload integrity and emitted MPE icon references verified; no new APK application or device run for this enum-only change. Native resolver mapping/drawables inspected. Phone checks: both menu icons and spacing; Save overlap is NOT confirmed fixed, and remains pending device testing. Also test continuous playback on Clear from PoC28.
+
+SHA-256: `290df49f7ac5c1d14e492429ad19e7d818e8b0adbb67c7c2a57f80bcba5a8684`
+
 ## PoC 28 — Clear queue without unloading playback
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc28-continuous-clear.mpp) · [Source a97bbfccc](https://github.com/CaptKraken/morphe-patches/commit/a97bbfccc)
