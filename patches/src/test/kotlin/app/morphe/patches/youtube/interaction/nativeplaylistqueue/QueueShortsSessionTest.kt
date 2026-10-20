@@ -19,7 +19,7 @@ class QueueShortsSessionTest {
         private val instance = type.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
         private val update = type.getDeclaredMethod("update",
             Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
-            String::class.java, String::class.java, String::class.java, Boolean::class.javaPrimitiveType,
+            String::class.java, String::class.java, Boolean::class.javaPrimitiveType,
             Boolean::class.javaPrimitiveType
         ).apply { isAccessible = true }
         private val reset = type.getDeclaredMethod("reset").apply { isAccessible = true }
@@ -27,7 +27,7 @@ class QueueShortsSessionTest {
         fun update(open: Boolean = false, hidden: Boolean = false, visible: Boolean = true,
                    active: String = "abcdefghijk", regular: String = "abcdefghijk", accountPlaylist: Boolean = false,
                    ownedByService: Boolean = false) =
-            update.invoke(instance, open, hidden, visible, "abcdefghijk", active, regular,
+            update.invoke(instance, open, hidden, visible, active, regular,
                 accountPlaylist, ownedByService).toString()
 
         fun reset() { reset.invoke(instance) }
@@ -94,7 +94,7 @@ class QueueShortsSessionTest {
     }
 
     @Test
-    fun `replacement video or account playlist requires agreement with the regular controller`() = withSession { session ->
+    fun `a new regular video resumes the queue but an account playlist releases it after controller agreement`() = withSession { session ->
         for (accountPlaylist in listOf(false, true)) {
             session.reset()
             assertEquals("SUSPEND", session.update(open = true))
@@ -102,7 +102,7 @@ class QueueShortsSessionTest {
             assertEquals("WAIT", session.update(open = true, active = replacement,
                 regular = replacement, accountPlaylist = accountPlaylist))
             assertEquals("WAIT", session.update(active = replacement, regular = "", accountPlaylist = accountPlaylist))
-            assertEquals("RELEASE", session.update(active = replacement,
+            assertEquals(if (accountPlaylist) "RELEASE" else "RESUME", session.update(active = replacement,
                 regular = replacement, accountPlaylist = accountPlaylist))
         }
     }

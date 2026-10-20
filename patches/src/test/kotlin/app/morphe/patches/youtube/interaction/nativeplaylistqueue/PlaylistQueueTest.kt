@@ -117,6 +117,27 @@ class PlaylistQueueTest {
     }
 
     @Test
+    fun `opening an outside video appends and selects it without losing order or repeat mode`() = withQueue { type ->
+        val initial = type.getConstructor(String::class.java, String::class.java)
+            .newInstance("abcdefghijk", "Playing video")
+        val insert = type.getMethod("playNext", String::class.java)
+        val populated = insert.invoke(initial, "lmnopqrstuv")
+        val repeated = type.getMethod("withRepeatMode", Int::class.javaPrimitiveType).invoke(populated, 1)
+        val append = type.getMethod("appendAndSelect", String::class.java)
+        val opened = append.invoke(repeated, "0123456789_")
+        assertEquals(listOf("abcdefghijk", "lmnopqrstuv", "0123456789_"), videos(opened))
+        assertEquals(2, type.getMethod("selectedIndex").invoke(opened))
+        assertEquals(1, type.getMethod("repeatMode").invoke(opened))
+        assertEquals(listOf("abcdefghijk", "lmnopqrstuv"), videos(repeated))
+        assertEquals(0, type.getMethod("selectedIndex").invoke(repeated))
+        val next = insert.invoke(opened, "ZYXWVUTSRQP")
+        assertEquals(listOf("abcdefghijk", "lmnopqrstuv", "0123456789_", "ZYXWVUTSRQP"), videos(next))
+        val failure = assertFailsWith<InvocationTargetException> { append.invoke(opened, "not a video ID") }
+        assertIs<IllegalArgumentException>(failure.cause)
+        assertEquals(3, videos(opened).size)
+    }
+
+    @Test
     fun `invalid insertion cannot corrupt a valid queue`() = withQueue { type ->
         val queue = type.getConstructor(String::class.java, String::class.java)
             .newInstance("abcdefghijk", "Playing video")

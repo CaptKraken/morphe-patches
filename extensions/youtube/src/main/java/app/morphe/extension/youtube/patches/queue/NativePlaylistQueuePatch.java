@@ -270,7 +270,8 @@ public final class NativePlaylistQueuePatch {
         if (queue != null && !controller.patch_getVideoId().equals(VideoInformation.getVideoId())) return;
         if (waitingForNativeSelection(VideoInformation.getVideoId())) return;
         if (publishedModel != null && controllerRef.get() == controller
-                && controller.patch_getModel() == publishedModel) {
+                && controller.patch_getModel() == publishedModel
+                && controller.patch_getVideoId().equals(queue.currentEntry().videoId())) {
             if (selectionNeedsPublishing && readyController() == controller) {
                 publish(controller, queue, false);
             }
@@ -280,11 +281,16 @@ public final class NativePlaylistQueuePatch {
 
         PlaylistController previous = controllerRef.get();
         if (queue != null && previous != controller) {
-            if (previous != null && previous.patch_isAttached()) return;
+            if (!hasPlaylist(controller) && previous != null && previous.patch_isAttached()
+                    && previous.patch_getVideoId().equals(VideoInformation.getVideoId())) return;
             // Recreating a watch screen must not discard an owned background
             // session. Its new controller still needs a fresh native baseline.
-            if (hasPlaylist(controller) || !serviceOwnsQueue()) releasePanel();
-            else publishedModel = null;
+            if (hasPlaylist(controller) || (!serviceOwnsQueue()
+                    && controller.patch_getVideoId().equals(queue.currentEntry().videoId()))) releasePanel();
+            else {
+                if (controller.patch_getModel() != publishedModel) originalModel = controller.patch_getModel();
+                publishedModel = null;
+            }
         }
         controllerRef = new WeakReference<>(controller);
         if (queue == null) return;
@@ -293,8 +299,7 @@ public final class NativePlaylistQueuePatch {
         // video-ID hook before committing selection; prefetched responses cannot do it.
         if (!hasPlaylist(controller) && pendingSelection != null
                 && controller.patch_getVideoId().equals(pendingSelection.entry().videoId())) return;
-        if (!controller.patch_getVideoId().equals(queue.currentEntry().videoId())
-                || hasPlaylist(controller)) {
+        if (hasPlaylist(controller)) {
             Object navigator = controller.patch_getNavigator();
             queue = null;
             shortsSession.reset();
@@ -309,6 +314,23 @@ public final class NativePlaylistQueuePatch {
             return;
         }
         dragSession = null;
+        String videoId = controller.patch_getVideoId();
+        if (!videoId.equals(queue.currentEntry().videoId())) {
+            // The active-ID hook and accepted controller must agree. Prefetched
+            // responses and Shorts cannot append entries; account playlists win above.
+            PlayerType type = PlayerType.getCurrent();
+            if (!PlaylistQueue.isVideoId(videoId) || type.isNoneOrHidden()
+                    || type == PlayerType.INLINE_MINIMAL || !VideoInformation.getPlaylistId().isEmpty()) return;
+            pendingSelection = null;
+            if (controller.patch_getModel() != publishedModel) originalModel = controller.patch_getModel();
+            // Keep the old snapshot until publish attaches the changed rows to the
+            // native backend; preassigning queue would conceal the item-list change.
+            if (publish(controller, queue.appendAndSelect(videoId), false)) {
+                Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
+                completeMetadata();
+            }
+            return;
+        }
         originalModel = controller.patch_getModel();
         publish(controller, queue, false);
 
@@ -346,8 +368,8 @@ public final class NativePlaylistQueuePatch {
         if (shortsOpen || shortsSession.isSuspended()) controller = returningController();
         QueueShortsSession.Action action = shortsSession.update(ShortsPlayerState.isOpen(),
                 type == PlayerType.HIDDEN, !type.isNoneOrHidden() && type != PlayerType.INLINE_MINIMAL,
-                queue.currentEntry().videoId(), VideoInformation.getVideoId(),
-                controller == null ? "" : controller.patch_getVideoId(), controller != null && hasPlaylist(controller),
+                VideoInformation.getVideoId(), controller == null ? "" : controller.patch_getVideoId(),
+                controller != null && hasPlaylist(controller),
                 serviceOwnsQueue());
         switch (action) {
             case SUSPEND -> {
@@ -428,9 +450,14 @@ public final class NativePlaylistQueuePatch {
     /** Rebind after native service restoration; UI visibility does not own this sequence. */
     public static void onNativeQueueResponse(NativePlayback playback) {
         Utils.runOnMainThread(() -> {
-            if (queue == null || playback.patch_isLocalQueue()
-                    || !queue.currentEntry().videoId().equals(VideoInformation.getVideoId())
-                    || !VideoInformation.getPlaylistId().isEmpty()) return;
+            if (queue == null || !VideoInformation.getPlaylistId().isEmpty()) return;
+            if (!queue.currentEntry().videoId().equals(VideoInformation.getVideoId())) {
+                if (isQueueSuspended()) return;
+                PlaylistController controller = readyController();
+                if (controller != null && playbackFor(controller) == playback) updateController(controller);
+                return;
+            }
+            if (playback.patch_isLocalQueue()) return;
             boolean current = playbackFor(returningController()) == playback;
             for (NotificationControls controls : new ArrayList<>(notificationControls)) {
                 ServiceNavigator service = controls.patch_getQueueMediaControls().patch_getQueueNavigator();
@@ -752,7 +779,11 @@ public final class NativePlaylistQueuePatch {
                     return;
                 }
             }
-            if (!queue.currentEntry().videoId().equals(videoId)) releasePanel();
+            if (!queue.currentEntry().videoId().equals(videoId)) {
+                // The active ID can arrive before its watch controller. Retain the
+                // sequence until that controller confirms the new regular video.
+                if (returningController != null) updateController(returningController);
+            }
         });
     }
 

@@ -73,6 +73,14 @@ public final class PlaylistQueue {
         return new PlaylistQueue(updated, selectedIndex, repeatMode);
     }
 
+    /** Keep the current sequence when an outside video becomes the active watch video. */
+    public PlaylistQueue appendAndSelect(String videoId) {
+        requireVideoId(videoId);
+        var updated = new ArrayList<>(entries);
+        updated.add(new Entry(videoId, videoId));
+        return new PlaylistQueue(updated, updated.size() - 1, repeatMode);
+    }
+
     public PlaylistQueue remove(int index) {
         if (index < 0 || index >= entries.size()) throw new IndexOutOfBoundsException(index);
         if (index == selectedIndex) return this;

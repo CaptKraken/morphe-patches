@@ -22,7 +22,7 @@ final class QueueShortsSession {
     }
 
     Action update(boolean shortsOpen, boolean playerHidden, boolean regularPlayerVisible,
-                  String queueVideoId, String activeVideoId, String regularVideoId, boolean accountPlaylist,
+                  String activeVideoId, String regularVideoId, boolean accountPlaylist,
                   boolean queueOwnedByService) {
         if (shortsOpen || playerHidden) {
             if (suspended) return Action.WAIT;
@@ -46,6 +46,8 @@ final class QueueShortsSession {
         if (!regularPlayerVisible || activeVideoId.isEmpty() || regularVideoId.isEmpty()
                 || !activeVideoId.equals(regularVideoId)) return Action.WAIT;
         suspended = false;
-        return !accountPlaylist && queueVideoId.equals(activeVideoId) ? Action.RESUME : Action.RELEASE;
+        // A newly opened regular video is appended by the queue's controller path.
+        // Only an account playlist takes ownership away from the retained queue.
+        return accountPlaylist ? Action.RELEASE : Action.RESUME;
     }
 }
