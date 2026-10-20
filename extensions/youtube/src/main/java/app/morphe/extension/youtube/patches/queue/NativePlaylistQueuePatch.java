@@ -18,6 +18,7 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -651,6 +652,50 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
+    /** Give only our header Save sheet its own selection; never change the caller's map. */
+    public static Map<?, ?> onQueueMenuContext(MessageLite endpoint, Map<?, ?> context) {
+        if (endpoint == null || context == null) return context;
+        Object owner = context.get(QueueSaveActions.ENDPOINT_TAG);
+        PlaylistController controller = readyController();
+        if (!(owner instanceof QueuePanel panel) || !panel.patch_isQueueOwned()
+                || queue == null || controller == null || controller.patch_getModel() != publishedModel
+                || owner != controller.patch_getPanel()) return context;
+        try {
+            var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
+            List<String> videoIds = new ArrayList<>();
+            for (PlaylistQueue.Entry entry : queue.entries()) videoIds.add(entry.videoId());
+            return QueueSaveActions.prepareContext(command, context, videoIds);
+        } catch (Exception exception) {
+            Logger.printException(() -> "Could not prepare queue save selection", exception);
+            Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+            return context;
+        }
+    }
+
+    /** The transient-sheet experiment cannot carry the selection's endpoint tag. */
+    public static boolean isQueueSaveSelection(Object owner) {
+        return owner instanceof QueueSaveActions.Selection;
+    }
+
+    /** Called immediately before native command resolution, after native routing and logging. */
+    public static MessageLite onQueueSaveCommand(MessageLite endpoint, Map<?, ?> context) {
+        if (endpoint == null || context == null
+                || !(context.get(QueueSaveActions.ENDPOINT_TAG) instanceof QueueSaveActions.Selection selection)) {
+            return endpoint;
+        }
+        try {
+            var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
+            var expanded = selection.expand(command);
+            if (expanded == command) return endpoint;
+            return ((QueueSaveActions.NativeEndpoint) endpoint).patch_parseQueueSaveEndpoint(expanded.toByteArray());
+        } catch (Exception exception) {
+            Logger.printException(() -> "Could not expand queue save command", exception);
+            Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+            // Never allow an unexpanded carrier to become an account-playlist mutation.
+            return null;
+        }
+    }
+
     /** Override only commands from an owned row or the exact published queue header. */
     public static MessageLite onQueueMenuCommand(MessageLite endpoint, Map<?, ?> context) {
         if (endpoint == null || context == null) return endpoint;
@@ -659,6 +704,8 @@ public final class NativePlaylistQueuePatch {
         if (!header && (!(owner instanceof QueueRow row) || !row.patch_isQueueOwned())) return endpoint;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
+            // A Save action with no scoped selection is stale, not an ordinary video save.
+            if (header && command.hasShowSheetCommand()) return null;
             if (!command.hasHideEnclosingAction() || command.hasWatchEndpoint()) return endpoint;
             PlaylistController controller = readyController();
             if (queue == null || controller == null || controller.patch_getModel() != publishedModel) return null;
@@ -980,16 +1027,14 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static PlaylistQueueRenderer.Menu playlistMenu(PlaylistQueue source) {
-        var create = PlaylistQueueRenderer.CreatePlaylistDialogEndpoint.newBuilder();
-        for (PlaylistQueue.Entry entry : source.entries()) create.addVideoIds(entry.videoId());
-        var save = PlaylistQueueRenderer.MenuNavigationItem.newBuilder()
-                .setText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(str("playlist_save")))
-                .setIcon(Icon.newBuilder().setYtIconType(YTIconType.BOOKMARK_BORDER))
-                .setNavigationEndpoint(PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
-                        .setCreatePlaylistDialogEndpoint(create));
+        List<String> videoIds = new ArrayList<>();
+        for (PlaylistQueue.Entry entry : source.entries()) videoIds.add(entry.videoId());
         return PlaylistQueueRenderer.Menu.newBuilder().setMenuRenderer(
                 PlaylistQueueRenderer.MenuRenderer.newBuilder()
-                        .addItems(PlaylistQueueRenderer.MenuItem.newBuilder().setMenuNavigationItemRenderer(save))
+                        // The service callback carries the header's ownership context into
+                        // the native sheet, just as the existing modern Share action does.
+                        .addItems(serviceMenuItem(str("playlist_save"), YTIconType.BOOKMARK_BORDER,
+                                QueueSaveActions.openSheet(videoIds)))
                         .addItems(serviceMenuItem(str("morphe_native_playlist_queue_clear"), YTIconType.DELETE,
                                 PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setHideEnclosingAction(
                                         PlaylistQueueRenderer.HideEnclosingAction.newBuilder().setHack(true)).build()))

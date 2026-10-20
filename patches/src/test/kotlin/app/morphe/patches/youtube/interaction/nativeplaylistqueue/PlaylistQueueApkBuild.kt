@@ -175,8 +175,27 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
                 ?.let { Triple(owner, method, instructions) }
         }
     } }
+    val saveEndpointInterface = "Lapp/morphe/extension/youtube/patches/queue/QueueSaveActions\$NativeEndpoint;"
+    val saveEndpoints = classes.filter { saveEndpointInterface in it.interfaces }
+    val saveDispatches = classes.flatMap { it.methods }.mapNotNull { method ->
+        val instructions = method.implementation?.instructions?.toList() ?: return@mapNotNull null
+        val index = instructions.indexOfFirst {
+            (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+                "L$extensionOwner;->onQueueSaveCommand(") == true
+        }
+        if (index < 0) null else instructions to index
+    }
+    val taggedSheetGuards = classes.flatMap { it.methods }.mapNotNull { method ->
+        val instructions = method.implementation?.instructions?.toList() ?: return@mapNotNull null
+        val index = instructions.indexOfFirst {
+            (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+                "L$extensionOwner;->isQueueSaveSelection(") == true
+        }
+        if (index < 0) null else instructions to index
+    }
     if (!selected) {
-        check(rowTypes.isEmpty() && menuOpenCalls.isEmpty() && menuDispatches.isEmpty()) {
+        check(rowTypes.isEmpty() && menuOpenCalls.isEmpty() && menuDispatches.isEmpty() &&
+                saveEndpoints.isEmpty() && saveDispatches.isEmpty() && taggedSheetGuards.isEmpty()) {
             "Native playlist row menu bridge leaked into an unselected build"
         }
         println("Native playlist row menu bridge absent when unselected")
@@ -245,6 +264,41 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
         (instruction as? ReferenceInstruction)?.reference?.toString()?.startsWith(
             "L$extensionOwner;->onQueueMenuCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)") == true
     }
+    check(removeIndex >= 2 && (dispatchInstructions[removeIndex - 2] as? ReferenceInstruction)
+        ?.reference?.toString()?.startsWith("L$extensionOwner;->onQueueMenuContext(") == true &&
+            dispatchInstructions[removeIndex - 1].opcode == Opcode.MOVE_RESULT_OBJECT) {
+        "Header selection context must be installed before native menu dispatch"
+    }
+    val saveEndpoint = saveEndpoints.single()
+    val saveParser = saveEndpoint.methods.single { it.name == "patch_parseQueueSaveEndpoint" }
+        .implementation!!.instructions.toList()
+    check(saveParser.any { (it as? ReferenceInstruction)?.reference?.toString()?.contains(
+        "ExtensionRegistryLite;->getGeneratedRegistry()") == true } &&
+            saveParser.any { (it as? ReferenceInstruction)?.reference?.toString()?.contains("->parseFrom(") == true }) {
+        "Native save endpoint reconstruction must use the generated registry"
+    }
+    val (saveInstructions, saveIndex) = saveDispatches.single()
+    check(saveInstructions[saveIndex + 1].opcode == Opcode.MOVE_RESULT_OBJECT &&
+            saveInstructions[saveIndex + 2].opcode == Opcode.IF_EQZ &&
+            saveInstructions[saveIndex + 3].opcode == Opcode.CHECK_CAST &&
+            saveInstructions[saveIndex + 4].opcode == Opcode.INVOKE_INTERFACE) {
+        "Save expansion must precede the original resolver callback with a consumed-command branch"
+    }
+    val saveBranchAddress = saveInstructions.take(saveIndex + 2).sumOf { it.codeUnits }
+    val saveAfterCall = saveInstructions.take(saveIndex + 5).sumOf { it.codeUnits }
+    check((saveInstructions[saveIndex + 2] as OffsetInstruction).codeOffset + saveBranchAddress == saveAfterCall) {
+        "Consumed save commands must retain native post-resolution cleanup"
+    }
+    println("Native save command context, generated-registry bridge and original resolver/cleanup verified")
+    val (sheetInstructions, sheetIndex) = taggedSheetGuards.single()
+    check(sheetIndex >= 2 && (sheetInstructions[sheetIndex - 2] as? ReferenceInstruction)?.reference?.toString() ==
+            "Lj$/util/Optional;->orElse(Ljava/lang/Object;)Ljava/lang/Object;" &&
+            sheetInstructions[sheetIndex - 1].opcode == Opcode.MOVE_RESULT_OBJECT &&
+            sheetInstructions[sheetIndex + 1].opcode == Opcode.MOVE_RESULT &&
+            sheetInstructions[sheetIndex + 2].opcode == Opcode.IF_NEZ) {
+        "Queue Save must retain its unwrapped selection tag across sheet presentation experiments"
+    }
+    println("Native sheet presentation guard retains selection context only for queue saves")
     check(removeIndex >= 0 && dispatchInstructions[removeIndex + 1].opcode == Opcode.MOVE_RESULT_OBJECT &&
             dispatchInstructions[removeIndex + 2].opcode == Opcode.IF_NEZ &&
             dispatchInstructions[removeIndex + 3].opcode == Opcode.GOTO_16) {

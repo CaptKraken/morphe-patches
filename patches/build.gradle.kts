@@ -60,6 +60,9 @@ tasks {
             rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/next_response.proto"),
             rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/icon.proto")
         ).withPropertyName("playlistQueueRatingSources")
+        inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveActions.java"
+        )).withPropertyName("playlistQueueSaveActionsSource")
     }
 
     register<JavaExec>("checkStringResources") {

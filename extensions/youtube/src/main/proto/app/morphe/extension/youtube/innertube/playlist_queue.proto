@@ -159,6 +159,45 @@ message NavigationEndpoint {
     optional ElementsCommand elements_command = 204158123;
     optional ShareEntityServiceEndpoint share_entity_service_endpoint = 387863284;
     optional GetDownloadActionCommand get_download_action_command = 382320942;
+    optional ShowSheetCommand show_sheet_command = 443434441;
+    optional PlaylistEditEndpoint playlist_edit_endpoint = 60666189;
+    optional CreatePlaylistEndpoint create_playlist_endpoint = 124747980;
+}
+
+message ShowSheetCommand {
+    optional PanelLoadingStrategy panel_loading_strategy = 1;
+}
+
+message PanelLoadingStrategy {
+    optional PanelRequestTemplate request_template = 2;
+}
+
+message PanelRequestTemplate {
+    optional string panel_id = 2;
+    optional string params = 3;
+}
+
+message SavePanelParams {
+    optional SavePanelTarget target = 111;
+}
+
+message SavePanelTarget {
+    optional string video_id = 1;
+}
+
+message PlaylistEditEndpoint {
+    optional string playlist_id = 1;
+    repeated PlaylistEditAction actions = 2;
+}
+
+message PlaylistEditAction {
+    optional string added_video_id = 2;
+    optional int32 action = 6;
+}
+
+message CreatePlaylistEndpoint {
+    repeated string video_ids = 1;
+    optional string source_playlist_id = 2;
 }
 
 message AddToPlaylistEndpoint {
@@ -209,6 +248,8 @@ message GetDownloadActionCommand {
 // Supplying IDs (rather than a playlist ID) saves the local order as a new playlist.
 message CreatePlaylistDialogEndpoint {
     repeated string video_ids = 1;
+    optional string source_playlist_id = 2;
+    optional string video_selection_entity_key = 8;
 }
 
 message WatchEndpoint {

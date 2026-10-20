@@ -24,6 +24,20 @@ import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 
+/** Final resolver invocation after native command routing, metadata handling and logging. */
+internal object QueueSaveCommandDispatchFingerprint : Fingerprint(
+    returnType = "Z",
+    parameters = listOf("L", "L", "Ljava/util/Map;"),
+    filters = listOf(string("CommandResolver threw exception during resolution"))
+)
+
+/** Native transient-sheet migration branch; that branch discards the endpoint tag. */
+internal object QueueSaveSheetPresentationFingerprint : Fingerprint(
+    returnType = "V",
+    parameters = listOf("L") + List(9) { "Lj$/util/Optional;" } + listOf("I", "Z"),
+    filters = listOf(string("ep_transient_sheet_"))
+)
+
 /** Stable diagnostics from the native playback queue, distinct from the panel adapter. */
 internal object NativeQueueDescriptorFingerprint : Fingerprint(
     filters = listOf(string("getNavigationDescriptor for %sreturned NULL"))
