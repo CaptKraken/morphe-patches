@@ -1,5 +1,19 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc37-scoped-batch-save.mpp",
+    "title": "PoC37 — save the queue through the modern native picker",
+    "description": "Uses the modern Save to… sheet with an immutable queue selection. Expands native existing-playlist and creation commands to every queue ID before their original resolvers run. Clears the native single-video selection entity that otherwise overrides explicit creation IDs. Native UI, privacy controls, callbacks and post-resolution cleanup retained; ordinary/per-row saves pass through. Only local queue saves bypass a transient-sheet container that drops endpoint context. This is a phone-test build, not device-confirmed success. PoC36 failed and is superseded. Batch unchecking/removal from a destination playlist is not implemented.",
+    "phone_checks": [
+      "Use3distinct queued videos with the current item in the middle. Queue header More > Save playlist: save to an existing playlist and inspect every ID/order. Repeat with New playlist; it must not be empty.",
+      "Test Watch Later, existing membership, one-item queue, cancel/back, portrait/fullscreen, clear/reorder while the picker is open, and unchanged current playback/time. Batch destination unchecking is not included.",
+      "Verify normal player Save, per-row Save, account playlists, native errors/account changes, and background/queue controls remain unchanged. No further logs requested."
+    ],
+    "validation": "Final staged-source27JVM tests:22passed,5unrelated Jam APK-dependent skipped,0fail/errors. Actual21.20.405 combined19related patches: SDK12DEX, hierarchy58184classes, resources, native selection context, generated registry, original resolver/cleanup and presentation guard checks passed2m2s. Unselected APK passed1m33s with new native hooks/bridge absent. Final MPP/defaulttrue passed7s; archive CRC/exact current YouTubeMPE/all35nativequeue Kotlin payloads verified. Mandatory exact-tree review gate passed. No attached phone/emulator or authenticated Save action tested.",
+    "commit": "93956d2cffda4619a3271e658238e28de55e4f48",
+    "sha256": "c064f90b8dc06f2ef30b40e96be33136f1e3ae615946cf2161f1e17f7b7761ac",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc37-scoped-batch-save.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-step3-card-info.mpp",
     "title": "Step 3: complete native card information",
     "description": "Native rows now include full collaborating-channel text, views/age and duration badges. Complete captured cards avoid a lookup; incomplete rows use a bounded background Android search projection with exact video-ID matching. Title policies remain effective and late completion updates only an owned active queue. Native UI is reused, with no auto-expansion. Optional missing/private/unindexed metadata retains its fallback. Ratings, row playback and removal are not included in this particular milestone.",
@@ -72,7 +86,7 @@
   },
   {
     "filename": "native-playlist-queue-21.20.405-step7-reordering.mpp",
-    "title": "Step 7 \u2014 native drag reordering",
+    "title": "Step 7 — native drag reordering",
     "description": "Cumulative build with YouTube's existing drag handles and gesture machinery enabled for local queue rows. Completed moves update local queue order while retaining the playing entry. Metadata refresh waits until a drag ends. Normal account-playlist reordering keeps its native backend and callbacks.",
     "phone_checks": [
       "Add several videos, open Queue, and drag the left handle up and down, including first-to-last and last-to-first. Collapse/reopen the panel and confirm the order remains.",
@@ -88,7 +102,7 @@
   },
   {
     "filename": "native-playlist-queue-21.20.405-step8-save-playlist.mpp",
-    "title": "Step 8 \u2014 native Save playlist",
+    "title": "Step 8 — native Save playlist",
     "description": "The queue header's existing three-dot button opens YouTube's native bottom sheet with only Save playlist. The action supplies the queue's current video order to YouTube's native create-playlist dialog, which handles sign-in, playlist name, privacy and creation. No custom UI, new injected callbacks or request helpers. Saving creates a new account playlist from the temporary queue rather than bookmarking a server Mix ID.",
     "phone_checks": [
       "Open Queue, tap the three-dot button beside Repeat/Shuffle, and confirm the native bottom flyout has only Save playlist and no Share action.",
@@ -119,7 +133,7 @@
   },
   {
     "filename": "native-playlist-queue-21.20.405-step10-repeat.mpp",
-    "title": "Step 10 \u2014 queue repeat and native player Loop",
+    "title": "Step 10 — queue repeat and native player Loop",
     "description": "Adds Off / Repeat all / Repeat one through YouTube's existing repeat header and native player Loop switch. Both controls share the queue's mode; Repeat all wraps the queue, Repeat one replays the current item, and manual skips follow the queue. Existing Morphe Loop behavior is unchanged in this step. Cumulative build includes all earlier queue features. Shuffle remains deferred.",
     "phone_checks": [
       "Enable native player Loop before creating a queue, then add a video: repeat-one should be inherited. Toggle Loop and header Repeat one in both directions; the controls should agree.",
@@ -135,7 +149,7 @@
   },
   {
     "filename": "native-playlist-queue-21.20.405-step10-repeat-fix1.mpp",
-    "title": "Step 10.1 \u2014 repeat-one completion fix",
+    "title": "Step 10.1 — repeat-one completion fix",
     "description": "Repeat one can restart the current item without depending on a native playlist AUTOPLAY request. Queue advancement still respects Disable playlist autoplay; replay retains the captured end sleep-timer veto and duplicate-completion protection. No changes to Morphe's separate Loop patch. Cumulative build includes all earlier queue features. This fixes a confirmed source-level replay dependency; the reported phone issue still requires retesting.",
     "phone_checks": [
       "Enable Repeat one from the queue header or native player Loop switch, then allow two consecutive real completions; test first/middle/last queue entries.",
@@ -150,7 +164,7 @@
   },
   {
     "filename": "native-playlist-queue-21.20.405-step10-repeat-fix2.mpp",
-    "title": "Step 10.2 \u2014 preserve YouTube's native repeat-one playback",
+    "title": "Step 10.2 — preserve YouTube's native repeat-one playback",
     "description": "Stops consuming YouTube's automatic navigation events while Repeat one is active, restoring its original same-video restart/play path. Removes the queue's competing deferred replay attempt. Manual Next/Previous and off/all queue advancement remain local. No changes to Morphe's separate Loop patch or other patches' settings. This corrects a verified native-path interception; actual phone replay still needs retesting.",
     "phone_checks": [
       "Enable Repeat one using the queue header or native player Loop and let the video finish twice; test first/middle/last queue entries.",
@@ -164,7 +178,7 @@
   },
   {
     "filename": "native-playlist-queue-21.20.405-step11-notification-next.mpp",
-    "title": "Step 11 \u2014 notification Next follows the queue",
+    "title": "Step 11 — notification Next follows the queue",
     "description": "Routes notification Next to the queued target through YouTube's normal playback-service load API, bypassing the foreground history/screen route. Registers the existing background active-video hook to confirm queue selection while hidden, and refreshes retained UI when it catches up. Casting/unrelated/account playback retain original callbacks. This step handles notification Next; it retains the earlier native Repeat-one correction and existing queue features.",
     "phone_checks": [
       "With YouTube visible and a three-item queue, press Next in the notification. It should play the next queue item, not a recommendation/history item.",
@@ -179,7 +193,7 @@
   },
   {
     "filename": "native-playlist-queue-21.20.405-step12-queue-indicators.mpp",
-    "title": "Step 12 \u2014 queue position and notification boundary",
+    "title": "Step 12 — queue position and notification boundary",
     "description": "Corrects the native renderer pagination offset so a two-item queue shows 2/2 after advancing. Filters the owned queue's notification Next action at the final item and refreshes cached native playback state after queue edits, repeat changes and background selection. The notification visibility change uses Android 13+ PlaybackState actions; Android 12 and earlier use a separate notification action layout, which is not changed in this step. Counter and notification fixes have separate source commits.",
     "phone_checks": [
       "With two queued videos, advance from the on-screen player and check 2/2. Repeat using notification Next, both while YouTube is visible and after Home; reopen and check the selected row and count.",
@@ -194,7 +208,7 @@
   },
   {
     "filename": "native-playlist-queue-21.20.405-step13-native-notification-navigation.mpp",
-    "title": "Step 13 \u2014 native notification queue navigation",
+    "title": "Step 13 — native notification queue navigation",
     "description": "Uses YouTube's native notification-control adapters to publish the queue's Previous/Next availability before notification actions and playback state are built. At the final item with repeat off/one, Previous is available and Next is unavailable. Adds notification Previous routing through the same native playback-service loader as Next, including when the watch screen is hidden. Replaces the earlier late platform-state filter; existing native layouts, icons, compact layout and notification-hiding settings remain in use.",
     "phone_checks": [
       "Create a three-item queue. Check notification controls on first, middle and last items; compare to a normal YouTube playlist. Last should offer Previous with no Next when repeat is off/one.",
@@ -209,7 +223,7 @@
   },
   {
     "filename": "native-playlist-queue-21.20.405-step14-swipe-background.mpp",
-    "title": "Step 14 \u2014 first queue row swipe background",
+    "title": "Step 14 — first queue row swipe background",
     "description": "Refreshes the native swipe widget's cached foreground background after YouTube changes a local queue row's selection background. This addresses a stale playing-row drawable when the first attached item becomes removable. Keeps YouTube's original swipe layout, animation, remove button and dimensions; account playlist rows retain their native path. Visual confirmation on the phone remains pending.",
     "phone_checks": [
       "Create a two- or three-item queue, advance to the second video, then swipe the first row slowly and fully. The remove action should be revealed beside the moving card with no card text visible through it.",
@@ -223,7 +237,7 @@
   },
   {
     "filename": "native-playlist-queue-21.20.405-step15-shorts-retention.mpp",
-    "title": "Step 15 \u2014 retain the queue across Shorts",
+    "title": "Step 15 — retain the queue across Shorts",
     "description": "Suspends the regular local queue while Shorts owns playback, preserving its order, selected occurrence and repeat mode. Returning waits for the regular controller and active video ID to agree, then refreshes the native queue rows and controls. Shorts playback and notification controls retain their native handling. A confirmed different regular video/account playlist ends the old temporary queue. No new UI or shared Shorts/Loop patch changes.",
     "phone_checks": [
       "Create a three-item queue and go to the middle item. Open Shorts from a shelf or tab, swipe through several Shorts, then return with Back. Verify the same queue order, position and repeat mode, without forcing the panel open. Repeat the trip with the queue collapsed and expanded.",
@@ -237,7 +251,7 @@
   },
   {
     "filename": "native-playlist-queue-21.20.405-step16-background-handoff.mpp",
-    "title": "Step 16 \u2014 retain background playback ownership after Shorts",
+    "title": "Step 16 — retain background playback ownership after Shorts",
     "description": "Retains the local queue when the live playback service confirms the same queued video while its watch UI is absent. A return from Shorts can resume queue ownership without a visible watch controller; notification skips reconcile that ownership before rejecting the press. A recreated detached watch controller gets a fresh native model baseline. The current implementation still uses native playlist UI with local queue navigation; attaching the native playlist playback engine is separate research. This is an interim lifecycle fix, not device-confirmed resolution of every background failure.",
     "phone_checks": [
       "Create a fresh three-item queue, use notification Next and Previous while YouTube is visible, then press Home and use them without reopening. Repeat paused and playing, and on the lock screen.",

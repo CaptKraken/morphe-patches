@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC37 — save the full queue through the modern picker
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc37-scoped-batch-save.mpp) · [Source 93956d2cf](https://github.com/CaptKraken/morphe-patches/commit/93956d2cffda4619a3271e658238e28de55e4f48)
+
+The modern picker now carries an immutable queue selection. Native save/edit and creation commands expand to that full selection before the original resolvers execute. New playlist clears the single-video entity source that otherwise overrides explicit IDs. Normal player, per-row and account-playlist Save remain native. Saving does not modify playback or queue state. Batch destination unchecking is not implemented.
+
+Validation:22tests passed;5unrelatedAPK-dependent tests skipped. Real21.20.405 combined19related and unselected APK checks passed SDK12DEX/hierarchy/resources and new native context/registry/callback/cleanup checks. Final MPP/defaulttrue/currentpayload/CRC verified; exact staged-tree gate passed. No attached phone or authenticated Save test: **please verify both existing and New playlist receive all3queued videos**.
+
+PoC36 failed phone testing (existing Save error; empty new playlist) and is superseded.
+
+SHA-256: `c064f90b8dc06f2ef30b40e96be33136f1e3ae615946cf2161f1e17f7b7761ac`
+
 ## PoC 32 — use current playlist context for menu visibility
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc32-menu-visibility.mpp) · [Source e1a6ef238](https://github.com/CaptKraken/morphe-patches/commit/e1a6ef238d461d6847f91f0f83fc44d1c1b9798d)
