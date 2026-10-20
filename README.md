@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC40 — restore native player Save paths
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc40-restore-player-save.mpp) · [Source 549824a7a](https://github.com/CaptKraken/morphe-patches/commit/549824a7a7a90264ec87a9b8f15ae89749dc1715)
+
+Removes the experimental batch Save resolver/presentation hooks, global sheet-row factory replacements and obsolete runtime expansion. Ordinary player/account Save uses original native paths. Queue header Save remains the phone-confirmed **first-video-only diagnostic**, not whole-queue Save. Queue playback is unchanged.
+
+Validation:22tests passed/5unrelatedJamAPKskips; actual21.20.405 combined19related and unselected SDK12DEX/hierarchy/resources passed. Six emitted native Save methods match stock registers/instructions/references/branches/handlers. MPP/defaulttrue/currentMPE/all32Kotlinpayloads/CRC/deletedhookabsence and exact-tree gate passed. Phone regression check still pending: playerSave existing/New/WatchLater, ordinary/account/per-row and queuefirstvideoSave.
+
+PoC38 failed multi-video saves for both existing/New; one-video saves work. User also reported playerSave regression. Do not use failed batch builds as working fallbacks.
+
+SHA-256: `8a0734d1b36ccbcc8e2336a10e62e0116856e86ac77508e7690ea9368374565f`
+
 ## PoC39 — first-video Save diagnostic
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc39-first-video-save.mpp) · [Source 1fbc1a7ab](https://github.com/CaptKraken/morphe-patches/commit/1fbc1a7ab1d927f766cf05f18380fbb5c850245a)

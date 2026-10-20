@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc40-restore-player-save.mpp",
+    "title": "PoC40: restore native player Save",
+    "description": "Remove shared batch Save interception/globalrowfactorycopies; retain only first-video native queue Save diagnostic. Whole-queue Save not implemented.",
+    "phone_checks": [
+      "Verify normal playerSave to existing/New/WatchLater and account/per-rowSave.",
+      "Verify queueheader first-videoSave, cancellation/orientation and uninterruptedplayback."
+    ],
+    "validation": "22tests passed5unrelatedskips;actualcombined19related/unselectedSDK12DEX/hierarchy/resources;6nativeSavemethodsmatchstock;MPPdefaulttrue/CRC/currentMPE/all32Kotlinpayloads/deletedhooksabsent/gatepassed. DeviceSavepending.",
+    "commit": "549824a7a7a90264ec87a9b8f15ae89749dc1715",
+    "sha256": "8a0734d1b36ccbcc8e2336a10e62e0116856e86ac77508e7690ea9368374565f",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc40-restore-player-save.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc39-first-video-save.mpp",
     "title": "PoC39: first-video native Save diagnostic",
     "description": "Queue header Save targets only the first real queue video ID, independent of currently playing item. No local Selection attached: native Save commands/presentation pass through without batch expansion. Not whole-queue Save.",
