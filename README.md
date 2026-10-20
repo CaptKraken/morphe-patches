@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC 30 — append newly opened regular videos
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc30-append-opened-video.mpp) · [Source 35fc0132f](https://github.com/CaptKraken/morphe-patches/commit/35fc0132fad9c288f98125bced5a91d08afa1b2b)
+
+While a queue is active, opening a new regular video appends it at the end and selects it, retaining earlier entries. Uses the existing success toast, native queue rows/backend and normal video-open action; no second video load or forced panel expansion. Active playback and the accepted regular controller must agree before appending. Native queue row/Next/Previous selection keeps its existing path; repeated same-video callbacks do not append again. Shorts stays suspended, then a confirmed new regular video can append on return; account playlists take over normally.
+
+Validation: 21 tests passed, 5 unrelated APK-dependent tests skipped; actual21.20.405 combined application with19related patches, SDK12DEX/crosshierarchy/resources verification, build/defaulttrue/currentMPE/all31queueKotlinpayloads/CRC checks passed. Added one append/order/selection/repeat/immutability/invalid-ID test and updated existing Shorts return policy test. No device/emulator; Android playback still requires phone testing.
+
+Phone checks: queue[A,B], openC from Home/Search/suggested ->[A,B,C] withC playing; one toast, no extra reload or forced expansion. Try rapid/repeated opens; native row and player/notification Next/Previous must not append duplicates. Check Shorts return and opening another regular video after Shorts; account playlist takeover; repeat/shuffle, background controls, Clear/recreate. Prior PoC28 smooth Clear and PoC29 header appearance still await user feedback.
+
+SHA-256: `b69a984db8bc99f4400224792012c956dd65a687f046b5ee1ee3a0336ad8f865`
+
 ## PoC 29 — supported native header icons
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc29-header-icons.mpp) · [Source 1d6f9989d](https://github.com/CaptKraken/morphe-patches/commit/1d6f9989d)
