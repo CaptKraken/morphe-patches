@@ -30,9 +30,9 @@ class VideoMetadataTest {
         ): List<String>? = (method.invoke(null, url, title, info, channel, avatarLabel, description) as Array<*>?)
             ?.map { it as String }
 
-        fun merge(json: String, videoId: String): List<String> =
-            (searchMethod.declaringClass.getMethod("merge", String::class.java, String::class.java)
-                .invoke(null, json, videoId) as Array<*>).map { it as String }
+        fun merge(json: String, videoId: String, title: String = "Native title"): List<String> =
+            (searchMethod.declaringClass.getMethod("merge", String::class.java, String::class.java, String::class.java)
+                .invoke(null, json, videoId, title) as Array<*>).map { it as String }
 
         fun search(json: String, videoId: String): List<String>? =
             (searchMethod.invoke(null, json, videoId) as Array<*>?)?.map { it as String }
@@ -73,8 +73,8 @@ class VideoMetadataTest {
                         parsed = parsed.withChannelName(channel);
                         return new String[]{parsed.videoId(), parsed.title(), parsed.channelName(), parsed.videoInfo()};
                     }
-                    public static String[] merge(String json, String videoId) throws Exception {
-                        var card = new VideoMetadata(videoId, "Native title", "Starbound Extra", "157 views · 46 minutes ago", "29:04", false);
+                    public static String[] merge(String json, String videoId, String title) throws Exception {
+                        var card = new VideoMetadata(videoId, title, "Starbound Extra", "157 views · 46 minutes ago", "29:04", false);
                         var lookup = VideoMetadata.fromSearch(new org.json.JSONObject(json), videoId);
                         var merged = card.withLookup(lookup).withCapture(card).withChannelName("Starbound Extra");
                         var reverse = lookup.withCapture(card).withChannelName("Starbound Extra");
@@ -140,6 +140,12 @@ class VideoMetadataTest {
         """.trimIndent()
         assertEquals(listOf("false", "Starbound Extra and Starbound HFY", "Starbound Extra and Starbound HFY",
             "Native title", "true"), parse.merge(response, "waZyE4Xl6bo"))
+        // A player without a title must accept the lookup's title in either update
+        // order; a later uploader-only capture must not erase it again.
+        for (missingTitle in listOf("", "   ", "waZyE4Xl6bo")) {
+            assertEquals(listOf("false", "Starbound Extra and Starbound HFY", "Starbound Extra and Starbound HFY",
+                "Search title", "true"), parse.merge(response, "waZyE4Xl6bo", missingTitle))
+        }
     }
 
     @Test

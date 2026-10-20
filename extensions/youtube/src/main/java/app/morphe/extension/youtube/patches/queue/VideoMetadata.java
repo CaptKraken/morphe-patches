@@ -18,6 +18,12 @@ import app.morphe.extension.youtube.innertube.queue.QueueCardRenderer;
 
 /** Server-formatted display text for a native playlist row. */
 record VideoMetadata(String videoId, String title, String channelName, String videoInfo, String duration, boolean fullByline) {
+    VideoMetadata {
+        // Player metadata can arrive after the queue is created. Use the same
+        // missing-title sentinel as queue entries so a later lookup can replace it.
+        if (title == null || title.isBlank()) title = videoId;
+    }
+
     private static final String WATCH_URL_PREFIX = "https://www.youtube.com/watch?v=";
     private static final String METADATA_SEPARATOR = " · ";
 
