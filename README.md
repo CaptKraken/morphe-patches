@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC 26 — native playlist Shuffle
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc26-native-shuffle.mpp) · [Source c78daf1df](https://github.com/CaptKraken/morphe-patches/tree/c78daf1df38035b64517a6e875fe36d7156eb666)
+
+Enables YouTube's existing Shuffle control for the owned local queue, retaining its click handler, native random traversal and mode observers. Enabling keeps the current video playing; displayed rows retain their original order while playback follows shuffled links. Entry changes invalidate the old native index links and rebuild them using YouTube's original algorithm, preserving the enabled mode and repeat. Metadata-only refreshes preserve shuffle order. Header availability refreshes on native backend events, including reattachment. No new UI/settings or custom shuffle algorithm.
+
+Phone checks: use4items; enable without restarting playback; Next/Previous/autoplay agree across player and notification; disable at shuffle traversal end; repeat-all/one and1item; add/remove/reorder while enabled; metadata refresh; background/Shorts return. Ordinary playlists and prior features should retain their behavior. Device playback pending.
+
+20 existing tests passed;5unrelatedJamAPKskips. Final current-source stock21.20.405 combined19related and queue-unselected application, SDK12DEX/hierarchy/resources and native shuffle cache/mode/snapshot checks passed. Initial added verifier matched an interface as well as its implementation; corrected and rerun. FinalMPP/defaulttrue/currentpayload/CRC and exact staged-tree gate passed. No agents/device/emulator used.
+
+SHA-256: `d91512dd456a3346a2062c56f5acf55d652e99df96366b1c046526c9fd0f7db9`
+
 ## PoC 25 — modern native Share sheet
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc25-modern-share-sheet.mpp) · [Source 07bdd17ac](https://github.com/CaptKraken/morphe-patches/tree/07bdd17ac4d26f4c9fb0d8cb307b8f91f0f8fc8d)
