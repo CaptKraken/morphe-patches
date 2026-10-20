@@ -828,9 +828,15 @@ public final class NativePlaylistQueuePatch {
         int nextIndex = FlyoutUtils.addFlyoutButton(flyoutPanel,
                 iconId == 0 ? null : Utils.getContext().getDrawable(iconId),
                 str("morphe_native_playlist_queue_next"),
-                view -> playNext(videoId, videoId.equals(FlyoutUtils.getFlyoutVideoId())
-                        ? FlyoutUtils.getFlyoutChannelName() : ""), index);
-        return nextIndex > index ? nextIndex : index;
+                view -> addToQueue(videoId, false), index);
+        index = nextIndex > index ? nextIndex : index;
+        int lastIconId = ResourceUtils.getIdentifier(ResourceType.DRAWABLE,
+                "yt_outline_experimental_queue_last_vd_theme_24");
+        int lastIndex = FlyoutUtils.addFlyoutButton(flyoutPanel,
+                lastIconId == 0 ? null : Utils.getContext().getDrawable(lastIconId),
+                str("morphe_native_playlist_queue_last"),
+                view -> addToQueue(videoId, true), index);
+        return lastIndex > index ? lastIndex : index;
     }
 
     private static PlaylistController readyController() {
@@ -849,7 +855,9 @@ public final class NativePlaylistQueuePatch {
         return playlistId != null && !playlistId.isEmpty();
     }
 
-    private static void playNext(String videoId, String channelName) {
+    private static void addToQueue(String videoId, boolean playLast) {
+        String channelName = videoId.equals(FlyoutUtils.getFlyoutVideoId())
+                ? FlyoutUtils.getFlyoutChannelName() : "";
         try {
             PlaylistController controller = readyController();
             if (controller == null || dragSession != null) {
@@ -864,7 +872,8 @@ public final class NativePlaylistQueuePatch {
                     ? new PlaylistQueue(controller.patch_getVideoId(), VideoInformation.getVideoTitle())
                     : queue;
             if (queue == null) originalModel = controller.patch_getModel();
-            if (publish(controller, candidate.playNext(videoId), true)) {
+            PlaylistQueue updated = playLast ? candidate.playLast(videoId) : candidate.playNext(videoId);
+            if (publish(controller, updated, true)) {
                 FlyoutUtils.dismissFlyout();
                 Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
                 completeMetadata();
