@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc39-first-video-save.mpp",
+    "title": "PoC39: first-video native Save diagnostic",
+    "description": "Queue header Save targets only the first real queue video ID, independent of currently playing item. No local Selection attached: native Save commands/presentation pass through without batch expansion. Not whole-queue Save.",
+    "phone_checks": [
+      "With3distinct queued videos, headerSave to existing/WatchLater and New. Only first queue item should save; verify no error.",
+      "Select second/third item first; Save should still target first. Playback/other Save paths unchanged."
+    ],
+    "validation": "22tests passed5unrelatedJamAPKskips;build/defaulttrue44s;CRC/currentMPE/all36Kotlinpayloads/gate passed. No freshAPK run because discovery/injections unchanged. Device/authenticatedSave pending.",
+    "commit": "1fbc1a7ab1d927f766cf05f18380fbb5c850245a",
+    "sha256": "c5ca6f64db952261284e191d6b1a8838cb27f1b7fdb017c82073da2eb5894461",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc39-first-video-save.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc38-save-context.mpp",
     "title": "PoC38: retain whole-queue Save context",
     "description": "Preserve native sheet owner in newer reactive row factories and expand commands at all three native Save resolver entries. Native picker/authentication retained. Batch destination unchecking unsupported.",
@@ -10,7 +23,8 @@
     "validation": "22tests passed/5unrelatedskips; actual21.20.405 combined19related and unselected SDK12DEX/hierarchy/resources/nativeSavechecks passed. MPP defaulttrue/CRC/currentMPE/all36Kotlinpayloads verified; exact-tree commit gate passed. Device/authenticated Save pending.",
     "commit": "005db79a6dde02a8171cad5510f96ec0bf99bbdf",
     "sha256": "1f3a46f46c19b445fec88542524d6312cac1cd2c91d0c48203bdf2c66f406ae6",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc38-save-context.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc38-save-context.mpp",
+    "phone_result": "FAILED: same generic native error; screenshot also shows Saved to Watch later. Superseded by first-video diagnostic PoC39."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc37-scoped-batch-save.mpp",

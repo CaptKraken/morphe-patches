@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC39 — first-video Save diagnostic
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc39-first-video-save.mpp) · [Source 1fbc1a7ab](https://github.com/CaptKraken/morphe-patches/commit/1fbc1a7ab1d927f766cf05f18380fbb5c850245a)
+
+As requested, queue header Save targets **only the first video in the queue**, even when another is playing. It passes a real video ID to the modern native picker and omits local batch ownership; native commands, membership toggles, New playlist and presentation fall through without batch rewriting. This is a single-video diagnostic, not whole-queue Save. Earlier batch helpers remain installed but are not activated by header Save.
+
+Validation:22tests passed,5unrelatedJamAPKskips; build/defaulttrue passed44s; final CRC/currentYouTubeMPE/all36Kotlinpayloads verified; exact-tree gate passed. No fresh APK application: native discovery/injections unchanged from PoC38. No device/authenticated Save test.
+
+Phone test: queue3different videos, optionally play second/third, use headerSave to existing/WatchLater and New. Confirm **only the first video** is saved and no error appears. Playback should continue unchanged. PoC38 failed phone testing with the same generic error and is superseded.
+
+SHA-256: `c5ca6f64db952261284e191d6b1a8838cb27f1b7fdb017c82073da2eb5894461`
+
 ## PoC38 — preserve queue selection through native Save rows
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc38-save-context.mpp) · [Source 005db79a6](https://github.com/CaptKraken/morphe-patches/commit/005db79a6dde02a8171cad5510f96ec0bf99bbdf)
