@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC 27 — Clear queue in the queue header menu
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc27-clear-queue.mpp) · [Source 9eecea28e](https://github.com/CaptKraken/morphe-patches/tree/9eecea28eb438b90d6e56983abf6eb2862dabffd)
+
+Adds Clear queue after Save playlist in our queue's native header three-dot menu. Only owned queue panels can activate it; ordinary/account playlist menus are unchanged. Clears the local playback sequence by handing navigation back to YouTube's ordinary backend, then restores the panel. No player load/seek/stop is requested. Current video should keep playing at its position. Stale header actions are consumed without clearing a newer queue or invoking native Hide. New base resource uses the project's locale fallback mechanism.
+
+Phone checks: Clear appears only in our header; clear while playing keeps current video/time and removes queue UI; old queued entries no longer control notification/player Next/autoplay; create a fresh queue; single item; repeat/shuffle enabled. Check Save playlist, video-row Remove/swipe/Share and ordinary playlists. Playback/device verification pending.
+
+20 tests passed;5unrelatedJamAPKskips; string-resource check passed. Final stock21.20.405 combined19related and queue-unselected SDK12DEX/hierarchy/resources/marker/menu/handoff checks passed. Initial new marker verifier selected interface+implementation, corrected and rerun. Actual patched resources contain Clear queue. FinalMPP/defaulttrue/currentpayload/CRC and exact staged-tree gate passed. No agents/device/emulator used.
+
+SHA-256: `cd9bf3f60f398b34eb63a5d735f85989888e5004ad43c6b0243885842d18f533`
+
 ## PoC 26 — native playlist Shuffle
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc26-native-shuffle.mpp) · [Source c78daf1df](https://github.com/CaptKraken/morphe-patches/tree/c78daf1df38035b64517a6e875fe36d7156eb666)
