@@ -13,6 +13,7 @@ import app.morphe.patcher.apk.ApkUtils.applyTo
 import app.morphe.patcher.dex.DexVerifier
 import app.morphe.patcher.dex.SdkDexVerifier
 import app.morphe.patcher.patch.Patch
+import app.morphe.util.getReference
 import app.morphe.patches.youtube.interaction.loop.loopVideoPatch
 import app.morphe.patches.youtube.interaction.savetowatchlater.saveToWatchLaterButtonPatch
 import app.morphe.patches.youtube.interaction.downloads.downloadsPatch
@@ -46,6 +47,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.Instruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OffsetInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
@@ -183,9 +185,10 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
             (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
                 "L$extensionOwner;->onQueueSaveCommand(") == true
         }
-        if (index < 0) null else instructions to index
+        if (index < 0) null else Triple(method, instructions, index)
     }
     val taggedSheetGuards = classes.flatMap { it.methods }.mapNotNull { method ->
+        if (method.returnType != "V" || method.parameterTypes.size != 12) return@mapNotNull null
         val instructions = method.implementation?.instructions?.toList() ?: return@mapNotNull null
         val index = instructions.indexOfFirst {
             (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
@@ -193,9 +196,13 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
         }
         if (index < 0) null else instructions to index
     }
+    val scopedRowFactories = classes.flatMap { it.methods }.filter {
+        it.name in setOf("patch_buildQueueSaveRows", "patch_decodeQueueSaveRows")
+    }
     if (!selected) {
         check(rowTypes.isEmpty() && menuOpenCalls.isEmpty() && menuDispatches.isEmpty() &&
-                saveEndpoints.isEmpty() && saveDispatches.isEmpty() && taggedSheetGuards.isEmpty()) {
+                saveEndpoints.isEmpty() && saveDispatches.isEmpty() && taggedSheetGuards.isEmpty() &&
+                scopedRowFactories.isEmpty()) {
             "Native playlist row menu bridge leaked into an unselected build"
         }
         println("Native playlist row menu bridge absent when unselected")
@@ -277,19 +284,33 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
             saveParser.any { (it as? ReferenceInstruction)?.reference?.toString()?.contains("->parseFrom(") == true }) {
         "Native save endpoint reconstruction must use the generated registry"
     }
-    val (saveInstructions, saveIndex) = saveDispatches.single()
-    check(saveInstructions[saveIndex + 1].opcode == Opcode.MOVE_RESULT_OBJECT &&
-            saveInstructions[saveIndex + 2].opcode == Opcode.IF_EQZ &&
-            saveInstructions[saveIndex + 3].opcode == Opcode.CHECK_CAST &&
-            saveInstructions[saveIndex + 4].opcode == Opcode.INVOKE_INTERFACE) {
-        "Save expansion must precede the original resolver callback with a consumed-command branch"
+    check(saveDispatches.size == 3 && saveDispatches.map { it.first.definingClass }.distinct().size == 3) {
+        "Save expansion must hook three native save consumers, rather than a bypassable router"
     }
-    val saveBranchAddress = saveInstructions.take(saveIndex + 2).sumOf { it.codeUnits }
-    val saveAfterCall = saveInstructions.take(saveIndex + 5).sumOf { it.codeUnits }
-    check((saveInstructions[saveIndex + 2] as OffsetInstruction).codeOffset + saveBranchAddress == saveAfterCall) {
-        "Consumed save commands must retain native post-resolution cleanup"
+    saveDispatches.forEach { (method, saveInstructions, saveIndex) ->
+        check(method.returnType == "V" &&
+                method.parameterTypes.map { it.toString() } == listOf(saveEndpoint.type, "Ljava/util/Map;") &&
+                saveIndex == 0 && saveInstructions[0].opcode == Opcode.INVOKE_STATIC_RANGE &&
+                saveInstructions[1].opcode == Opcode.MOVE_RESULT_OBJECT &&
+                saveInstructions[2].opcode == Opcode.IF_NEZ &&
+                saveInstructions[3].opcode == Opcode.RETURN_VOID &&
+                saveInstructions[4].opcode == Opcode.CHECK_CAST) {
+            "Save resolver ${method.definingClass} must expand before its original context/authentication handling"
+        }
+        val endpointRegister = method.implementation!!.registerCount - 2
+        val call = saveInstructions[0] as RegisterRangeInstruction
+        check(call.startRegister == endpointRegister && call.registerCount == 2 &&
+                (saveInstructions[1] as OneRegisterInstruction).registerA == endpointRegister &&
+                (saveInstructions[2] as OneRegisterInstruction).registerA == endpointRegister &&
+                (saveInstructions[4] as ReferenceInstruction).reference.toString() == saveEndpoint.type) {
+            "Native save input must retain the receiver and context parameter and restore the endpoint's native type"
+        }
+        check((saveInstructions[2] as OffsetInstruction).codeOffset ==
+                saveInstructions[2].codeUnits + saveInstructions[3].codeUnits) {
+            "A valid save must resume its original native resolver, while rejection returns to its caller"
+        }
     }
-    println("Native save command context, generated-registry bridge and original resolver/cleanup verified")
+    println("Three native save resolver entries, context registers, generated registry and original fallthrough verified")
     val (sheetInstructions, sheetIndex) = taggedSheetGuards.single()
     check(sheetIndex >= 2 && (sheetInstructions[sheetIndex - 2] as? ReferenceInstruction)?.reference?.toString() ==
             "Lj$/util/Optional;->orElse(Ljava/lang/Object;)Ljava/lang/Object;" &&
@@ -299,6 +320,25 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
         "Queue Save must retain its unwrapped selection tag across sheet presentation experiments"
     }
     println("Native sheet presentation guard retains selection context only for queue saves")
+    check(scopedRowFactories.size == 2 && scopedRowFactories.all {
+        it.parameterTypes.size == 10 && it.parameterTypes.last() == "Ljava/lang/Object;"
+    }) { "Native sheet row factories must carry the owner in addition to all nine original arguments" }
+    val rowBuilder = scopedRowFactories.single { it.name == "patch_buildQueueSaveRows" }
+        .implementation!!.instructions.toList()
+    check(rowBuilder.any {
+        (it as? ReferenceInstruction)?.reference?.toString()?.contains(
+            "QueueSaveActions;->withContextProvider(Ljava/util/List;Ljava/lang/Object;)Ljava/util/List;") == true
+    } && rowBuilder.any {
+        (it as? ReferenceInstruction)?.reference?.toString()?.contains("->isQueueSaveSelection(") == true
+    }) { "Native row provider enrichment must be guarded by the local sheet selection" }
+    val rowCallers = classes.flatMap { it.methods }.filter { method ->
+        method.name !in scopedRowFactories.map { it.name } &&
+                method.implementation?.instructions?.count {
+                    it.getReference<MethodReference>()?.name in scopedRowFactories.map { factory -> factory.name }
+                } == 2
+    }
+    check(rowCallers.size == 1) { "Both native row-rendering modes must forward their sheet owner" }
+    println("Native reactive row adapters retain their sheet owner and existing context providers")
     check(removeIndex >= 0 && dispatchInstructions[removeIndex + 1].opcode == Opcode.MOVE_RESULT_OBJECT &&
             dispatchInstructions[removeIndex + 2].opcode == Opcode.IF_NEZ &&
             dispatchInstructions[removeIndex + 3].opcode == Opcode.GOTO_16) {

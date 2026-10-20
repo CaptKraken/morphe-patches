@@ -677,7 +677,7 @@ public final class NativePlaylistQueuePatch {
         return owner instanceof QueueSaveActions.Selection;
     }
 
-    /** Called immediately before native command resolution, after native routing and logging. */
+    /** Rewrite the context-bearing native save resolver's input before it consumes the target. */
     public static MessageLite onQueueSaveCommand(MessageLite endpoint, Map<?, ?> context) {
         if (endpoint == null || context == null
                 || !(context.get(QueueSaveActions.ENDPOINT_TAG) instanceof QueueSaveActions.Selection selection)) {

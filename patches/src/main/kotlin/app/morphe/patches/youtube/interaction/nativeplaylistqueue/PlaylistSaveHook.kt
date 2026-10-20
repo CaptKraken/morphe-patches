@@ -32,22 +32,27 @@ import com.android.tools.smali.dexlib2.immutable.ImmutableMethodParameter
 private const val SAVE_ENDPOINT =
     $$"Lapp/morphe/extension/youtube/patches/queue/QueueSaveActions$NativeEndpoint;"
 
-/** Expand only commands carrying the save sheet's immutable local selection tag. */
+/** Expand the native save resolvers' input, independently of the command router used. */
 internal fun installQueueSaveCommands(context: BytecodePatchContext, endpointType: String) = with(context) {
-    val dispatch = QueueSaveCommandDispatchFingerprint.matchSingle()
-    check(dispatch.originalMethod.parameterTypes[1] == endpointType) {
-        "Native playlist queue: save resolver and menu endpoint types disagree"
+    // The in-order router is only one of six native paths that invoke resolvers.
+    // Discover the actual save command consumers and hook their context-bearing
+    // entry, before authentication callbacks or creation can discard that context.
+    val resolvers = listOf(
+        60666189, // PlaylistEditEndpoint: existing destination.
+        85650004, // CreatePlaylistDialogEndpoint: name/privacy and selection.
+        124747980 // CreatePlaylistEndpoint: direct submission from a native form.
+    ).map { extensionNumber ->
+        val commandType = queueSaveEndpointFingerprint(extensionNumber).matchSingle().originalClassDef.type
+        val extensionType = classDefBy(commandType).fields.single {
+            AccessFlags.PUBLIC.isSet(it.accessFlags) && AccessFlags.STATIC.isSet(it.accessFlags) &&
+                    it.type != commandType
+        }.type
+        val consumer = queueSaveResolverFingerprint(commandType, endpointType, extensionType).matchSingle()
+        queueSaveResolverEntryFingerprint(consumer.originalClassDef.type, endpointType).matchSingle()
     }
-    val handlerType = dispatch.originalMethod.parameterTypes.first()
-    val calls = dispatch.originalMethod.implementation!!.instructions.mapIndexedNotNull { index, instruction ->
-        val reference = instruction.getReference<MethodReference>() ?: return@mapIndexedNotNull null
-        if (reference.definingClass != handlerType || reference.returnType != "V" ||
-            reference.parameterTypes.map { it.toString() } != listOf(endpointType, "Ljava/util/Map;")) {
-            return@mapIndexedNotNull null
-        }
-        index to (instruction as FiveRegisterInstruction)
+    check(resolvers.map { it.originalMethod.definingClass }.distinct().size == 3) {
+        "Native playlist queue: save commands must resolve through three distinct native consumers"
     }
-    check(calls.size == 1) { "Native playlist queue: expected one final command resolver invocation, found $calls" }
 
     val endpointDefault = classDefBy(endpointType).fields.single {
         it.type == endpointType && AccessFlags.STATIC.isSet(it.accessFlags)
@@ -81,16 +86,24 @@ internal fun installQueueSaveCommands(context: BytecodePatchContext, endpointTyp
         """)
     })
 
-    val (index, registers) = calls.single()
-    // Reuse the endpoint argument at its final resolver call, not an assumed free v0.
-    // Consumed commands still run native post-resolution cleanup and return success.
-    dispatch.method.addInstructionsAtControlFlowLabel(index, """
-        invoke-static {v${registers.registerD}, v${registers.registerE}}, $EXTENSION_CLASS->onQueueSaveCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;
-        move-result-object v${registers.registerD}
-        if-eqz v${registers.registerD}, :queue_save_consumed
-        check-cast v${registers.registerD}, $endpointType
-    """, ExternalLabel("queue_save_consumed", dispatch.method.getInstruction(index + 1)))
+    resolvers.forEach { resolver ->
+        check(resolver.originalMethod.p0Register + 1 <= 255) {
+            "Native playlist queue: save resolver endpoint parameter exceeds the move-result register range"
+        }
+        // p1/p2 are adjacent single-word references. Reuse p1 for the rewritten
+        // endpoint; no local register, receiver, or native authentication state changes.
+        // A rejected local action returns to the original caller's cleanup path.
+        resolver.method.addInstructionsAtControlFlowLabel(0, """
+            invoke-static/range {p1 .. p2}, $EXTENSION_CLASS->onQueueSaveCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;
+            move-result-object p1
+            if-nez p1, :native_save_resolver
+            return-void
+            :native_save_resolver
+            check-cast p1, $endpointType
+        """)
+    }
     retainQueueSaveContext(context)
+    retainQueueSaveRowContext(context)
 }
 
 /** Keep the modern contents in the native container that preserves their selection tag. */

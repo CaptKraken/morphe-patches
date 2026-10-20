@@ -38,6 +38,12 @@ class QueueSaveActionsTest {
                         catch (IllegalArgumentException expected) {}
                     }
                     public static String run() throws Exception {
+                        Object nativeProvider = new Object(), queueProvider = new Object();
+                        var nativeProviders = List.of(nativeProvider);
+                        var enriched = QueueSaveActions.withContextProvider(nativeProviders, queueProvider);
+                        require(enriched.equals(List.of(nativeProvider, queueProvider)));
+                        require(nativeProviders.equals(List.of(nativeProvider)));
+                        require(QueueSaveActions.withContextProvider(null, queueProvider).equals(List.of(queueProvider)));
                         var ids = new ArrayList<>(List.of("abcdefghijk", "lmnopqrstuv", "abcdefghijk"));
                         var original = Map.of(QueueSaveActions.ENDPOINT_TAG, new Object(), "other", "preserved");
                         var open = QueueSaveActions.openSheet(ids);

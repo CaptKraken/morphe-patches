@@ -9,6 +9,7 @@ package app.morphe.extension.youtube.patches.queue;
 
 import com.google.protobuf.MessageLite;
 
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -34,6 +35,13 @@ public final class QueueSaveActions {
     }
 
     private QueueSaveActions() {
+    }
+
+    /** Native row configurations may have no providers or an immutable provider list. */
+    public static List<?> withContextProvider(List<?> existing, Object provider) {
+        List<Object> providers = existing == null ? new ArrayList<>() : new ArrayList<>(existing);
+        providers.add(provider);
+        return providers;
     }
 
     static NavigationEndpoint openSheet(List<String> videoIds) {
