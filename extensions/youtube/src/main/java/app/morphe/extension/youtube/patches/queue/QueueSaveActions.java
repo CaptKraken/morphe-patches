@@ -53,11 +53,9 @@ public final class QueueSaveActions {
 
     private static String requestParams(List<String> videoIds) {
         if (videoIds.isEmpty()) throw new IllegalArgumentException("Empty queue save selection");
-        // This is a local carrier, NOT a server-supported batch video ID. The native
-        // sheet can display destinations for it, but every mutation must be expanded
-        // below before reaching a resolver. Using the first real video instead would
-        // incorrectly preselect its existing playlists for the entire queue.
-        String target = String.join(",", videoIds);
+        // Diagnostic phone build: exercise native single-video Save with the first
+        // queue item, independently of the currently playing item or batch expansion.
+        String target = videoIds.get(0);
         byte[] params = SavePanelParams.newBuilder().setTarget(
                 SavePanelTarget.newBuilder().setVideoId(target)).build().toByteArray();
         return Base64.getUrlEncoder().encodeToString(params).replace("=", "%3D");
@@ -70,7 +68,9 @@ public final class QueueSaveActions {
             throw new IllegalArgumentException("Queue save menu no longer matches the selected queue");
         }
         Map<Object, Object> scopedContext = new HashMap<>(context);
-        scopedContext.put(ENDPOINT_TAG, new Selection(videoIds));
+        // Do not attach the local queue panel or a batch Selection to this native
+        // single-video sheet. Its commands and membership toggles must pass through.
+        scopedContext.remove(ENDPOINT_TAG);
         return scopedContext;
     }
 

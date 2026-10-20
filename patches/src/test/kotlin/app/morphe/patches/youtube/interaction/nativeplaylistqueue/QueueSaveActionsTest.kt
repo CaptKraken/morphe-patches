@@ -17,7 +17,7 @@ import kotlin.test.assertEquals
 
 class QueueSaveActionsTest {
     @Test
-    fun `existing and new playlist actions use the same immutable full selection`() {
+    fun `first video save uses a real target without batch ownership`() {
         val root = generateSequence(File("").absoluteFile) { it.parentFile }
             .first { File(it, "extensions/youtube/src/main/proto").isDirectory }
         val output = createTempDirectory("playlist-queue-save").toFile()
@@ -48,9 +48,16 @@ class QueueSaveActionsTest {
                         var original = Map.of(QueueSaveActions.ENDPOINT_TAG, new Object(), "other", "preserved");
                         var open = QueueSaveActions.openSheet(ids);
                         var context = QueueSaveActions.prepareContext(open, original, ids);
-                        var selection = (QueueSaveActions.Selection) context.get(QueueSaveActions.ENDPOINT_TAG);
                         require(context != original && context.get("other").equals("preserved"));
-                        require(!(original.get(QueueSaveActions.ENDPOINT_TAG) instanceof QueueSaveActions.Selection));
+                        require(!context.containsKey(QueueSaveActions.ENDPOINT_TAG));
+                        require(original.containsKey(QueueSaveActions.ENDPOINT_TAG));
+                        String params = open.getShowSheetCommand().getPanelLoadingStrategy().getRequestTemplate().getParams();
+                        var target = SavePanelParams.parseFrom(Base64.getUrlDecoder().decode(params.replace("%3D", "=")));
+                        require(target.getTarget().getVideoId().equals("abcdefghijk"));
+                        require(QueueSaveActions.openSheet(List.of("abcdefghijk")).equals(open));
+                        // Keep the previous batch helper regression coverage, although
+                        // header Save no longer installs this ownership or invokes it.
+                        var selection = new QueueSaveActions.Selection(ids);
                         String carrier = String.join(",", ids);
                         var expected = List.copyOf(ids);
                         ids.clear(); // Playback/clear/reordering cannot change an already opened selection.
