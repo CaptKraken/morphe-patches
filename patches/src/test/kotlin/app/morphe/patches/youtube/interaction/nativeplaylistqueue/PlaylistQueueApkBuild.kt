@@ -128,6 +128,14 @@ private fun verifyNativeFullscreenActions(directory: File, selected: Boolean) {
         (it as? ReferenceInstruction)?.reference?.toString()?.startsWith("$extension->onModelLoaded(") == true
     } == true }
     val refresh = references("patch_refreshQuickActions")
+    val reset = refresh.first()
+    check(reset.definingClass == controller.type && reset.toString() != setter.toString()) {
+        "Fullscreen refresh must dispose the cached native UI before setting a new model"
+    }
+    val nativeReset = controller.methods.single { it.toString() == reset.toString() }
+    check(nativeReset.implementation!!.instructions.any {
+        (it as? ReferenceInstruction)?.reference?.toString() == setter.toString()
+    }) { "Fullscreen refresh no longer uses the original native model cleanup" }
     check(refresh.any { it.toString() == setter.toString() }) {
         "Fullscreen refresh does not reuse the native model setter"
     }
@@ -136,7 +144,7 @@ private fun verifyNativeFullscreenActions(directory: File, selected: Boolean) {
     check(references("patch_parseQuickActions").any {
         it.definingClass == "Lcom/google/protobuf/ExtensionRegistryLite;" && it.name == "getGeneratedRegistry"
     }) { "Fullscreen model parser does not retain native extensions" }
-    println("Native fullscreen playlist setter, size refresh and registry bridges verified")
+    println("Native fullscreen playlist cleanup, setter, size refresh and registry bridges verified")
 }
 
 /** Check the emitted native video bridge and queue-only menu dispatch paths. */

@@ -44,7 +44,6 @@ internal fun installFullscreenPlaylist(context: BytecodePatchContext) = with(con
         .getReference<MethodReference>()!!
     val modelType = setter.parameterTypes.single().toString()
     val reset = quickActionsResetFingerprint(controllerType, setter).matchSingle()
-    val rendered = reset.instructionMatches.last().getInstruction<Instruction>().getReference<FieldReference>()!!
     val size = quickActionsSizeFingerprint(controllerType).matchSingle()
     val dimensions = size.instructionMatches[1].getInstruction<Instruction>().getReference<FieldReference>()!!
     val emit = size.instructionMatches[2].getInstruction<Instruction>().getReference<MethodReference>()!!
@@ -90,7 +89,10 @@ internal fun installFullscreenPlaylist(context: BytecodePatchContext) = with(con
     """)
     bridge("patch_refreshQuickActions", "Ljava/lang/Object;", "V", """
         const/4 v0, 0x0
-        iput-boolean v0, p0, $rendered
+        # The native reset also releases the presenter's cached component tree.
+        # Merely resetting the rendered flag reuses the previous button layout.
+        # Its lifecycle argument is unused; null is safe for this UI-only reset.
+        invoke-virtual {p0, v0}, ${reset.originalMethod}
         check-cast p1, $modelType
         invoke-virtual {p0, p1}, $setter
         iget-object v0, p0, $dimensions
