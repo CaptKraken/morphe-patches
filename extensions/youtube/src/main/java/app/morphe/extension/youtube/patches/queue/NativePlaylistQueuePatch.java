@@ -98,6 +98,7 @@ public final class NativePlaylistQueuePatch {
         int patch_getSelectedIndex();
         int patch_getRepeatMode();
         boolean patch_canShuffle();
+        boolean patch_clearQueue();
     }
 
     public interface RepeatHeader {
@@ -118,6 +119,10 @@ public final class NativePlaylistQueuePatch {
     }
 
     /** Nonserialized ownership bit on native rows from an accepted local panel. */
+    public interface QueuePanel {
+        boolean patch_isQueueOwned();
+    }
+
     public interface QueueRow {
         boolean patch_isQueueOwned();
     }
@@ -618,17 +623,28 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
-    /** Dispatches only local row overrides after native validation and logging. */
-    public static MessageLite onRowCommand(MessageLite endpoint, Map<?, ?> context) {
+    /** Override only commands from an owned row or the exact published queue header. */
+    public static MessageLite onQueueMenuCommand(MessageLite endpoint, Map<?, ?> context) {
         if (endpoint == null || context == null) return endpoint;
-        Object row = context.get("com.google.android.libraries.youtube.innertube.endpoint.tag");
-        if (!(row instanceof QueueRow queueRow) || !queueRow.patch_isQueueOwned()) return endpoint;
+        Object owner = context.get("com.google.android.libraries.youtube.innertube.endpoint.tag");
+        boolean header = owner instanceof QueuePanel panel && panel.patch_isQueueOwned();
+        if (!header && (!(owner instanceof QueueRow row) || !row.patch_isQueueOwned())) return endpoint;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
             if (!command.hasHideEnclosingAction() || command.hasWatchEndpoint()) return endpoint;
             PlaylistController controller = readyController();
             if (queue == null || controller == null || controller.patch_getModel() != publishedModel) return null;
-            int index = controller.patch_findQueueRow(row);
+            if (header) {
+                if (owner != controller.patch_getPanel()) return null;
+                NativePlayback playback = playbackFor(controller);
+                if (pendingSelection != null || dragSession != null || playback == null || !playback.patch_clearQueue()) {
+                    Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+                } else {
+                    releasePanel();
+                }
+                return null;
+            }
+            int index = controller.patch_findQueueRow(owner);
             if (index < 0 || index >= queue.entries().size()) return null;
             // Check again at activation: a previously revealed button must never
             // remove the current item or race an in-flight row navigation.
@@ -639,7 +655,7 @@ public final class NativePlaylistQueuePatch {
             // mutate a second adapter snapshot or send an account-playlist edit.
             return null;
         } catch (Exception exception) {
-            Logger.printException(() -> "Could not run native playlist queue row action", exception);
+            Logger.printException(() -> "Could not run native playlist queue menu action", exception);
             Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
             return null;
         }
@@ -915,7 +931,7 @@ public final class NativePlaylistQueuePatch {
         return PlaylistQueueRenderer.SwipeAction.newBuilder().setButtonRenderer(button).build();
     }
 
-    private static PlaylistQueueRenderer.Menu saveMenu(PlaylistQueue source) {
+    private static PlaylistQueueRenderer.Menu playlistMenu(PlaylistQueue source) {
         var create = PlaylistQueueRenderer.CreatePlaylistDialogEndpoint.newBuilder();
         for (PlaylistQueue.Entry entry : source.entries()) create.addVideoIds(entry.videoId());
         var save = PlaylistQueueRenderer.MenuNavigationItem.newBuilder()
@@ -926,6 +942,9 @@ public final class NativePlaylistQueuePatch {
         return PlaylistQueueRenderer.Menu.newBuilder().setMenuRenderer(
                 PlaylistQueueRenderer.MenuRenderer.newBuilder()
                         .addItems(PlaylistQueueRenderer.MenuItem.newBuilder().setMenuNavigationItemRenderer(save))
+                        .addItems(serviceMenuItem(str("morphe_native_playlist_queue_clear"), YTIconType.DELETE_SWEEP,
+                                PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setHideEnclosingAction(
+                                        PlaylistQueueRenderer.HideEnclosingAction.newBuilder().setHack(true)).build()))
                         .setAccessibility(PlaylistQueueRenderer.Accessibility.newBuilder().setAccessibilityData(
                                 PlaylistQueueRenderer.AccessibilityLabel.newBuilder()
                                         .setLabel(str("accessibility_overflow_menu")))))
@@ -997,7 +1016,7 @@ public final class NativePlaylistQueuePatch {
                 .setTitle(str("morphe_native_playlist_queue_title"))
                 .setSelectedIndex(source.selectedIndex()).setPlaylistId("").setVideoCount(source.entries().size())
                 .setLocalSelectedIndex(source.selectedIndex())
-                .setMenu(saveMenu(source));
+                .setMenu(playlistMenu(source));
         var swipeToRemove = removalAction();
         for (int index = 0; index < source.entries().size(); index++) {
             PlaylistQueue.Entry entry = source.entries().get(index);

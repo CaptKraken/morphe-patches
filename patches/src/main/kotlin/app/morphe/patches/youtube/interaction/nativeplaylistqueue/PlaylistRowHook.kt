@@ -192,6 +192,21 @@ internal fun installPlaylistRowPlayback(
             return v0
         """)
     })
+    // Retain ownership on old header models too, so a stale Clear action is consumed
+    // instead of falling through to YouTube's ordinary Hide command.
+    val panel = mutableClassDefBy(panelField.type)
+    val panelOwned = ImmutableField(panel.type, "patch_queueOwned", "Z",
+        AccessFlags.PUBLIC.value, null, null, null).toMutable()
+    panel.fields.add(panelOwned)
+    panel.interfaces.add("Lapp/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch\$QueuePanel;")
+    panel.methods.add(ImmutableMethod(panel.type, "patch_isQueueOwned", emptyList(), "Z",
+        AccessFlags.PUBLIC.value or AccessFlags.FINAL.value, null, null,
+        MutableMethodImplementation(2)).toMutable().apply {
+        addInstructionsWithLabels(0, """
+            iget-boolean v0, p0, $panelOwned
+            return v0
+        """)
+    })
     controller.methods.add(ImmutableMethod(controller.type, "patch_markQueueRows", emptyList(),
         "V", AccessFlags.PUBLIC.value or AccessFlags.FINAL.value, null, null,
         MutableMethodImplementation(5)).toMutable().apply {
@@ -200,6 +215,8 @@ internal fun installPlaylistRowPlayback(
             if-eqz v0, :done
             iget-object v0, v0, $panelField
             if-eqz v0, :done
+            const/4 v1, 0x1
+            iput-boolean v1, v0, $panelOwned
             iget-object v0, v0, $contents
             invoke-interface {v0}, Ljava/util/List;->iterator()Ljava/util/Iterator;
             move-result-object v0

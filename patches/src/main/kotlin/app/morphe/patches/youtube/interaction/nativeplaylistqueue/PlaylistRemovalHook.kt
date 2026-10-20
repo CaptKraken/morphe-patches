@@ -31,7 +31,7 @@ internal fun installPlaylistRemoval(context: BytecodePatchContext) = with(contex
     // Reuse the endpoint result register, keeping every live native local intact.
     // Null consumes our local command; otherwise restore the native endpoint type.
     dispatch.method.addInstructionsAtControlFlowLabel(serviceCall.index, """
-        invoke-static {v${registers.registerD}, v${registers.registerE}}, $EXTENSION_CLASS->onRowCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;
+        invoke-static {v${registers.registerD}, v${registers.registerE}}, $EXTENSION_CLASS->onQueueMenuCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;
         move-result-object v${registers.registerD}
         if-nez v${registers.registerD}, :native_dispatch
         return-void

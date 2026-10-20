@@ -18,9 +18,9 @@ import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 
 /**
- * Observe the native row service-menu callback. The callback already validates and logs
- * the command before this point; local removal then calls the same sheet dismissal used
- * by the native path. Unowned and non-hide endpoints continue through the original call.
+ * Observe the shared native header/row service-menu callback. The callback already validates and logs
+ * the command before this point; local queue actions then call the same sheet dismissal used
+ * by the native path. Unowned and other endpoints continue through the original call.
  */
 internal fun installPlaylistMenuDispatch(context: BytecodePatchContext, videoType: String) = with(context) {
     val rowOpen = playlistRowMenuOpenFingerprint(videoType).matchSingle()
@@ -107,7 +107,7 @@ internal fun installPlaylistMenuDispatch(context: BytecodePatchContext, videoTyp
     val endpointType = callbackSignature.first()
     val registers = dispatch.second
     mutableDispatchMethod.addInstructionsAtControlFlowLabel(dispatch.first, """
-        invoke-static {v${registers.registerD}, v${registers.registerE}}, $EXTENSION_CLASS->onRowCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;
+        invoke-static {v${registers.registerD}, v${registers.registerE}}, $EXTENSION_CLASS->onQueueMenuCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;
         move-result-object v${registers.registerD}
         if-nez v${registers.registerD}, :native_menu_dispatch
         goto :native_menu_dismiss

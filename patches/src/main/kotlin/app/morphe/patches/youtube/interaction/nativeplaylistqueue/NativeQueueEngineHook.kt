@@ -291,10 +291,21 @@ internal fun installNativeQueueEngine(
     val autoplay = wrapper.methods.single { method -> method.returnType == "V" && method.parameterTypes.size == 1 &&
             method.parameterTypes != listOf(responseType) &&
             method.implementation?.instructions?.any { it.getReference<MethodReference>()?.toString() == switchNavigator.toString() } == true }
+    val autoplayType = autoplay.parameterTypes.single().toString()
+    val autoplayConstructor = classDefBy(autoplayType).methods.single { method ->
+        method.name == "<init>" && method.parameterTypes.size == 3 &&
+                method.parameterTypes.distinct().size == 1 &&
+                method.parameterTypes.first().endsWith("/util/Optional;")
+    }
+    val optionalType = autoplayConstructor.parameterTypes.first()
+    val savedAutoplay = ImmutableField(wrapperType, "patch_lastAutoplay", autoplayType,
+        AccessFlags.PRIVATE.value, null, null, null).toMutable()
+    mutableClassDefBy(wrapperType).fields.add(savedAutoplay)
     var autoplayMethod = mutableClassDefBy(wrapperType).methods.single { it.toString() == autoplay.toString() }
     if (autoplayMethod.implementation!!.registerCount <= 2) autoplayMethod = autoplayMethod.cloneParameters()
     val autoplayRegister = autoplayMethod.findFreeRegister(0)
     autoplayMethod.addInstructionsWithLabels(0, """
+        iput-object p1, p0, $savedAutoplay
         iget-boolean v$autoplayRegister, p0, $localFlag
         if-eqz v$autoplayRegister, :server_autoplay
         return-void
@@ -305,6 +316,43 @@ internal fun installNativeQueueEngine(
             it.implementation?.instructions?.any { instruction -> instruction.getReference<MethodReference>()?.let {
                 it.definingClass == "Ljava/lang/ref/WeakReference;" && it.name == "get"
             } == true } == true }
+    val nativeReceive = classDefBy(navigatorType).methods.single {
+        it.parameterTypes == listOf(responseType) && it.returnType == "V"
+    }
+    // Reuse the ordinary autoplay navigator's initialization and response handling.
+    // This detaches the local sequence without loading/seeking/stopping the player.
+    bridge(wrapperType, "patch_clearQueue", emptyList(), "Z", 6, """
+        iget-boolean v0, p0, $localFlag
+        if-eqz v0, :missing
+        iget-object v1, p0, $response
+        if-eqz v1, :missing
+        iget-object v2, p0, $nativeNavigator
+        instance-of v0, v2, $queueType
+        if-eqz v0, :missing
+        iget-object v3, p0, $savedAutoplay
+        move-object v5, v3
+        if-nez v3, :autoplay_ready
+        invoke-static {}, $optionalType->empty()$optionalType
+        move-result-object v4
+        new-instance v3, $autoplayType
+        invoke-direct {v3, v4, v4, v4}, $autoplayConstructor
+        :autoplay_ready
+        const/4 v0, 0x0
+        iput-boolean v0, p0, $localFlag
+        invoke-virtual {p0, v3}, $autoplay
+        iput-object v5, p0, $savedAutoplay
+        iget-object v4, p0, $nativeNavigator
+        invoke-interface {v4, v1}, $nativeReceive
+        if-eqz v5, :dispose_queue
+        invoke-virtual {p0, v5}, $autoplay
+        :dispose_queue
+        invoke-interface {v2}, $navigatorType->${queueDispose.name}()V
+        const/4 v0, 0x1
+        return v0
+        :missing
+        const/4 v0, 0x0
+        return v0
+    """)
     bridge(queueType, "patch_releaseLocalQueue", emptyList(), "V", 2, """
         iget-object v0, p0, $queueOwner
         instance-of v1, v0, $mutableType
@@ -327,6 +375,7 @@ internal fun installNativeQueueEngine(
     disposeMethod.addInstructionsWithLabels(0, """
         const/4 v$disposeRegister, 0x0
         iput-boolean v$disposeRegister, p0, $localFlag
+        iput-object v$disposeRegister, p0, $savedAutoplay
     """)
     // Local row loads must be JUMP within the native queue, rather than new ordinary playback.
     val insert = localLoad

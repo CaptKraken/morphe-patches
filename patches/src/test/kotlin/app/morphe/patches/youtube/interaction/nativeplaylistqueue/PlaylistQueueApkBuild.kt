@@ -127,7 +127,7 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
         method.implementation?.instructions?.toList()?.let { instructions ->
             instructions.indexOfFirst { instruction ->
                 (instruction as? ReferenceInstruction)?.reference?.toString()?.startsWith(
-                    "L$extensionOwner;->onRowCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)") == true
+                    "L$extensionOwner;->onQueueMenuCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)") == true
             }.takeIf { index -> index >= 0 && instructions.getOrNull(index + 2)?.opcode == Opcode.IF_NEZ &&
                     instructions.getOrNull(index + 3)?.opcode == Opcode.GOTO_16 }
                 ?.let { Triple(owner, method, instructions) }
@@ -201,7 +201,7 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
     val dispatchInstructions = dispatch.third
     val removeIndex = dispatchInstructions.indexOfFirst { instruction ->
         (instruction as? ReferenceInstruction)?.reference?.toString()?.startsWith(
-            "L$extensionOwner;->onRowCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)") == true
+            "L$extensionOwner;->onQueueMenuCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)") == true
     }
     check(removeIndex >= 0 && dispatchInstructions[removeIndex + 1].opcode == Opcode.MOVE_RESULT_OBJECT &&
             dispatchInstructions[removeIndex + 2].opcode == Opcode.IF_NEZ &&
@@ -242,8 +242,41 @@ private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
     val playbackInterface = EXTENSION_CLASS.removeSuffix(";") + "\$NativePlayback;"
     val owners = dexFiles.flatMap { it.classes }.filter { playbackInterface in it.interfaces }
     check(owners.size == if (selected) 1 else 0) { "Unexpected native playback bridge inclusion" }
+    val panelInterface = EXTENSION_CLASS.removeSuffix(";") + "\$QueuePanel;"
+    val panels = dexFiles.flatMap { it.classes }.filter { panelInterface in it.interfaces }
+    check(panels.size == if (selected) 1 else 0) { "Queue header ownership must be included only with this patch" }
     if (!selected) return
+    val panelFlag = panels.single().methods.single { it.name == "patch_isQueueOwned" }
+        .implementation!!.instructions.single { it.opcode == Opcode.IGET_BOOLEAN }
+        .let { (it as ReferenceInstruction).reference as FieldReference }
+    check(dexFiles.flatMap { it.classes }.flatMap { it.methods }.single { it.name == "patch_markQueueRows" && it.implementation != null }
+        .implementation!!.instructions.any {
+            it.opcode == Opcode.IPUT_BOOLEAN && (it as ReferenceInstruction).reference == panelFlag
+        }) { "Publishing local rows must also mark the exact native header model" }
     verifyNativeShuffle(dexFiles.flatMap { it.classes })
+    val clear = owners.single().methods.single { it.name == "patch_clearQueue" }
+        .implementation!!.instructions.toList()
+    val wrapper = owners.single()
+    val autoplayType = wrapper.fields.single { it.name == "patch_lastAutoplay" }.type
+    val clearCalls = clear.mapIndexedNotNull { index, instruction ->
+        ((instruction as? ReferenceInstruction)?.reference as? MethodReference)?.let { index to it }
+    }
+    val initialize = clearCalls.first { (_, reference) ->
+        reference.definingClass == wrapper.type && reference.parameterTypes == listOf(autoplayType)
+    }.first
+    val releaseFlag = clear.indexOfFirst { instruction ->
+        instruction.opcode == Opcode.IPUT_BOOLEAN &&
+                ((instruction as ReferenceInstruction).reference as FieldReference).name == "patch_localQueue"
+    }
+    val responseType = wrapper.methods.single { it.name == "patch_localPanel" }.returnType
+    val hydrate = clearCalls.single { (_, reference) -> reference.parameterTypes == listOf(responseType) }.first
+    val dispose = clearCalls.single { (index, reference) ->
+        clear[index].opcode == Opcode.INVOKE_INTERFACE && reference.parameterTypes.isEmpty()
+    }.first
+    check(releaseFlag >= 0 && releaseFlag < initialize && initialize < hydrate && hydrate < dispose) {
+        "Clear queue must release local interception, hydrate ordinary navigation, then dispose the old queue"
+    }
+    println("Native clear queue restores ordinary response handling before releasing the old sequence")
     val providers: List<ClassProvider> = dexFiles.map(::DexClassProvider)
     val classPath = ClassPath(providers)
     val bridge = owners.single().methods.single { it.name == "patch_localPanel" }
