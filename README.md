@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC 28 — Clear queue without unloading playback
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc28-continuous-clear.mpp) · [Source a97bbfccc](https://github.com/CaptKraken/morphe-patches/commit/a97bbfccc)
+
+Fixes PoC27's clear path: native queue disposal emits an empty selected item, whose listener unloads playback. The clear operation now uses YouTube's existing queue-change guard during disposal and releases it on success and failure. Queue entries, repeat/shuffle caches and presentation are cleared; the active player is left running. Only our queue's Clear action uses this path.
+
+Validation: 20 unit tests passed, 5 unrelated APK-dependent tests skipped; actual 21.20.405 combined patch application, SDK verification of 12 DEX files, cross-DEX hierarchy, generated guard/exception cleanup checks, resource build and final MPP/default selection/payload integrity passed. No attached phone/emulator; uninterrupted playback still needs phone testing.
+
+Phone checks: clear while playing and while paused, preserve current position; cleared entries must not drive notification/player Next or autoplay; create a new queue after clearing. Retest repeat/shuffle and ordinary playlists. The reported Save playlist icon/spacing artifact is still under investigation and is not claimed fixed by this build.
+
+SHA-256: `0c661ddfacace7a4a028a08fb58e31999badac5c6d4d6cd5791ef7e0297efd9a`
+
 ## PoC 27 — Clear queue in the queue header menu
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc27-clear-queue.mpp) · [Source 9eecea28e](https://github.com/CaptKraken/morphe-patches/tree/9eecea28eb438b90d6e56983abf6eb2862dabffd)
