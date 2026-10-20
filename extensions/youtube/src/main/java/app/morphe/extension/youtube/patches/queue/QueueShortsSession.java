@@ -46,7 +46,7 @@ final class QueueShortsSession {
         if (!regularPlayerVisible || activeVideoId.isEmpty() || regularVideoId.isEmpty()
                 || !activeVideoId.equals(regularVideoId)) return Action.WAIT;
         suspended = false;
-        // A newly opened regular video is appended by the queue's controller path.
+        // A newly opened regular video is inserted by the queue's controller path.
         // Only an account playlist takes ownership away from the retained queue.
         return accountPlaylist ? Action.RELEASE : Action.RESUME;
     }

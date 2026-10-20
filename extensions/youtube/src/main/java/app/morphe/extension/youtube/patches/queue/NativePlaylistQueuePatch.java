@@ -317,7 +317,7 @@ public final class NativePlaylistQueuePatch {
         String videoId = controller.patch_getVideoId();
         if (!videoId.equals(queue.currentEntry().videoId())) {
             // The active-ID hook and accepted controller must agree. Prefetched
-            // responses and Shorts cannot append entries; account playlists win above.
+            // responses and Shorts cannot insert entries; account playlists win above.
             PlayerType type = PlayerType.getCurrent();
             if (!PlaylistQueue.isVideoId(videoId) || type.isNoneOrHidden()
                     || type == PlayerType.INLINE_MINIMAL || !VideoInformation.getPlaylistId().isEmpty()) return;
@@ -325,7 +325,7 @@ public final class NativePlaylistQueuePatch {
             if (controller.patch_getModel() != publishedModel) originalModel = controller.patch_getModel();
             // Keep the old snapshot until publish attaches the changed rows to the
             // native backend; preassigning queue would conceal the item-list change.
-            if (publish(controller, queue.appendAndSelect(videoId), false)) {
+            if (publish(controller, queue.playNextAndSelect(videoId), false)) {
                 Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
                 completeMetadata();
             }
