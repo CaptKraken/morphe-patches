@@ -17,7 +17,6 @@ import app.morphe.patches.youtube.misc.extension.sharedExtensionPatch
 import app.morphe.patches.youtube.misc.settings.PreferenceScreen
 import app.morphe.patches.youtube.misc.settings.settingsPatch
 import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
-import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
@@ -43,7 +42,6 @@ internal fun openSystemShareSheetPatch(
     compatibleWith(COMPATIBILITY_YOUTUBE)
 
     execute {
-        setExtensionIsPatchIncluded(EXTENSION_CLASS)
         PreferenceScreen.GENERAL.addPreferences(
             SwitchPreference("morphe_open_system_share_sheet", summary = true)
         )

@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.WeakHashMap;
 
 import app.morphe.extension.shared.ByteTrieSearch;
@@ -33,7 +34,6 @@ import app.morphe.extension.youtube.innertube.IconOuterClass.YTIconType;
 import app.morphe.extension.youtube.innertube.NextResponseOuterClass.SingleColumnWatchNextResults;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.patches.VideoInformation;
-import app.morphe.extension.youtube.patches.OpenSystemShareSheetPatch;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
@@ -617,12 +617,6 @@ public final class NativePlaylistQueuePatch {
         if (!(row instanceof QueueRow queueRow) || !queueRow.patch_isQueueOwned()) return endpoint;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
-            if (command.hasShareEntityEndpoint()) {
-                // The player uses the navigation share endpoint, which opens its
-                // native screen. Preserve the optional system-sheet override too.
-                return OpenSystemShareSheetPatch.isPatchIncluded()
-                        && OpenSystemShareSheetPatch.openSystemShareSheet() ? null : endpoint;
-            }
             if (!command.hasHideEnclosingAction() || command.hasWatchEndpoint()) return endpoint;
             PlaylistController controller = readyController();
             if (queue == null || controller == null || controller.patch_getModel() != publishedModel) return null;
@@ -954,15 +948,20 @@ public final class NativePlaylistQueuePatch {
         String entity = Base64.encodeToString(
                 PlaylistQueueRenderer.ShareEntity.newBuilder().setVideoId(videoId).build().toByteArray(), Base64.NO_WRAP);
         String escapedEntity = Uri.encode(entity);
-        var share = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setShareEntityEndpoint(
-                PlaylistQueueRenderer.ShareEntityEndpoint.newBuilder()
+        String sheetId = "native-playlist-queue-share-" + UUID.randomUUID();
+        var request = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setShareEntityServiceEndpoint(
+                PlaylistQueueRenderer.ShareEntityServiceEndpoint.newBuilder()
                         .setSerializedShareEntity(escapedEntity)
-                        .setPanelType(PlaylistQueueRenderer.ShareEntityEndpoint.PanelType.UNIFIED));
-        items.addItems(PlaylistQueueRenderer.MenuItem.newBuilder().setMenuNavigationItemRenderer(
-                PlaylistQueueRenderer.MenuNavigationItem.newBuilder()
-                        .setText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(str("accessibility_share_video")))
-                        .setIcon(Icon.newBuilder().setYtIconType(YTIconType.SHARE))
-                        .setNavigationEndpoint(share)));
+                        .setPanelType(PlaylistQueueRenderer.ShareEntityServiceEndpoint.PanelType.ACTION_SHEET)
+                        .setSheetId(sheetId));
+        // Native onShow runs after the named sheet is created. Its service response
+        // populates that sheet; no extension layout or share-target list is needed.
+        var share = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setElementsCommand(
+                PlaylistQueueRenderer.ElementsCommand.newBuilder().setShowActionSheetCommand(
+                        PlaylistQueueRenderer.ShowActionSheetCommand.newBuilder().setSheetId(sheetId)
+                                .setOnShow(PlaylistQueueRenderer.ElementsCommand.newBuilder()
+                                        .setInnertubeCommand(request))));
+        items.addItems(serviceMenuItem(str("accessibility_share_video"), YTIconType.SHARE, share.build()));
 
         if (index != source.selectedIndex() && !videoId.equals(VideoInformation.getVideoId())) {
             var remove = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setHideEnclosingAction(
