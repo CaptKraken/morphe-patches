@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC38 — preserve queue selection through native Save rows
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc38-save-context.mpp) · [Source 005db79a6](https://github.com/CaptKraken/morphe-patches/commit/005db79a6dde02a8171cad5510f96ec0bf99bbdf)
+
+Fixes two concrete gaps in PoC37: newer reactive playlist rows omitted their sheet owner, and some command routes bypassed the intercepted router. Native row factories now retain the immutable queue selection; the three actual Save resolvers expand owned commands before consuming their input. Original picker, adapters, authentication and ordinary Save paths remain native. No playback changes. Batch destination unchecking remains unsupported.
+
+Validation:22tests passed,5unrelatedJamAPKskips; real21.20.405 combined19related and unselected patch applications passed SDK12DEX/hierarchy/resources and scoped native Save checks. Final MPP/defaulttrue/currentMPE/all36Kotlinpayloads/CRC verified; mandatory commit gate passed. **Phone test pending:** existing and New playlist must receive every queued video in order; New must not be empty. No authenticated Save was tested here.
+
+PoC37 failed phone testing: initial success followed by generic error, destination unchanged. It is superseded, not a working fallback.
+
+SHA-256: `1f3a46f46c19b445fec88542524d6312cac1cd2c91d0c48203bdf2c66f406ae6`
+
 ## PoC37 — save the full queue through the modern picker
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc37-scoped-batch-save.mpp) · [Source 93956d2cf](https://github.com/CaptKraken/morphe-patches/commit/93956d2cffda4619a3271e658238e28de55e4f48)
