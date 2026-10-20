@@ -64,6 +64,38 @@ internal object PlaylistControllerConstructorFingerprint : Fingerprint(
     filters = listOf(string("engagement-panel-playlist"))
 )
 
+internal fun quickActionsModelCallbackFingerprint(controller: String) = Fingerprint(
+    definingClass = controller,
+    parameters = listOf("Ljava/lang/Object;", "L"),
+    returnType = "L",
+    filters = listOf(opcode(Opcode.CHECK_CAST), methodCall(definingClass = controller,
+        returnType = "V", location = MatchAfterImmediately()))
+)
+
+internal fun quickActionsResetFingerprint(controller: String, setter: MethodReference) = Fingerprint(
+    definingClass = controller,
+    parameters = listOf("L"),
+    returnType = "V",
+    filters = listOf(
+        methodCall(reference = setter),
+        fieldAccess(definingClass = controller, type = "Z", opcode = Opcode.IPUT_BOOLEAN,
+            location = MatchAfterWithin(3))
+    )
+)
+
+internal fun quickActionsSizeFingerprint(controller: String) = Fingerprint(
+    name = "onLayoutChange",
+    parameters = listOf("Landroid/view/View;") + List(8) { "I" },
+    returnType = "V",
+    filters = listOf(
+        methodCall("Landroid/util/Size;-><init>(II)V"),
+        fieldAccess(definingClass = controller, opcode = Opcode.IGET_OBJECT,
+            location = MatchAfterWithin(8)),
+        methodCall(parameters = listOf("Ljava/lang/Object;"), returnType = "V",
+            location = MatchAfterImmediately())
+    )
+)
+
 internal fun acceptedPlaylistModelFingerprint(
     controllerType: String,
     modelField: FieldReference,

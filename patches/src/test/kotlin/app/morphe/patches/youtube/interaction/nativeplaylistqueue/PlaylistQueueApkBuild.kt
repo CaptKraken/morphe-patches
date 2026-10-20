@@ -89,6 +89,7 @@ fun main(arguments: Array<String>) {
             sdkVerifier.verifyDexDirectory(dexDir)
             verifyNativePanelAssignment(dexDir, mode != "unselected")
             verifyNativeRowMenuPaths(dexDir, mode != "unselected")
+            verifyNativeFullscreenActions(dexDir, mode != "unselected")
         }
     }
     Patcher(PatcherConfig(input, workspace, verifier = verifier)).use { patcher ->
@@ -103,6 +104,39 @@ fun main(arguments: Array<String>) {
         arguments.getOrNull(2)?.let { result.applyTo(File(it)) }
         println("$mode: APK patched and SDK DEX/resource verification completed: $workspace")
     }
+}
+
+/** Verify the emitted UI bridge reaches the native setter and size subject, not playback. */
+private fun verifyNativeFullscreenActions(directory: File, selected: Boolean) {
+    val classes = directory.listFiles()!!.filter { it.extension == "dex" }.flatMap { file ->
+        file.inputStream().buffered().use {
+            DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it).classes.toList()
+        }
+    }
+    val extension = "Lapp/morphe/extension/youtube/patches/queue/QueueFullscreenActions;"
+    val controllerInterface = "${extension.removeSuffix(";")}\$Controller;"
+    val controllers = classes.filter { controllerInterface in it.interfaces }
+    if (!selected) {
+        check(controllers.isEmpty()) { "Fullscreen queue UI bridge leaked into an unselected build" }
+        println("Native fullscreen playlist bridge absent when unselected")
+        return
+    }
+    val controller = controllers.single()
+    fun references(name: String) = controller.methods.single { it.name == name }.implementation!!
+        .instructions.mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }
+    val setter = controller.methods.single { method -> method.implementation?.instructions?.any {
+        (it as? ReferenceInstruction)?.reference?.toString()?.startsWith("$extension->onModelLoaded(") == true
+    } == true }
+    val refresh = references("patch_refreshQuickActions")
+    check(refresh.any { it.toString() == setter.toString() }) {
+        "Fullscreen refresh does not reuse the native model setter"
+    }
+    check(refresh.any { it.parameterTypes == listOf("Ljava/lang/Object;") && it.returnType == "V" &&
+            it.definingClass != controller.type }) { "Fullscreen refresh lost the native size emission" }
+    check(references("patch_parseQuickActions").any {
+        it.definingClass == "Lcom/google/protobuf/ExtensionRegistryLite;" && it.name == "getGeneratedRegistry"
+    }) { "Fullscreen model parser does not retain native extensions" }
+    println("Native fullscreen playlist setter, size refresh and registry bridges verified")
 }
 
 /** Check the emitted native video bridge and queue-only menu dispatch paths. */

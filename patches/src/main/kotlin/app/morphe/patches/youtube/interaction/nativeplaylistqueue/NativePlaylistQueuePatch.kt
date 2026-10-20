@@ -64,6 +64,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
         installPlaylistPanel(this)
         installRatingCapture(this)
         installPlaylistRemoval(this)
+        installFullscreenPlaylist(this)
         hookElement("$EXTENSION_CLASS->onElementLoaded")
         hookVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")
         hookBackgroundPlayVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")
