@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC 31 — insert opened videos immediately after current
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc31-insert-opened-video-next.mpp) · [Source b4cb9588d](https://github.com/CaptKraken/morphe-patches/commit/b4cb9588d78d59a174f61a232f1035fce8a86e24)
+
+Corrects PoC30 to the user's confirmed YouTube Web behavior: queue[A,B] withA playing, openC ->[A,C,B] withC selected. Subsequent queued videos keep their order. Reuses existing Play next insertion and selection; same toast/native publication/Shorts/account and navigation guards.
+
+Validation:21tests passed,5unrelatedAPK-dependent tests skipped. Updated regression covers after-current insertion, another open from the middle, selected position, remaining order, immutable snapshots, repeat mode and invalid ID rejection. Build/defaulttrue/MPP CRC/currentYouTubeMPE/all31queueKotlinpayloads verified. No fullAPK rerun for this pure state-order correction; native discovery/injection unchanged from PoC30. No phone/emulator.
+
+Phone check: whileA plays in[A,B], openC, confirm[A,C,B],C playing; Next should playB. Open another video whileC plays and check it appears beforeB. Last-entry insertion and existing queue controls/Shorts/account/Clear still need device checks.
+
+SHA-256: `ff47e08eb3efffe3ccd843a8690641b9f9a5bfcfa92771550c4d3c41bfc4680b`
+
 ## PoC 30 — append newly opened regular videos
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc30-append-opened-video.mpp) · [Source 35fc0132f](https://github.com/CaptKraken/morphe-patches/commit/35fc0132fad9c288f98125bced5a91d08afa1b2b)
