@@ -316,6 +316,47 @@ internal fun installNativeQueueEngine(
             it.implementation?.instructions?.any { instruction -> instruction.getReference<MethodReference>()?.let {
                 it.definingClass == "Ljava/lang/ref/WeakReference;" && it.name == "get"
             } == true } == true }
+    // Queue storage also owns the selected-item listener that loads/unloads playback.
+    // Reuse the native transaction guard (used by accept/commit) while disposing;
+    // removing the last item must not send that listener a null current video.
+    val beginQueueChange = queueClass.methods.single { method ->
+        method.parameterTypes.isEmpty() && method.returnType == "Ljava/lang/Object;" &&
+                accept.implementation!!.instructions.any {
+                    it.getReference<MethodReference>()?.toString() == method.toString()
+                }
+    }
+    val endQueueChange = queueClass.methods.single {
+        it.parameterTypes == listOf("Ljava/lang/Object;", "Z") && it.returnType == "V"
+    }
+    val acquireChange = beginQueueChange.implementation!!.instructions.mapNotNull {
+        it.getReference<MethodReference>()
+    }.single { it.parameterTypes.isEmpty() && it.returnType == "Ljava/lang/Object;" }
+    val changeGuard = queueClass.fields.single { it.type == acquireChange.definingClass }
+    val releaseChange = endQueueChange.implementation!!.instructions.mapNotNull {
+        it.getReference<MethodReference>()
+    }.single { it.definingClass == changeGuard.type && it.parameterTypes == listOf("Ljava/lang/Object;") }
+    bridge(queueType, "patch_disposeWithoutPlayback", emptyList(), "V", 3, """
+        invoke-direct {p0}, $beginQueueChange
+        move-result-object v0
+        iget-object v1, p0, $changeGuard
+        :dispose_start
+        invoke-virtual {p0}, $queueDispose
+        :dispose_end
+        invoke-virtual {v1, v0}, $releaseChange
+        return-void
+        :dispose_failed
+        move-exception v2
+        invoke-virtual {v1, v0}, $releaseChange
+        throw v2
+    """)
+    val guardedDispose = mutableClassDefBy(queueType).methods.single { it.name == "patch_disposeWithoutPlayback" }
+    guardedDispose.implementation!!.apply {
+        val disposeIndex = instructions.indexOfFirst {
+            it.getReference<MethodReference>()?.toString() == queueDispose.toString()
+        }
+        val handlerIndex = instructions.indexOfFirst { it.opcode == Opcode.MOVE_EXCEPTION }
+        addCatch(newLabelForIndex(disposeIndex), newLabelForIndex(disposeIndex + 1), newLabelForIndex(handlerIndex))
+    }
     val nativeReceive = classDefBy(navigatorType).methods.single {
         it.parameterTypes == listOf(responseType) && it.returnType == "V"
     }
@@ -346,7 +387,8 @@ internal fun installNativeQueueEngine(
         if-eqz v5, :dispose_queue
         invoke-virtual {p0, v5}, $autoplay
         :dispose_queue
-        invoke-interface {v2}, $navigatorType->${queueDispose.name}()V
+        check-cast v2, $queueType
+        invoke-virtual {v2}, $queueType->patch_disposeWithoutPlayback()V
         const/4 v0, 0x1
         return v0
         :missing

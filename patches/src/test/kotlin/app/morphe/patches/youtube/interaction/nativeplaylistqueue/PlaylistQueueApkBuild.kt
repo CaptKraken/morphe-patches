@@ -270,13 +270,29 @@ private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
     }
     val responseType = wrapper.methods.single { it.name == "patch_localPanel" }.returnType
     val hydrate = clearCalls.single { (_, reference) -> reference.parameterTypes == listOf(responseType) }.first
-    val dispose = clearCalls.single { (index, reference) ->
-        clear[index].opcode == Opcode.INVOKE_INTERFACE && reference.parameterTypes.isEmpty()
+    val dispose = clearCalls.single { (_, reference) ->
+        reference.name == "patch_disposeWithoutPlayback"
     }.first
     check(releaseFlag >= 0 && releaseFlag < initialize && initialize < hydrate && hydrate < dispose) {
         "Clear queue must release local interception, hydrate ordinary navigation, then dispose the old queue"
     }
-    println("Native clear queue restores ordinary response handling before releasing the old sequence")
+    val guardedDispose = dexFiles.flatMap { it.classes }.flatMap { it.methods }
+        .single { it.name == "patch_disposeWithoutPlayback" && it.implementation != null }
+    val guardedCalls = guardedDispose.implementation!!.instructions.mapNotNull {
+        ((it as? ReferenceInstruction)?.reference as? MethodReference)
+    }.toList()
+    val beginChange = dexFiles.flatMap { it.classes }.flatMap { it.methods }
+        .single { it.toString() == guardedCalls.first().toString() }
+    val acquireChange = beginChange.implementation!!.instructions.mapNotNull {
+        ((it as? ReferenceInstruction)?.reference as? MethodReference)
+    }.single { it.parameterTypes.isEmpty() && it.returnType == "Ljava/lang/Object;" }
+    check(guardedCalls.size == 4 && guardedCalls[2] == guardedCalls[3] &&
+            guardedCalls[2].definingClass == acquireChange.definingClass &&
+            guardedCalls[2].parameterTypes == listOf("Ljava/lang/Object;") &&
+            guardedDispose.implementation!!.tryBlocks.single().exceptionHandlers.single().exceptionType == null) {
+        "Native disposal must acquire the existing queue guard and release it on success and failure"
+    }
+    println("Native clear queue restores ordinary navigation and guards selected-item callbacks during disposal")
     val providers: List<ClassProvider> = dexFiles.map(::DexClassProvider)
     val classPath = ClassPath(providers)
     val bridge = owners.single().methods.single { it.name == "patch_localPanel" }
