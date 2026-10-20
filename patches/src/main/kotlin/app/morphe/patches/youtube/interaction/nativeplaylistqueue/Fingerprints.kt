@@ -15,7 +15,6 @@ import app.morphe.patcher.resource.ResourceType
 import app.morphe.patcher.resourceLiteral
 import app.morphe.patcher.fieldAccess
 import app.morphe.patcher.methodCall
-import app.morphe.patcher.literal
 import app.morphe.patcher.opcode
 import app.morphe.patcher.string
 import app.morphe.util.getReference
@@ -24,47 +23,6 @@ import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
-
-/** Stable Innertube extension numbers identify wire types, never obfuscated host names. */
-internal fun queueSaveEndpointFingerprint(extensionNumber: Int) = Fingerprint(
-    name = "<clinit>",
-    filters = listOf(literal(extensionNumber), methodCall(name = "newSingularGeneratedExtension"))
-)
-
-/** Some resolvers unwrap the command after receiving context; others delegate first. */
-internal fun queueSaveResolverFingerprint(commandType: String, endpointType: String, extensionType: String) = Fingerprint(
-    returnType = "V",
-    filters = listOf(checkCast(commandType)),
-    custom = { method, _ -> (method.parameterTypes == listOf(endpointType) ||
-            method.parameterTypes == listOf(endpointType, "Ljava/util/Map;")) &&
-            // A cast in a compound command can refer to a nested edit, not the
-            // resolver's input. Require this to be the first extension it unwraps.
-            method.implementation?.instructions?.firstNotNullOfOrNull { instruction ->
-                instruction.getReference<FieldReference>()?.takeIf {
-                    instruction.opcode == Opcode.SGET_OBJECT && it.type == extensionType
-                }
-            }?.definingClass == commandType }
-)
-
-internal fun queueSaveResolverEntryFingerprint(resolverType: String, endpointType: String) = Fingerprint(
-    definingClass = resolverType,
-    returnType = "V",
-    parameters = listOf(endpointType, "Ljava/util/Map;")
-)
-
-internal object QueueSaveSheetRowsFingerprint : Fingerprint(
-    parameters = emptyList(),
-    returnType = "Lj$/util/Optional;",
-    filters = listOf(resourceLiteral(ResourceType.LAYOUT, "bottom_sheet_recycler_view"),
-        methodCall(smali = "Landroid/support/v7/widget/RecyclerView;->setClipToPadding(Z)V"))
-)
-
-/** Native transient-sheet migration branch; that branch discards the endpoint tag. */
-internal object QueueSaveSheetPresentationFingerprint : Fingerprint(
-    returnType = "V",
-    parameters = listOf("L") + List(9) { "Lj$/util/Optional;" } + listOf("I", "Z"),
-    filters = listOf(string("ep_transient_sheet_"))
-)
 
 /** Stable diagnostics from the native playback queue, distinct from the panel adapter. */
 internal object NativeQueueDescriptorFingerprint : Fingerprint(

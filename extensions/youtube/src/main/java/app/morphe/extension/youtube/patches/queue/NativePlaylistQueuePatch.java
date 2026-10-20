@@ -652,7 +652,7 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
-    /** Give only our header Save sheet its own selection; never change the caller's map. */
+    /** Remove local header ownership before opening a native single-video Save sheet. */
     public static Map<?, ?> onQueueMenuContext(MessageLite endpoint, Map<?, ?> context) {
         if (endpoint == null || context == null) return context;
         Object owner = context.get(QueueSaveActions.ENDPOINT_TAG);
@@ -672,30 +672,6 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
-    /** The transient-sheet experiment cannot carry the selection's endpoint tag. */
-    public static boolean isQueueSaveSelection(Object owner) {
-        return owner instanceof QueueSaveActions.Selection;
-    }
-
-    /** Rewrite the context-bearing native save resolver's input before it consumes the target. */
-    public static MessageLite onQueueSaveCommand(MessageLite endpoint, Map<?, ?> context) {
-        if (endpoint == null || context == null
-                || !(context.get(QueueSaveActions.ENDPOINT_TAG) instanceof QueueSaveActions.Selection selection)) {
-            return endpoint;
-        }
-        try {
-            var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
-            var expanded = selection.expand(command);
-            if (expanded == command) return endpoint;
-            return ((QueueSaveActions.NativeEndpoint) endpoint).patch_parseQueueSaveEndpoint(expanded.toByteArray());
-        } catch (Exception exception) {
-            Logger.printException(() -> "Could not expand queue save command", exception);
-            Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
-            // Never allow an unexpanded carrier to become an account-playlist mutation.
-            return null;
-        }
-    }
-
     /** Override only commands from an owned row or the exact published queue header. */
     public static MessageLite onQueueMenuCommand(MessageLite endpoint, Map<?, ?> context) {
         if (endpoint == null || context == null) return endpoint;
@@ -704,7 +680,7 @@ public final class NativePlaylistQueuePatch {
         if (!header && (!(owner instanceof QueueRow row) || !row.patch_isQueueOwned())) return endpoint;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
-            // A Save action with no scoped selection is stale, not an ordinary video save.
+            // Header Save must have had its local ownership removed by prepareContext.
             if (header && command.hasShowSheetCommand()) return null;
             if (!command.hasHideEnclosingAction() || command.hasWatchEndpoint()) return endpoint;
             PlaylistController controller = readyController();
