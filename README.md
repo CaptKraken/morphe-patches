@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC 25 — modern native Share sheet
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc25-modern-share-sheet.mpp) · [Source 07bdd17ac](https://github.com/CaptKraken/morphe-patches/tree/07bdd17ac4d26f4c9fb0d8cb307b8f91f0f8fc8d)
+
+PoC24 opened the old Share grid. This build opens YouTube's named action sheet, then requests panel type2 from its native Share service. The server returns the modern Share sheet contents for the tapped queue video. Removes the previous direct legacy Share override; the existing Open system share sheet patch handles its own setting normally. No custom Share UI.
+
+Phone checks: modern bottom sheet; correct link when sharing a nonplaying queued video; current row; cancel/reopen; System Share setting off/on. Check ordinary playlist Share, Save/Download/Remove/swipe and background navigation. Device appearance/behavior pending.
+
+20 tests passed; five unrelated Jam APK skips. Stock21.20.405 combined19related and queue-unselected APK application, SDK12DEX/hierarchy/resource checks passed. Actual anonymous row-entity service responses distinguish legacy type1 from modern type2 and confirm matching sheetId. Emitted command/native onShow ordering inspected. FinalMPP/defaulttrue/currentpayload/CRC and exact staged-tree gate passed. No agents/device/emulator used.
+
+SHA-256: `729797b5e6f391ad05b3b469eea637343ca280d4f9f5fab49e080db63839cd56`
+
 ## PoC 24 — native player Share action and row menu context
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc24-row-menu-share-fix.mpp) · [Source 995b0bfc6](https://github.com/CaptKraken/morphe-patches/tree/995b0bfc6fb8f688025f533883fb7139604d54c7)
