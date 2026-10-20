@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc41-play-last.mpp",
+    "title": "PoC41: Play last in native queue",
+    "description": "Append via existingqueue nativepublication,keep selection/time and existingguards. IncludesPoC40playerSave restoration. QueueheaderSave firstvideoonly; wholequeueSave unresolved.",
+    "phone_checks": [
+      "Playlast from first/middle/last position;check lastentry/currenttime unchanged;Playnextstill inserts aftercurrent.",
+      "Verify queue creation/toast/browsing, duplicateentries, shuffle/repeat/orientation and ordinaryplayerSave."
+    ],
+    "validation": "23tests passed5unrelatedJamAPKskips;strings/build/defaulttrue33s;CRC/currentMPE/all32Kotlinpayloads/gatepassed. No newnativehooks;PoC40actualAPKchecksunchanged. Devicepending.",
+    "commit": "f08ec6d1cd1273100ecdffedbc62b7810226dc06",
+    "sha256": "46227ba62bad974fdd3a3dd83ca95e45780c1bf2296437db4cf81644bdbca1f4",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc41-play-last.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc40-restore-player-save.mpp",
     "title": "PoC40: restore native player Save",
     "description": "Remove shared batch Save interception/globalrowfactorycopies; retain only first-video native queue Save diagnostic. Whole-queue Save not implemented.",

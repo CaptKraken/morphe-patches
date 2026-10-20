@@ -2,6 +2,16 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC41 — Play last in native queue
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc41-play-last.mpp) · [Source f08ec6d1c](https://github.com/CaptKraken/morphe-patches/commit/f08ec6d1cd1273100ecdffedbc62b7810226dc06)
+
+Adds Play last below Play next in eligible video menus, using YouTube's queue-last icon and existing injected menu layout. Appends at end while retaining current selection/order/repeat; shares existing queue publication, metadata, toast and no-panel-expansion behavior. Preserves queue/account/Shorts/current-video/menu guards. Includes PoC40 removal of shared Save modifications. **Queue header Save still saves only the first video; whole-queue saving remains unresolved.**
+
+Validation:23tests passed/5unrelatedJamAPKskips;strings/build/defaulttrue passed33s;CRC/exactcurrentYouTubeMPE/all32Kotlinpayloads/gate passed. No freshAPKrun for unchanged nativehooks; PoC40combined/unselectedAPK checks remain applicable. No phone/emulator; verify append order and uninterrupted playback plus playerSave restoration.
+
+SHA-256: `46227ba62bad974fdd3a3dd83ca95e45780c1bf2296437db4cf81644bdbca1f4`
+
 ## PoC40 — restore native player Save paths
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc40-restore-player-save.mpp) · [Source 549824a7a](https://github.com/CaptKraken/morphe-patches/commit/549824a7a7a90264ec87a9b8f15ae89749dc1715)
