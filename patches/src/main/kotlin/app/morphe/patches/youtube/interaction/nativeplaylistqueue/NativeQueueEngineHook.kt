@@ -93,6 +93,32 @@ internal fun installNativeQueueEngine(
     val localLoad = mutableQueue.methods.single {
         it.returnType == requestType && it.parameterTypes.firstOrNull() == descriptorType
     }
+    val shuffleSetter = nativeQueueShuffleSetterFingerprint(mutableType).matchSingle().originalMethod
+    val shuffleWrites = shuffleSetter.implementation!!.instructions.mapNotNull { instruction ->
+        instruction.getReference<FieldReference>()?.takeIf {
+            it.definingClass == mutableType && instruction.opcode in setOf(Opcode.IPUT_BOOLEAN, Opcode.IPUT_OBJECT)
+        }
+    }.distinct()
+    val shuffleEnabled = shuffleWrites.single { it.type == "Z" }
+    val shuffleLinks = shuffleWrites.filter { it.type == "[I" }
+    check(shuffleLinks.size == 2) {
+        "Native playlist queue: shuffle must build distinct successor and predecessor arrays"
+    }
+    val mutableShuffleGetter = mutableQueue.methods.single { method ->
+        method.parameterTypes.isEmpty() && method.returnType == "Z" &&
+                method.implementation?.instructions?.any {
+                    it.opcode == Opcode.IGET_BOOLEAN && it.getReference<FieldReference>() == shuffleEnabled
+                } == true
+    }
+    val shuffleGetter = classDefBy(shuffleType).methods.single {
+        it.name == mutableShuffleGetter.name && it.parameterTypes.isEmpty() && it.returnType == "Z"
+    }
+    val shuffleCapability = classDefBy(shuffleType).methods.single {
+        it.parameterTypes.isEmpty() && it.returnType == "Z" && it.name != shuffleGetter.name
+    }
+    check(classDefBy(shuffleType).methods.any {
+        it.name == shuffleSetter.name && it.parameterTypes == listOf("Z") && it.returnType == "V"
+    }) { "Native playlist queue: mutable shuffle setter does not implement the active navigator interface" }
     val playlistId = localLoad.implementation!!.instructions.mapNotNull { it.getReference<MethodReference>() }
         .single { it.definingClass == descriptorType && it.returnType == "Ljava/lang/String;" && it.parameterTypes.isEmpty() }
     val repeatGetter = classDefBy(repeatType).methods.single { it.parameterTypes.isEmpty() && it.returnType == "I" }
@@ -157,13 +183,30 @@ internal fun installNativeQueueEngine(
         const/4 v0, 0x0
         return-object v0
     """)
-    bridge(wrapperType, "patch_attachQueue", listOf("[B"), "Z", 7, """
+    bridge(wrapperType, "patch_canShuffle", emptyList(), "Z", 1, """
+        iget-object v0, p0, $nativeNavigator
+        invoke-interface {v0}, $shuffleCapability
+        move-result v0
+        return v0
+    """)
+    // Disable only the mutable shuffler, without publishing an intermediate mode.
+    // The old index links cannot be used while the accepted rows are replaced.
+    bridge(mutableType, "patch_clearShuffleOrder", emptyList(), "V", 1, """
+        const/4 v0, 0x0
+        invoke-virtual {p0, v0}, $shuffleSetter
+        iput-object v0, p0, ${shuffleLinks[0]}
+        iput-object v0, p0, ${shuffleLinks[1]}
+        return-void
+    """)
+    bridge(wrapperType, "patch_attachQueue", listOf("[B"), "Z", 8, """
         invoke-virtual {p0, p1}, $wrapperType->patch_localPanel([B)$responseType
         move-result-object v0
         if-eqz v0, :missing
         iget-object v1, p0, $nativeNavigator
         invoke-interface {v1}, $repeatGetter
         move-result v6
+        invoke-interface {v1}, $shuffleGetter
+        move-result v7
         new-instance v2, ${builderConstructor.definingClass}
         invoke-direct {v2}, $builderConstructor
         iget-object v3, v0, $watchCommand
@@ -187,6 +230,7 @@ internal fun installNativeQueueEngine(
         check-cast v3, $queueType
         iget-object v4, v3, $queueOwner
         check-cast v4, $mutableType
+        invoke-virtual {v4}, $mutableType->patch_clearShuffleOrder()V
         invoke-virtual {v3, v0}, $accept
         const/4 v5, 0x1
         iput-boolean v5, v4, $localItemsFlag
@@ -194,6 +238,7 @@ internal fun installNativeQueueEngine(
         iput-boolean v5, p0, $nativeQueueFlag
         iput-boolean v5, p0, $localFlag
         invoke-interface {v3, v6}, $repeatSetter
+        invoke-interface {v3, v7}, $shuffleType->${shuffleSetter.name}(Z)V
         invoke-virtual {v3, v5}, $refresh
         return v5
         :missing

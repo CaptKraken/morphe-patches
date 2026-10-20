@@ -38,6 +38,14 @@ internal fun nativeQueueWrapperFingerprint(navigator: String, repeat: String, sh
     custom = { method, _ -> method.parameterTypes.take(3) == listOf(navigator, repeat, shuffle) }
 )
 
+/** The native mutable queue builds its shuffle links with the framework shuffler. */
+internal fun nativeQueueShuffleSetterFingerprint(queue: String) = Fingerprint(
+    definingClass = queue,
+    parameters = listOf("Z"),
+    returnType = "V",
+    filters = listOf(methodCall("Ljava/util/Collections;->shuffle(Ljava/util/List;)V"))
+)
+
 internal fun nativeQueueLoaderFingerprint(service: String, descriptor: String) = Fingerprint(
     definingClass = service,
     parameters = listOf(descriptor, "L"),
@@ -389,6 +397,19 @@ internal fun playlistControlPressFingerprint(controlsType: String, request: Fiel
 internal object PlaylistHeaderConstructorFingerprint : Fingerprint(
     name = "<init>",
     filters = listOf(resourceLiteral(ResourceType.LAYOUT, "compact_playlist_panel_header"))
+)
+
+internal object PlaylistShuffleViewFingerprint : Fingerprint(
+    classFingerprint = PlaylistHeaderConstructorFingerprint,
+    name = "<init>",
+    filters = listOf(
+        resourceLiteral(ResourceType.ID, "shuffle"),
+        methodCall("Landroid/view/View;->findViewById(I)Landroid/view/View;", location = MatchAfterImmediately()),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+        checkCast("Landroid/widget/ImageView;", location = MatchAfterImmediately()),
+        fieldAccess(type = "Landroid/widget/ImageView;", opcode = Opcode.IPUT_OBJECT,
+            location = MatchAfterImmediately())
+    )
 )
 
 /** Both native repeat controls observe this exact mode/shuffle pair. */

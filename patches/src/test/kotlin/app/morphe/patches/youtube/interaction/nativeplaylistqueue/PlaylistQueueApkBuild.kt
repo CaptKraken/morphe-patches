@@ -40,6 +40,10 @@ import com.android.tools.smali.dexlib2.analysis.DexClassProvider
 import com.android.tools.smali.dexlib2.analysis.MethodAnalyzer
 import com.android.tools.smali.dexlib2.analysis.RegisterType
 import com.android.tools.smali.dexlib2.dexbacked.DexBackedDexFile
+import com.android.tools.smali.dexlib2.iface.ClassDef
+import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.Instruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OffsetInstruction
@@ -239,6 +243,7 @@ private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
     val owners = dexFiles.flatMap { it.classes }.filter { playbackInterface in it.interfaces }
     check(owners.size == if (selected) 1 else 0) { "Unexpected native playback bridge inclusion" }
     if (!selected) return
+    verifyNativeShuffle(dexFiles.flatMap { it.classes })
     val providers: List<ClassProvider> = dexFiles.map(::DexClassProvider)
     val classPath = ClassPath(providers)
     val bridge = owners.single().methods.single { it.name == "patch_localPanel" }
@@ -256,4 +261,59 @@ private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
         }
     }
     println("Native playback panel field assignments: compatible register types")
+}
+
+/** Shuffle links refer to row indexes: replacing rows must rebuild them without losing the mode. */
+private fun verifyNativeShuffle(classes: List<ClassDef>) {
+    val mutableQueue = classes.single { type -> type.methods.any { it.name == "patch_clearShuffleOrder" } }
+    val clear = mutableQueue.methods.single { it.name == "patch_clearShuffleOrder" }
+        .implementation!!.instructions.toList()
+    val disableIndex = clear.indexOfFirst { it.opcode == Opcode.INVOKE_VIRTUAL }
+    val disable = (clear[disableIndex] as ReferenceInstruction).reference as MethodReference
+    val nativeSetter = mutableQueue.methods.single { it.toString() == disable.toString() }
+    check(disable.parameterTypes == listOf("Z") && disable.returnType == "V" &&
+            (clear[disableIndex - 1] as NarrowLiteralInstruction).narrowLiteral == 0) {
+        "Shuffle cache reset must disable the original mutable shuffler first"
+    }
+    fun linkFields(methodInstructions: Iterable<Instruction>) =
+        methodInstructions.filter { it.opcode == Opcode.IPUT_OBJECT }.mapNotNull {
+            ((it as ReferenceInstruction).reference as FieldReference).takeIf { field -> field.type == "[I" }
+        }.toSet()
+    val resetLinks = linkFields(clear)
+    check(resetLinks.size == 2 && resetLinks == linkFields(nativeSetter.implementation!!.instructions) &&
+            clear.indexOfFirst { it.opcode == Opcode.IPUT_OBJECT } > disableIndex) {
+        "Shuffle reset must invalidate both original index maps after disabling their use"
+    }
+    val playback = classes.single { type -> type.methods.any {
+        it.name == "patch_attachQueue" && it.implementation != null
+    } }
+    val attach = playback.methods.single { it.name == "patch_attachQueue" }.implementation!!.instructions.toList()
+    val responseType = playback.methods.single { it.name == "patch_localPanel" }.returnType
+    fun reference(index: Int) = (attach[index] as? ReferenceInstruction)?.reference as? MethodReference
+    val clearIndex = attach.indices.single { reference(it)?.name == "patch_clearShuffleOrder" }
+    val acceptIndex = attach.indices.single { index -> reference(index)?.let {
+        it.returnType == "V" && it.parameterTypes == listOf(responseType)
+    } == true }
+    val restoreIndex = attach.indices.single { index -> reference(index)?.let {
+        it.name == disable.name && it.parameterTypes == listOf("Z") && it.returnType == "V" &&
+                attach[index].opcode == Opcode.INVOKE_INTERFACE
+    } == true }
+    val enabledField = nativeSetter.implementation!!.instructions.single { it.opcode == Opcode.IPUT_BOOLEAN }
+        .let { ((it as ReferenceInstruction).reference as FieldReference) }
+    val getterName = mutableQueue.methods.single { method ->
+        method.parameterTypes.isEmpty() && method.returnType == "Z" &&
+                method.implementation?.instructions?.any {
+                    it.opcode == Opcode.IGET_BOOLEAN && (it as ReferenceInstruction).reference == enabledField
+                } == true
+    }.name
+    val captureIndex = attach.indices.single { reference(it)?.name == getterName && reference(it)?.returnType == "Z" }
+    check(captureIndex < clearIndex && clearIndex < acceptIndex && acceptIndex < restoreIndex &&
+            (attach[captureIndex + 1] as OneRegisterInstruction).registerA ==
+                    (attach[restoreIndex] as FiveRegisterInstruction).registerD) {
+        "Native shuffle mode must be captured before reset and restored after accepting replacement rows"
+    }
+    check(playback.methods.single { it.name == "patch_updateSnapshot" }.implementation!!.instructions.none {
+        (it as? ReferenceInstruction)?.reference?.toString()?.contains("patch_clearShuffleOrder") == true
+    }) { "Metadata-only publication must not reset shuffle order" }
+    println("Native shuffle: original index maps reset safely, mode restored after row replacement, metadata snapshot preserved")
 }

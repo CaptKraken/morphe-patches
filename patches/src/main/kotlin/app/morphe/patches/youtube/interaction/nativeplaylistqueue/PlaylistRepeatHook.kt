@@ -44,6 +44,11 @@ internal fun installPlaylistRepeat(
     val repeatView = header.fields.single {
         it.type == "Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;"
     }
+    val shuffleMatch = PlaylistShuffleViewFingerprint.matchSingle()
+    val shuffleView = shuffleMatch.instructionMatches.last().instruction.getReference<FieldReference>()!!
+    check(shuffleView.definingClass == headerType) {
+        "Native playlist queue: shuffle and repeat must share the native header"
+    }
     val capabilities = PlaylistRepeatCapabilitiesFingerprint.matchSingle()
     check(capabilities.originalMethod == binding.originalMethod) {
         "Native playlist queue: repeat capabilities and state must share their native binder"
@@ -68,6 +73,11 @@ internal fun installPlaylistRepeat(
         iput-boolean v0, p0, $repeatOne
         iget-object v1, p0, $repeatView
         invoke-virtual {v1, v0}, Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;->setEnabled(Z)V
+        return-void
+    """)
+    bridge(headerType, "patch_setShuffleAvailable", listOf("Z"), "V", 1, """
+        iget-object v0, p0, $shuffleView
+        invoke-virtual {v0, p1}, Landroid/widget/ImageView;->setEnabled(Z)V
         return-void
     """)
     // The binder reuses p0 on some exits. Preserve its owner before observing all returns.

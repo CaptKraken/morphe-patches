@@ -97,12 +97,14 @@ public final class NativePlaylistQueuePatch {
         void patch_updateSnapshot(byte[] panel);
         int patch_getSelectedIndex();
         int patch_getRepeatMode();
+        boolean patch_canShuffle();
     }
 
     public interface RepeatHeader {
         Object patch_getNavigator();
         Object patch_getPanel();
         void patch_enableRepeat();
+        void patch_setShuffleAvailable(boolean available);
     }
 
     /** Native listener bridge retains the bound endpoint before logging decorates it. */
@@ -443,6 +445,7 @@ public final class NativePlaylistQueuePatch {
         Utils.runOnMainThread(() -> {
             if (queue == null || isQueueSuspended()) return;
             syncNativeSelection(VideoInformation.getVideoId());
+            refreshRepeatHeaders();
             if (selectionNeedsPublishing) refreshOwnedPanel(VideoInformation.getVideoId());
         });
     }
@@ -500,7 +503,12 @@ public final class NativePlaylistQueuePatch {
 
     private static void refreshRepeatHeader(RepeatHeader header) {
         PlaylistController controller = ownedNavigator(header.patch_getNavigator());
-        if (controller != null && header.patch_getPanel() == controller.patch_getPanel()) header.patch_enableRepeat();
+        if (controller != null && header.patch_getPanel() == controller.patch_getPanel()) {
+            header.patch_enableRepeat();
+            NativePlayback playback = playbackFor(controller);
+            header.patch_setShuffleAvailable(playback != null
+                    && playback.patch_isLocalQueue() && playback.patch_canShuffle());
+        }
     }
 
     private static void refreshRepeatHeaders() {
