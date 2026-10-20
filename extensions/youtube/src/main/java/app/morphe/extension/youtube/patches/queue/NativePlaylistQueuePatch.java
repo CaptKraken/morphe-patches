@@ -790,10 +790,14 @@ public final class NativePlaylistQueuePatch {
     public static int addFlyoutButton(Object flyoutPanel, int index, String videoId) {
         if (!isPatchIncluded() || dragSession != null || !PlaylistQueue.isVideoId(videoId)) return index;
         PlayerType playerType = PlayerType.getCurrent();
+        String playingVideoId = VideoInformation.getVideoId();
         if (playerType.isNoneOrHidden() || playerType == PlayerType.INLINE_MINIMAL
-                || !PlaylistQueue.isVideoId(VideoInformation.getVideoId())
-                || !VideoInformation.getPlaylistId().isEmpty()
-                || videoId.equals(VideoInformation.getVideoId())) return index;
+                || !PlaylistQueue.isVideoId(playingVideoId) || videoId.equals(playingVideoId)) return index;
+        // The latest player response can belong to a prefetched video. Only the
+        // accepted controller for the playing video can hide this as a playlist.
+        PlaylistController controller = controllerRef.get();
+        if (controller != null && playingVideoId.equals(controller.patch_getVideoId())
+                && hasPlaylist(controller)) return index;
 
         int iconId = ResourceUtils.getIdentifier(ResourceType.DRAWABLE,
                 "yt_outline_experimental_queue_next_vd_theme_24");
