@@ -2,6 +2,20 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC42 — save the whole queue through the native batch picker
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc42-native-batch-save.mpp) · [Source 0c5a46e74](https://github.com/CaptKraken/morphe-patches/commit/0c5a46e745abb8181a690e504ad6e92a90e71d01)
+
+Queue header Save now opens YouTube's **native batch picker (older list/checkbox layout)** and sends all queued videos as separate IDs in its native playlist/get_add_to_playlist request. Its original destination membership, Save/New playlist commands, authentication and callbacks remain native. This replaces PoC41's first-video-only diagnostic. Ordinary player/per-row/account Save has no queue marker and keeps its original request. No CSV IDs, generic row replacements, final edit/create interception or custom account client. Includes Play last and playerSave restoration.
+
+The snapshot is attached only after validating the exact active queue header, then copied to that native fragment's saved arguments. Native request construction uses that snapshot; later queue clear/reorder and rotation cannot change the selected IDs. Playback is not modified.
+
+Validation:23tests passed/5unrelatedJamAPKskips; actual21.20.405 combined19related and unselected SDK12DEX/hierarchy/resources passed. Queue marker/argument/request-list bridge and unselectedabsence verified. Eleven native Save/auth/requestserializer/callback methods match stock. Final MPP/defaulttrue/exactcurrentYouTubeMPE/all34Kotlinpayloads/CRC and mandatory commit gate passed. **No authenticated phone Save test performed here.**
+
+Please test3different queued videos: existing playlist and New must receive every ID in order. Also test partial membership, normalplayer/per-rowSave, cancel/rotation/clear/reorder while picker open and uninterrupted playback. Watch Later can have independent YouTube backend limitations. Modern batch-picker layout remains deferred.
+
+SHA-256: `b6b65331702a9d65040a9ad8e2a3a520c37343f81592cc1a820e5d9a6a27e811`
+
 ## PoC41 — Play last in native queue
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc41-play-last.mpp) · [Source f08ec6d1c](https://github.com/CaptKraken/morphe-patches/commit/f08ec6d1cd1273100ecdffedbc62b7810226dc06)

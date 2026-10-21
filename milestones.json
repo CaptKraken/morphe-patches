@@ -1,5 +1,19 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc42-native-batch-save.mpp",
+    "title": "PoC42: real native whole-queue batch Save",
+    "description": "Uses older native batchpicker and real repeatedvideoIDs. Onlyownedqueueheader carries immutable selection into savedfragmentargs/native request. Native destination/New/auth/callbacks retained; ordinarySavepasses through. IncludesPlaylast. Modernbatchlayoutdeferred.",
+    "phone_checks": [
+      "Queue3distinctvideos/currentmiddle; saveexisting andNew; verifyeveryID/order/nonemptyNew.",
+      "Checkfirstalready-saved/partialmembership/uncheck, nativeerrors/WatchLater, cancel/rotation/clear/reorderwhilepickeropen.",
+      "Ordinaryplayer/account/per-rowSave and allqueueplaybackcontrols unchanged."
+    ],
+    "validation": "23tests passed5unrelatedskips; actualcombined19related2m17s/unselected+finalbuild2m35s SDK12DEX/hierarchy58183/resources/nativebridgeisolation.11nativeauth/serializer/callback/modernSavemethodsstockmatch. MPPdefaulttrue/currentMPE/all34Kotlinpayloads/CRC/gatepassed. AuthenticateddeviceSavepending.",
+    "commit": "0c5a46e745abb8181a690e504ad6e92a90e71d01",
+    "sha256": "b6b65331702a9d65040a9ad8e2a3a520c37343f81592cc1a820e5d9a6a27e811",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc42-native-batch-save.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc41-play-last.mpp",
     "title": "PoC41: Play last in native queue",
     "description": "Append via existingqueue nativepublication,keep selection/time and existingguards. IncludesPoC40playerSave restoration. QueueheaderSave firstvideoonly; wholequeueSave unresolved.",
