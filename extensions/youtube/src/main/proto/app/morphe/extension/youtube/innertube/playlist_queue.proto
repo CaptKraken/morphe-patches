@@ -318,8 +318,9 @@ message QueueSaveDestination {
 message QueueSaveHeaderItem {
     optional QueueSaveHeader playlist_add_to_header_renderer = 82258301;
 }
+// Native menu title header: field 2 is the button renderer; field 3 is text.
 message QueueSaveHeader {
-    optional SwipeAction button = 3;
+    optional SwipeAction button = 2;
 }
 
 // Native browse/edit_playlist success response and exact added-entry results.

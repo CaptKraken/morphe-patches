@@ -51,6 +51,17 @@ class QueueSaveActionsTest {
                         try { action.run(); throw new AssertionError("Expected invalid selection rejection"); }
                         catch (IllegalArgumentException expected) {}
                     }
+                    // Stock beoz schema: button renderer is field 2; field 3 is text.
+                    // Write the native wire shape independently of our generated header
+                    // builder, which previously hid an incorrect field declaration.
+                    static QueueSaveHeader nativeHeader(SwipeAction button) throws Exception {
+                        var bytes = new java.io.ByteArrayOutputStream();
+                        var output = com.google.protobuf.CodedOutputStream.newInstance(bytes);
+                        output.writeMessage(2, button);
+                        output.writeMessage(3, Text.newBuilder().setSimpleText("New playlist").build());
+                        output.flush();
+                        return QueueSaveHeader.parseFrom(bytes.toByteArray());
+                    }
                     static class Picker implements QueueSaveActions.Picker {
                         List<String> videoIds;
                         Picker(List<String> ids) { videoIds = ids; }
@@ -134,8 +145,8 @@ class QueueSaveActionsTest {
                                         QueueSaveDestination.newBuilder().setSelectionState(3).setAddEndpoint(add)
                                             .setTitle(Text.newBuilder().addRuns(TextRun.newBuilder().setText("Test playlist")))))
                                 .addHeaders(QueueSaveHeaderItem.newBuilder().setPlaylistAddToHeaderRenderer(
-                                    QueueSaveHeader.newBuilder().setButton(SwipeAction.newBuilder()
-                                        .setButtonRenderer(SwipeButton.newBuilder().setNavigationEndpoint(create)))))))
+                                    nativeHeader(SwipeAction.newBuilder()
+                                        .setButtonRenderer(SwipeButton.newBuilder().setNavigationEndpoint(create)).build())))))
                             .build();
                         var wire = new java.io.ByteArrayOutputStream();
                         wire.write(response.toByteArray());
