@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC50 — identify the startup publication exception
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc50-startup-failure-diagnostic.mpp) · [Source 4eea46758](https://github.com/CaptKraken/morphe-patches/commit/4eea46758de265599cbf900d184b5104493028b9)
+
+PoC49 did not resolve the reported toast. This is a diagnostic build, not a claimed fix. The error now names the failed publication boundary and exception type (for example, `Queue/panel IllegalStateException`). Existing queue creation, native playback/miniplayer, error reporting and rollback behavior are unchanged. No unrelated Save, notification or native hook changes.
+
+Validation: 24 tests passed, 5 unrelated Jam APK skips; MPP build succeeded in 31s. Current YouTube MPE, 36 queue Kotlin class payloads and CRC verified. Native source/DEX boundaries and pinned Logger toast API inspected; existing APK validation applies to unchanged hooks. No attached device or current exception trace.
+
+Repeat the first queue/miniplayer scenario and report the new short error text. The underlying issue remains under investigation.
+
+SHA-256: `810eedfed3c847c9c7fb47554f6916d4a9ffaa79464fa9eeb07fd6f4d0836d00`
+
 ## PoC49 — first-queue native callback timing
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc49-startup-callback-timing.mpp) · [Source fc92eaa85](https://github.com/CaptKraken/morphe-patches/commit/fc92eaa857c17c6fb3e6ed2ce0571e8e66655d3c)

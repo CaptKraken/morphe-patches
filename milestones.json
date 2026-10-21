@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc50-startup-failure-diagnostic.mpp",
+    "title": "PoC50: startup publication failure diagnostic",
+    "description": "Expose exact queue publication stage and exception type through existing Logger toast; no playback behavior change or claimed root-cause fix.",
+    "phone_checks": [
+      "Repeat first queue/miniplayer scenario; report new Queue/<stage> exception type text.",
+      "Queue creation and browsing/miniplayer remain unchanged."
+    ],
+    "validation": "24 pass,5 unrelated skips; test/MPP build31s; exact current YouTube MPE/36 queue Kotlin classes/CRC and gate passed. No fresh APK or device claim.",
+    "commit": "4eea46758de265599cbf900d184b5104493028b9",
+    "sha256": "810eedfed3c847c9c7fb47554f6916d4a9ffaa79464fa9eeb07fd6f4d0836d00",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc50-startup-failure-diagnostic.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc49-startup-callback-timing.mpp",
     "title": "PoC49: defer first queue attachment after native callback",
     "description": "Firstqueue controller update queues startup after native acceptance/render setup finishes; no synchronous reentry. Keeps miniplayer/ordinary null-model support and genuine error logs.",
@@ -10,7 +23,8 @@
     "validation": "24pass5unrelatedskips;finaltests/MPP31s;nativeacceptanceorder/Handlerpostcontractinspected;PoC48SDKcoverage reusedunchangedhooks;currentMPE/37Kotlinpayloads/CRC/defaulttrue/gatepassed. Devicepending.",
     "commit": "fc92eaa857c17c6fb3e6ed2ce0571e8e66655d3c",
     "sha256": "46746d61561c5b40b4f5c38a5a13323ff536ac9337e5b25821b9c3c576425605",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc49-startup-callback-timing.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc49-startup-callback-timing.mpp",
+    "phone_result": "FAILED: user still sees the same generic publication error toast."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc48-miniplayer-queue-start.mpp",
