@@ -67,6 +67,9 @@ tasks {
             "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveFeedback.java"
         )).withPropertyName("playlistQueueSaveFeedbackSource")
         inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueUndoActions.java"
+        )).withPropertyName("playlistQueueUndoActionsSource")
+        inputs.file(rootProject.file(
             "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueStart.java"
         )).withPropertyName("playlistQueueStartSource")
         inputs.file(rootProject.file(
