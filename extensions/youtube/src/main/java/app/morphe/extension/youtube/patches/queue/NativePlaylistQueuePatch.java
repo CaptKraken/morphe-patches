@@ -1017,19 +1017,23 @@ public final class NativePlaylistQueuePatch {
         publishing = true;
         Object previousModel = controller.patch_getModel();
         Object acceptedModel = null;
+        String stage = "playback";
         try {
             NativePlayback playback = playbackFor(controller);
             if (playback == null) {
                 if (reportFailure) Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
                 return false;
             }
+            stage = "renderer";
             byte[] panel = renderer(candidate);
+            stage = "panel";
             acceptedModel = controller.patch_updatePanel(panel);
             if (acceptedModel == null) {
                 if (reportFailure) Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
                 return false;
             }
             boolean changedItems = queue == null || !queue.entries().equals(candidate.entries());
+            stage = "attach";
             if (!playback.patch_isLocalQueue() || changedItems) {
                 if (!playback.patch_attachQueue(panel)) {
                     controller.patch_restorePanel(acceptedModel, previousModel);
@@ -1039,20 +1043,29 @@ public final class NativePlaylistQueuePatch {
             } else playback.patch_updateSnapshot(panel);
             nativePlaybackRef = new WeakReference<>(playback);
             // The native sequencer, including its inherited Loop mode, is authoritative.
+            stage = "repeat";
             candidate = candidate.withRepeatMode(playback.patch_getRepeatMode());
             queue = candidate;
             publishedModel = acceptedModel;
             selectionNeedsPublishing = false;
+            stage = "rows";
             controller.patch_markQueueRows();
+            stage = "headers";
             refreshRepeatHeaders();
+            stage = "controls";
             refreshPlayerControls(controller.patch_getNavigator());
+            stage = "fullscreen";
             QueueFullscreenActions.refresh();
             return true;
         } catch (Exception exception) {
             if (acceptedModel != null && controller.patch_getModel() == acceptedModel) {
                 controller.patch_restorePanel(acceptedModel, previousModel);
             }
-            Logger.printException(() -> "Could not display native playlist queue", exception);
+            // Keep the failed native boundary visible during phone testing;
+            // playback can start successfully before a later publication step fails.
+            String failedStage = stage;
+            Logger.printException(() -> "Queue/" + failedStage + " "
+                    + exception.getClass().getSimpleName(), exception);
             if (reportFailure) Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
             return false;
         } finally {
