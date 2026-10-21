@@ -2,6 +2,20 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC54 — watch-screen snackbar Undo, with targeted status feedback
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc54-modern-undo.mpp) · [Source ad41a5049](https://github.com/CaptKraken/morphe-patches/commit/ad41a504933a959d1c57e193e9cef7bdc7aa7624)
+
+PoC53 still failed. Native source tracing found the previous hook targeted the quantum snackbar used by the share panel. The watch-screen toast subscriber uses a different factory/listener, which also replaces the enclosing row tag. PoC54 discovers that actual factory and chains its three native endpoint slots. The obsolete share-panel hook is removed; ordinary native actions preserve their callbacks. Existing token/session/restoration guards retained.
+
+This phone-test build temporarily shows `Queue Undo/restored` on successful activation, or the blocked restoration stage (`player`, `busy`, `backend missing/changed`, `queue changed`, `publish failed`, or `expired or replaced`). No IDs/account data are displayed. If no such message appears, the callback/payload was not reached. Remove diagnostics after phone confirmation.
+
+Validation:25tests passed/5unrelatedJamAPKskips; fresh21.20.405 combined20-related SDK12DEX/hierarchy/resources+modern3-slotcallback verifier passed2m36s, finaltests/MPP11s. Old share-panel listener matches stock exactly;18nativeSave methods stock-exact. Updated absence check passes on existing unselectedAPK; no freshunselectedrun claimed. CRC/currentMPE/38queueKotlinclasses and mandatory gate passed. **Phone behavior pending.**
+
+Test immediate removal/Clear Undo and playback continuity; report the `Queue Undo/...` status if it fails. Ordinary Save Undo should keep working.
+
+SHA-256: `d830227d5a7d4715e41aa88386770b4299065bc310cbe5a10757efe7b20793e2`
+
 ## PoC53 — local Undo independent of native dispatcher and row context
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc53-undo-dispatch.mpp) · [Source 65ed65bfb](https://github.com/CaptKraken/morphe-patches/commit/65ed65bfb2f07afdc6e9d40473fcda9eb434927a)
