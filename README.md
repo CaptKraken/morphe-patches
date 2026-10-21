@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC53 — authorize snackbar Undo independently of row context
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc53-undo-capability.mpp) · [Source 24f9e1e02](https://github.com/CaptKraken/morphe-patches/commit/24f9e1e02bd0f0be00e82c2dd02178929d97454c)
+
+User reports both PoC52 Undo actions failed. Undo now has a dedicated native snackbar callback authorized by its one-use local token, instead of passing through the enclosing row/menu ownership guard. Active video/backend/lifecycle/stale-edit checks remain. Expired/replaced local commands are consumed; ordinary snackbar actions retain their original endpoint, context and callback. Old menu-token routing removed. This corrects the ownership contract; phone confirmation is pending.
+
+Validation:25tests passed/5unrelatedJamAPKskips, final MPP31s. Fresh21.20.405 combined20-related SDK12DEX/hierarchy/resources and semanticUndo callback/register/dismissal verification passed2m29s.18nativeSave methods stock-exact; updated verifier confirms absence on existing unselectedAPK. No freshunselected run; its native wiring is unchanged. Final CRC/currentMPE/37queueKotlinclasses and mandatory gate passed.
+
+Test Undo immediately after row removal and Clear queue; verify restoration and continuous playback. Check expired/latest-only tokens and ordinary Save Undo.
+
+SHA-256: `1a841d900507229b6867bf378934c7d0ca759dbede9d6f5d36ccaa3eb4c35d6e`
+
 ## PoC52 — Undo removing a video or clearing the queue
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc52-undo-removal-clear.mpp) · [Source 2993f6a16](https://github.com/CaptKraken/morphe-patches/commit/2993f6a16a51ba6fab2e4098bb93e2b44b809703)

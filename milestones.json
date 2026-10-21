@@ -1,5 +1,19 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc53-undo-capability.mpp",
+    "title": "PoC53: dedicated token-authorized snackbar Undo",
+    "description": "Route native snackbar to separate boolean Undo callback authorized by local capability, independent of enclosing row/menu context. Preserve original native endpoint and context for other actions; existing restoration/session guards retained.",
+    "phone_checks": [
+      "Immediate row-removal Undo restores row/order without interrupting playback.",
+      "Clear Undo restores queue/controls and continuous playback.",
+      "Latest-only/stale/expired/newvideo guards; ordinary Save Undo unchanged."
+    ],
+    "validation": "25pass5unrelatedskips;finalMPP31s;freshcombinedSDK12DEX/resources/Undo semanticverifier2m29s;18nativeSaveexact;updatedunselectedabsencecheckonexistingAPK;CRC/currentMPE/37Kotlinclasses/gatepass. Phonepending.",
+    "commit": "24f9e1e02bd0f0be00e82c2dd02178929d97454c",
+    "sha256": "1a841d900507229b6867bf378934c7d0ca759dbede9d6f5d36ccaa3eb4c35d6e",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc53-undo-capability.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc52-undo-removal-clear.mpp",
     "title": "PoC52: Undo row removal and Clear queue",
     "description": "Native snackbar Undo for local queue swipe/menu removal and header Clear; restore order/current selection without playback load/seek/pause. Same session/token/latest edit guards; native repeat/shuffle modes restored after Clear.",
@@ -11,7 +25,8 @@
     "validation": "25pass5unrelatedskips;strings/finalMPP39s;combined20relatedSDK12DEX/resources2m16s/unselected2m2s;emittedUndo/dismissal/registry check+18stockSavemethods;CRC/currentMPE/37Kotlinclasses/gatepass. Runtime-only finalguard tested;phonepending.",
     "commit": "2993f6a16a51ba6fab2e4098bb93e2b44b809703",
     "sha256": "57f8ceefc6a41340ad2a64ed726cd1bffb383ea6466daa3b9c381cd7c342b67e",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc52-undo-removal-clear.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc52-undo-removal-clear.mpp",
+    "phone_result": "FAILED: user reports Undo did not work after either removal or Clear queue."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc51-unbound-service.mpp",
