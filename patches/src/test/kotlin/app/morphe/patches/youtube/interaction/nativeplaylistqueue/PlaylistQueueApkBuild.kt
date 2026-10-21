@@ -220,14 +220,18 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
         }
         if (index < 0) null else Triple(method, instructions, index)
     }
+    val responseHooks = classes.flatMap { it.methods }.filter { method ->
+        method.implementation?.instructions?.any {
+            (it as? ReferenceInstruction)?.reference?.toString()?.contains("QueueSaveActions;->onPickerResponse(") == true
+        } == true
+    }
     if (selected) {
-        val endpoint = batchEndpoints.single()
+        check(batchEndpoints.isEmpty()) { "Transient endpoint instance markers must not own a batch selection" }
         val picker = batchPickers.single()
-        check(endpoint.fields.count { it.name == "patch_queueSaveVideoIds" && it.type == "Ljava/util/List;" } == 1)
         val (factory, factoryInstructions, transferIndex) = argumentTransfers.single()
         val transfer = factoryInstructions[transferIndex] as FiveRegisterInstruction
         val serialization = factoryInstructions[transferIndex + 1] as ReferenceInstruction
-        check(factory.parameterTypes.map { it.toString() } == listOf(endpoint.type) &&
+        check(factory.parameterTypes.size == 1 &&
                 serialization.reference.toString().endsWith("->toByteArray()[B") &&
                 (serialization as FiveRegisterInstruction).registerC == transfer.registerC) {
             "Owned selection must enter native saved arguments before endpoint serialization overwrites its register"
@@ -241,9 +245,12 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
         }
         val getter = picker.methods.single { it.name == "patch_getQueueSaveVideoIds" }.implementation!!.instructions
         check(getter.any { (it as? ReferenceInstruction)?.reference?.toString()?.contains("->getQueueSaveVideoIds(") == true })
-        println("Queue-owned native batch picker: marker, saved arguments, real request list and original callbacks verified")
+        check(responseHooks.size == 1 && responseHooks.single().definingClass != picker.type)
+        check(picker.methods.count { it.name == "patch_parseQueueSaveResponse" } == 1)
+        println("Queue-owned batch Save: serialized selection, saved arguments, request and destination commands wired")
     } else {
-        check(batchEndpoints.isEmpty() && batchPickers.isEmpty() && argumentTransfers.isEmpty() && batchRequests.isEmpty()) {
+        check(batchEndpoints.isEmpty() && batchPickers.isEmpty() && argumentTransfers.isEmpty() &&
+                batchRequests.isEmpty() && responseHooks.isEmpty()) {
             "Native batch Save bridge leaked into a patch-unselected build"
         }
     }

@@ -162,6 +162,9 @@ message NavigationEndpoint {
     optional ShowSheetCommand show_sheet_command = 443434441;
     optional PlaylistEditEndpoint playlist_edit_endpoint = 60666189;
     optional CreatePlaylistEndpoint create_playlist_endpoint = 124747980;
+    // Extension-owned local selection, never a YouTube request field. Keeping it
+    // in the command preserves it across native protobuf copies/serialization.
+    repeated string queue_save_video_ids = 500000000;
 }
 
 message ShowSheetCommand {
@@ -277,5 +280,32 @@ message SwipeButton {
     optional bool is_disabled = 3;
     optional NavigationEndpoint service_endpoint = 7;
     optional app.morphe.extension.youtube.innertube.Icon icon = 8;
+    optional NavigationEndpoint navigation_endpoint = 9;
     optional Accessibility accessibility_data = 16;
+}
+
+// playlist/get_add_to_playlist response subsets, verified against 21.20.405.
+// Preserve all unknown renderer/command fields when rebinding the owned selection.
+message QueueSaveResponse {
+    repeated QueueSaveResponseItem contents = 2;
+}
+message QueueSaveResponseItem {
+    optional QueueSavePickerRenderer add_to_playlist_renderer = 88978004;
+}
+message QueueSavePickerRenderer {
+    repeated QueueSaveDestinationItem playlists = 1;
+    repeated QueueSaveHeaderItem headers = 2;
+}
+message QueueSaveDestinationItem {
+    optional QueueSaveDestination playlist_add_to_option_renderer = 74079946;
+}
+message QueueSaveDestination {
+    optional NavigationEndpoint add_endpoint = 7;
+    optional NavigationEndpoint remove_endpoint = 8;
+}
+message QueueSaveHeaderItem {
+    optional QueueSaveHeader playlist_add_to_header_renderer = 82258301;
+}
+message QueueSaveHeader {
+    optional SwipeAction button = 3;
 }

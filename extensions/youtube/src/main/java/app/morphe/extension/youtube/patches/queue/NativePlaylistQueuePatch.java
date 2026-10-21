@@ -13,6 +13,7 @@ import android.util.Base64;
 
 import static app.morphe.extension.shared.StringRef.str;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
 
 import java.lang.ref.WeakReference;
@@ -655,7 +656,8 @@ public final class NativePlaylistQueuePatch {
     }
 
     /** Save arguments belong to this queue-launched native fragment, including after rotation. */
-    public static void onQueueSaveArguments(QueueSaveActions.Endpoint endpoint, Bundle arguments) {
+    public static void onQueueSaveArguments(MessageLite endpoint, Bundle arguments)
+            throws InvalidProtocolBufferException {
         ArrayList<String> videoIds = QueueSaveActions.copyVideoIds(endpoint);
         if (videoIds != null) arguments.putStringArrayList(SAVE_VIDEO_IDS_ARGUMENT, videoIds);
     }
@@ -681,7 +683,8 @@ public final class NativePlaylistQueuePatch {
                 }
                 List<String> videoIds = new ArrayList<>();
                 for (PlaylistQueue.Entry entry : queue.entries()) videoIds.add(entry.videoId());
-                QueueSaveActions.prepare((QueueSaveActions.Endpoint) endpoint, videoIds);
+                // The immutable selection is already serialized in this owned menu command.
+                if (!command.getQueueSaveVideoIdsList().equals(videoIds)) return null;
                 return endpoint;
             }
             if (!command.hasHideEnclosingAction() || command.hasWatchEndpoint()) return endpoint;

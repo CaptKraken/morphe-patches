@@ -7,9 +7,9 @@
 
 package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 
+import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.BytecodePatchContext
-import app.morphe.patcher.util.proxy.mutableTypes.MutableField.Companion.toMutable
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import app.morphe.util.findFreeRegister
@@ -20,10 +20,11 @@ import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
-import com.android.tools.smali.dexlib2.immutable.ImmutableField
+import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodParameter
 
@@ -35,31 +36,7 @@ internal fun installQueueSavePicker(context: BytecodePatchContext, endpointType:
     val request = QueueSaveRequestFingerprint.matchSingle().originalClassDef
     val picker = queueSavePickerFingerprint(request.type).matchSingle()
     val factory = queueSavePickerFactoryFingerprint(picker.originalClassDef.type, endpointType).matchSingle()
-    val endpointInterface = SAVE_ACTIONS.removeSuffix(";") + "\$Endpoint;"
     val pickerInterface = SAVE_ACTIONS.removeSuffix(";") + "\$Picker;"
-    val endpoint = mutableClassDefBy(endpointType)
-    endpoint.interfaces.add(endpointInterface)
-    // Local extension state; the generated protobuf schema never serializes this field.
-    val selection = ImmutableField(endpointType, "patch_queueSaveVideoIds", LIST,
-        AccessFlags.PRIVATE.value, null, null, null).toMutable()
-    endpoint.fields.add(selection)
-    endpoint.methods.add(ImmutableMethod(endpointType, "patch_getQueueSaveVideoIds", emptyList(), LIST,
-        AccessFlags.PUBLIC.value or AccessFlags.FINAL.value, null, null, MutableMethodImplementation(2))
-        .toMutable().apply {
-            addInstructions(0, """
-                iget-object v0, p0, $selection
-                return-object v0
-            """)
-        })
-    endpoint.methods.add(ImmutableMethod(endpointType, "patch_setQueueSaveVideoIds",
-        listOf(ImmutableMethodParameter(LIST, null, null)), "V",
-        AccessFlags.PUBLIC.value or AccessFlags.FINAL.value, null, null, MutableMethodImplementation(2))
-        .toMutable().apply {
-            addInstructions(0, """
-                iput-object p1, p0, $selection
-                return-void
-            """)
-        })
 
     val factoryInstructions = factory.originalMethod.implementation!!.instructions.toList()
     val serialize = factoryInstructions.withIndex().single {
@@ -78,7 +55,7 @@ internal fun installQueueSavePicker(context: BytecodePatchContext, endpointType:
     // p1 is overwritten by the serialized bytes immediately afterwards. Transfer the
     // owned snapshot before that write, on both the existing/new Bundle branches.
     factory.method.addInstructionsAtControlFlowLabel(serialize.index, """
-        invoke-static {v${serializeCall.registerC}, v${putArguments.registerC}}, $EXTENSION_CLASS->onQueueSaveArguments(${endpointInterface}Landroid/os/Bundle;)V
+        invoke-static {v${serializeCall.registerC}, v${putArguments.registerC}}, $EXTENSION_CLASS->onQueueSaveArguments(Lcom/google/protobuf/MessageLite;Landroid/os/Bundle;)V
     """)
 
     val instructions = picker.originalMethod.implementation!!.instructions.toList()
@@ -126,4 +103,37 @@ internal fun installQueueSavePicker(context: BytecodePatchContext, endpointType:
         iget-object v$scratch, v$callbackRegister, $callbackPicker
         invoke-static {v$scratch, v$listRegister}, $SAVE_ACTIONS->onPickerRequest($pickerInterface$LIST)V
     """)
+
+    val response = queueSaveResponseFingerprint(callbackType).matchSingle()
+    val responseCast = response.instructionMatches.first()
+    val responseType = responseCast.instruction.getReference<TypeReference>()!!.type
+    val responseRegister = (responseCast.instruction as OneRegisterInstruction).registerA
+    val responsePickerRegister = response.method.findFreeRegister(responseCast.index + 1, responseRegister, response.method.p0Register)
+    check(responsePickerRegister <= 15 && responseRegister <= 15 && response.method.p0Register <= 15)
+    response.method.addInstructionsAtControlFlowLabel(responseCast.index + 1, """
+        iget-object v$responsePickerRegister, p0, $callbackPicker
+        invoke-static {v$responsePickerRegister, v$responseRegister}, $SAVE_ACTIONS->onPickerResponse(${pickerInterface}Lcom/google/protobuf/MessageLite;)Lcom/google/protobuf/MessageLite;
+        move-result-object v$responseRegister
+        check-cast v$responseRegister, $responseType
+    """)
+    val responseDefault = classDefBy(responseType).fields.single {
+        it.type == responseType && AccessFlags.STATIC.isSet(it.accessFlags)
+    }
+    val parser = generateSequence(classDefBy(responseType)) { it.superclass?.let(::classDefByOrNull) }
+        .firstNotNullOf { type -> Fingerprint(definingClass = type.type, name = "parseFrom",
+            parameters = listOf(type.type, "[B", "Lcom/google/protobuf/ExtensionRegistryLite;"),
+            returnType = type.type).originalMethodOrNull }
+    mutablePicker.methods.add(ImmutableMethod(mutablePicker.type, "patch_parseQueueSaveResponse",
+        listOf(ImmutableMethodParameter("[B", null, null)), "Lcom/google/protobuf/MessageLite;",
+        AccessFlags.PUBLIC.value or AccessFlags.FINAL.value, null, null, MutableMethodImplementation(4))
+        .toMutable().apply {
+            addInstructions(0, """
+                sget-object v0, $responseDefault
+                invoke-static {}, Lcom/google/protobuf/ExtensionRegistryLite;->getGeneratedRegistry()Lcom/google/protobuf/ExtensionRegistryLite;
+                move-result-object v1
+                invoke-static {v0, p1, v1}, $parser
+                move-result-object v0
+                return-object v0
+            """)
+        })
 }

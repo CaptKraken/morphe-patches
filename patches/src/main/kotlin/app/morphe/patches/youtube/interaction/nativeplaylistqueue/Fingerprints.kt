@@ -16,6 +16,7 @@ import app.morphe.patcher.resourceLiteral
 import app.morphe.patcher.fieldAccess
 import app.morphe.patcher.methodCall
 import app.morphe.patcher.opcode
+import app.morphe.patcher.literal
 import app.morphe.patcher.string
 import app.morphe.util.getReference
 import com.android.tools.smali.dexlib2.AccessFlags
@@ -40,6 +41,14 @@ internal fun queueSavePickerFactoryFingerprint(pickerType: String, endpointType:
     parameters = listOf(endpointType),
     returnType = "V",
     filters = listOf(methodCall(definingClass = pickerType, name = "<init>"), string("navigation_endpoint"))
+)
+
+/** Response callback owned by the picker request; the renderer discriminator is stable. */
+internal fun queueSaveResponseFingerprint(callbackType: String) = Fingerprint(
+    definingClass = callbackType,
+    parameters = listOf("Ljava/lang/Object;"),
+    returnType = "V",
+    filters = listOf(opcode(Opcode.CHECK_CAST), literal(88978004L))
 )
 
 /** Stable diagnostics from the native playback queue, distinct from the panel adapter. */
