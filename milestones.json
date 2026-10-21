@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc51-unbound-service.mpp",
+    "title": "PoC51: skip unbound playback services",
+    "description": "Null-safe service video-ID comparisons in local queue resolver/restoration; skip not-yet-bound player and retry through existing callbacks. Remove temporary stage diagnostic.",
+    "phone_checks": [
+      "First queue after restart: no error; queue and video in miniplayer, browsing retained.",
+      "Close/recreate, background controls, Save/New/Undo regressions."
+    ],
+    "validation": "24pass5unrelatedskips;testsMPP23s;actual native getter null contract/consumer review;CRC/currentMPE/36queueKotlinclasses/gate pass. Phone pending.",
+    "commit": "8c72a131ec6ff67e3494489c234ede93e1a1fb31",
+    "sha256": "2b1a65b638954638588bfdda194a6532c1e8ac8cc1495c8d8b57d856d1384c5b",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc51-unbound-service.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc50-startup-failure-diagnostic.mpp",
     "title": "PoC50: startup publication failure diagnostic",
     "description": "Expose exact queue publication stage and exception type through existing Logger toast; no playback behavior change or claimed root-cause fix.",
@@ -10,7 +23,8 @@
     "validation": "24 pass,5 unrelated skips; test/MPP build31s; exact current YouTube MPE/36 queue Kotlin classes/CRC and gate passed. No fresh APK or device claim.",
     "commit": "4eea46758de265599cbf900d184b5104493028b9",
     "sha256": "810eedfed3c847c9c7fb47554f6916d4a9ffaa79464fa9eeb07fd6f4d0836d00",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc50-startup-failure-diagnostic.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc50-startup-failure-diagnostic.mpp",
+    "phone_result": "Identified: Queue/playback NullPointerException on first start; after closing player/recreating queue, no error. Queue/miniplayer work."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc49-startup-callback-timing.mpp",

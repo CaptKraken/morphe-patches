@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC51 — skip playback services without a bound player
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc51-unbound-service.mpp) · [Source 8c72a131e](https://github.com/CaptKraken/morphe-patches/commit/8c72a131ec6ff67e3494489c234ede93e1a1fb31)
+
+PoC50 identified `Queue/playback NullPointerException` on first startup; later close/recreate works. The native service ID getter returns null until a player is bound, but our fallback resolver called equals on it. Resolver and restoration now compare from the known nonnull active video ID and skip unbound services. Existing callbacks retry pending first-queue creation. Temporary diagnostics removed; genuine error logging remains. Native miniplayer/browsing, Save/New/Undo and hooks unchanged.
+
+Validation: 24 tests passed, 5 unrelated Jam APK skips; final MPP build23s. Native getter's missing-player null branch inspected in emitted21.20.405 DEX, plus stock owner lifecycle and all service-ID consumers. CRC/currentYouTubeMPE/36queueKotlinclasses verified; mandatory gate passed. No fresh APK run for runtime-only changes or phone pass claimed.
+
+Test the first queue after restarting YouTube: no error, queue/video/miniplayer/browsing intact. Also close/recreate, background notification controls and Save/New/Undo.
+
+SHA-256: `2b1a65b638954638588bfdda194a6532c1e8ac8cc1495c8d8b57d856d1384c5b`
+
 ## PoC50 — identify the startup publication exception
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc50-startup-failure-diagnostic.mpp) · [Source 4eea46758](https://github.com/CaptKraken/morphe-patches/commit/4eea46758de265599cbf900d184b5104493028b9)
