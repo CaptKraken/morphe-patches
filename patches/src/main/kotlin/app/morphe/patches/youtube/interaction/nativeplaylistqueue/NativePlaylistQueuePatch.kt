@@ -11,6 +11,7 @@ import app.morphe.patcher.patch.Compatibility
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.shared.misc.fix.proto.fixProtoLibraryPatch
+import app.morphe.patches.shared.misc.proto.hookElement
 import app.morphe.patches.youtube.layout.flyout.flyoutPatch
 import app.morphe.patches.youtube.misc.extension.sharedExtensionPatch
 import app.morphe.patches.youtube.misc.playertype.playerTypeHookPatch
@@ -30,7 +31,7 @@ internal const val CONTROLLER_INTERFACE =
 @Suppress("unused")
 val nativePlaylistQueuePatch = bytecodePatch(
     name = "Native playlist queue",
-    description = "Adds a temporary video queue using YouTube's native playlist panel and playback. Experimental. YouTube 21.20.405 only.",
+    description = "Adds a temporary video queue using YouTube's native playlist panel and playback. Renders native video details and rating actions. Experimental. YouTube 21.20.405 only.",
     default = true
 ) {
     dependsOn(
@@ -57,6 +58,8 @@ val nativePlaylistQueuePatch = bytecodePatch(
             throw PatchException("Native playlist queue currently supports YouTube 21.20.405 only")
         }
         installPlaylistPanel(this)
+        installRatingCapture(this)
+        hookElement("$EXTENSION_CLASS->onElementLoaded")
         hookVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")
         hookBackgroundPlayVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")
         setExtensionIsPatchIncluded(EXTENSION_CLASS)

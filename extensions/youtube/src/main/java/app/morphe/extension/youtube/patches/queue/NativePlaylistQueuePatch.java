@@ -12,21 +12,40 @@ import androidx.annotation.Nullable;
 
 import static app.morphe.extension.shared.StringRef.str;
 
+import com.google.protobuf.MessageLite;
 
 import java.lang.ref.WeakReference;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
+import app.morphe.extension.shared.ByteTrieSearch;
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.ResourceType;
 import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.shared.Utils;
+import app.morphe.extension.youtube.innertube.NextResponseOuterClass.SingleColumnWatchNextResults;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.patches.VideoInformation;
+import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
+import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
 import app.morphe.extension.youtube.shared.PlayerType;
 import app.morphe.extension.youtube.shared.ShortsPlayerState;
 
 @SuppressWarnings("unused")
 public final class NativePlaylistQueuePatch {
+    private static final ByteTrieSearch CARD_COMPONENTS = new ByteTrieSearch(
+            ByteTrieSearch.convertStringsToBytes("video_lockup_with_attachment.eml"));
+    private static final Map<String, VideoMetadata> metadataCache =
+            Collections.synchronizedMap(Utils.createSizeRestrictedMap(1000));
+    // Accessed only on the main thread; shared lookups may outlive the queue.
+    private static final Set<String> pendingMetadata = new HashSet<>();
+    private static final Map<String, QueueRatingActions> ratingActions =
+            Collections.synchronizedMap(Utils.createSizeRestrictedMap(50));
+
     /** Implemented on the native playlist controller during patching. */
     public interface PlaylistController {
         String patch_getVideoId();
@@ -105,6 +124,56 @@ public final class NativePlaylistQueuePatch {
 
     public static boolean isPatchIncluded() {
         return false; // Modified during patching.
+    }
+
+    /** Read-only response hook; captures commands even when the action bar is hidden. */
+    public static void onWatchNextResponse(MessageLite response) {
+        if (response == null) return;
+        try {
+            var results = SingleColumnWatchNextResults.parseFrom(response.toByteArray());
+            for (var section : results.getPrimaryResults().getSecondaryResults().getSecondaryContentsList()) {
+                if (!section.hasSlimVideoMetadataSectionRenderer()) continue;
+                var metadata = section.getSlimVideoMetadataSectionRenderer();
+                for (var content : metadata.getTertiaryContentsList()) {
+                    QueueRatingActions actions = QueueRatingActions.fromElement(
+                            content.getElementRenderer().getNewElement());
+                    if (actions == null || (!metadata.getVideoId().isEmpty()
+                            && !metadata.getVideoId().equals(actions.videoId()))) continue;
+                    ratingActions.put(actions.videoId(), actions);
+                    // Finish the native response parse before updating any panel.
+                    Utils.runOnMainThread(() -> {
+                        if (actions.videoId().equals(VideoInformation.getVideoId())) refreshOwnedPanel(actions.videoId());
+                    });
+                }
+            }
+        } catch (Exception exception) {
+            Logger.printException(() -> "Could not read native playlist rating actions", exception);
+        }
+    }
+
+    /** Read-only shared element hook; preserves bytes and every other patch's changes. */
+    public static byte[] onElementLoaded(byte[] bytes) {
+        if (bytes == null || !CARD_COMPONENTS.matches(bytes)) return bytes;
+        try {
+            VideoMetadata metadata = VideoMetadata.fromElement(bytes);
+            if (metadata != null) {
+                metadataCache.compute(metadata.videoId(), (videoId, previous) ->
+                        previous == null ? metadata : previous.withCapture(metadata));
+            }
+        } catch (Exception exception) {
+            Logger.printException(() -> "Could not read native queue card metadata", exception);
+        }
+        return bytes;
+    }
+
+    private static void rememberChannel(String videoId, String title, String channelName) {
+        metadataCache.compute(videoId, (id, metadata) -> {
+            if (metadata == null) return new VideoMetadata(id, title, channelName, "", "", false);
+            if (metadata.title().equals(id) && !title.equals(id)) {
+                metadata = new VideoMetadata(id, title, metadata.channelName(), metadata.videoInfo(), metadata.duration(), metadata.fullByline());
+            }
+            return metadata.withChannelName(channelName);
+        });
     }
 
     /** Injection point, after a native model acceptance or completed video transition. */
@@ -472,12 +541,18 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static void addToQueue(String videoId) {
+        String channelName = videoId.equals(FlyoutUtils.getFlyoutVideoId())
+                ? FlyoutUtils.getFlyoutChannelName() : "";
         try {
             PlaylistController controller = readyController();
             if (controller == null) {
                 Utils.showToastShort(str("morphe_native_playlist_queue_not_ready"));
                 return;
             }
+            rememberChannel(controller.patch_getVideoId(),
+                    VideoInformation.getVideoTitle(), VideoInformation.getChannelName());
+            String title = ChannelIdRequest.getVideoTitleIfAvailable(videoId);
+            rememberChannel(videoId, title.isEmpty() ? videoId : title, channelName);
             PlaylistQueue candidate = queue == null
                     ? new PlaylistQueue(controller.patch_getVideoId(), VideoInformation.getVideoTitle())
                     : queue;
@@ -486,10 +561,34 @@ public final class NativePlaylistQueuePatch {
             if (publish(controller, updated, true)) {
                 FlyoutUtils.dismissFlyout();
                 Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
+                completeMetadata();
             }
         } catch (Exception exception) {
             Logger.printException(() -> "Could not add video to native playlist queue", exception);
             Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+        }
+    }
+
+    private static void completeMetadata() {
+        for (PlaylistQueue.Entry entry : queue.entries()) {
+            VideoMetadata metadata = metadataCache.get(entry.videoId());
+            if (metadata != null && metadata.isComplete()) continue;
+            Locale locale = Locale.getDefault();
+            String key = entry.videoId() + ":" + locale.toLanguageTag();
+            if (!pendingMetadata.add(key)) continue;
+            String knownTitle = ChannelIdRequest.getVideoTitleIfAvailable(entry.videoId());
+            String capturedTitle = metadata == null ? entry.title() : metadata.title();
+            String searchTitle = knownTitle.isEmpty() ? capturedTitle : knownTitle;
+            Utils.runOnBackgroundThread(() -> {
+                VideoMetadata fetched = PlaylistMetadataRequest.fetch(entry.videoId(), searchTitle, locale);
+                Utils.runOnMainThread(() -> {
+                    pendingMetadata.remove(key);
+                    if (fetched == null || !Locale.getDefault().equals(locale)) return;
+                    metadataCache.compute(entry.videoId(), (videoId, previous) ->
+                            previous == null ? fetched : previous.withLookup(fetched));
+                    refreshOwnedPanel(entry.videoId());
+                });
+            });
         }
     }
 
@@ -582,7 +681,8 @@ public final class NativePlaylistQueuePatch {
                 .setLocalSelectedIndex(source.selectedIndex());
         for (int index = 0; index < source.entries().size(); index++) {
             PlaylistQueue.Entry entry = source.entries().get(index);
-            String title = entry.title();
+            VideoMetadata metadata = metadataCache.get(entry.videoId());
+            String title = metadata == null ? entry.title() : metadata.title();
             var image = PlaylistQueueRenderer.Thumbnail.newBuilder()
                     .setUrl("https://i.ytimg.com/vi/" + entry.videoId() + "/hqdefault.jpg")
                     .setWidth(480).setHeight(360);
@@ -591,10 +691,21 @@ public final class NativePlaylistQueuePatch {
                     .setNavigationEndpoint(PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
                             .setWatchEndpoint(PlaylistQueueRenderer.WatchEndpoint.newBuilder().setVideoId(entry.videoId())))
                     .setTitle(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(
-                            title))
+                            RestoreOriginalTitlesPatch.getTitle(entry.videoId(), title)))
                     .setMainAppStyle(PlaylistQueueRenderer.MainAppStyle.newBuilder()
                             .setValue(PlaylistQueueRenderer.MainAppStyle.Style.PROMINENT_THUMBNAIL))
                     .setThumbnails(PlaylistQueueRenderer.Thumbnails.newBuilder().addImages(image));
+            if (metadata != null) {
+                video.setShortBylineText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.channelName()))
+                        .setVideoInfo(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.videoInfo()))
+                        .setLengthText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(metadata.duration()));
+            }
+            QueueRatingActions actions = ratingActions.get(entry.videoId());
+            if (index == source.selectedIndex() && actions != null && entry.videoId().equals(VideoInformation.getVideoId())) {
+                video.addAllActionButtons(actions.buttons(
+                        str("offline_playlist_panel_like_button_accessibility_text"),
+                        str("offline_playlist_panel_dislike_button_accessibility_text")));
+            }
             panel.addItems(PlaylistQueueRenderer.Item.newBuilder().setVideo(video));
         }
         return panel.build().toByteArray();

@@ -6,6 +6,7 @@ option java_package = "app.morphe.extension.youtube.innertube.queue";
 option java_outer_classname = "PlaylistQueueRenderer";
 option optimize_for = LITE_RUNTIME;
 
+import "app/morphe/extension/youtube/innertube/icon.proto";
 
 // Subset of YouTube 21.20.405's native playlist renderer and actions.
 message Panel {
@@ -25,11 +26,71 @@ message Item {
 
 message Video {
     optional Text title = 1;
+    optional Text short_byline_text = 2;
     optional Thumbnails thumbnails = 3;
+    optional Text length_text = 4;
     optional bool selected = 6;
     optional NavigationEndpoint navigation_endpoint = 7;
     optional string video_id = 10;
     optional MainAppStyle main_app_style = 27;
+    optional Text video_info = 31;
+    repeated RatingAction action_buttons = 32;
+}
+
+message RatingAction {
+    optional SlimRatingButton slim_metadata_toggle_button = 124608045;
+}
+
+message SlimRatingButton {
+    optional RatingTarget target = 17;
+    optional bool is_like = 20;
+    optional bool is_dislike = 21;
+    optional RatingToggleContainer button = 26;
+    optional string like_status_entity_key = 27;
+}
+
+message RatingToggleContainer {
+    optional RatingToggleButton toggle_button_renderer = 79971800;
+}
+
+message RatingToggleButton {
+    optional bool is_toggled = 3;
+    optional bool is_disabled = 4;
+    optional app.morphe.extension.youtube.innertube.Icon default_icon = 5;
+    // Keep the native endpoints byte-for-byte, including opaque request parameters.
+    optional bytes default_service_endpoint = 7;
+    optional app.morphe.extension.youtube.innertube.Icon toggled_icon = 8;
+    optional bytes toggled_service_endpoint = 10;
+    optional Accessibility accessibility_data = 19;
+    optional Accessibility toggled_accessibility_data = 20;
+}
+
+message Accessibility {
+    optional AccessibilityLabel accessibility_data = 75730170;
+}
+
+message AccessibilityLabel {
+    optional string label = 2;
+}
+
+// Validation-only view of a captured endpoint; the original bytes are rendered.
+message RatingEndpoint {
+    optional LikeEndpoint like_endpoint = 63158558;
+}
+
+message LikeEndpoint {
+    enum Status {
+        LIKE = 0;
+        DISLIKE = 1;
+        INDIFFERENT = 2;
+    }
+    optional Status status = 1;
+    optional RatingTarget target = 2;
+}
+
+message RatingTarget {
+    optional string video_id = 1;
+    optional string playlist_id = 2;
 }
 
 message MainAppStyle {
