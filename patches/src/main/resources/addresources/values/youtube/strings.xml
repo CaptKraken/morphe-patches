@@ -670,6 +670,17 @@ Info: The next queued video only starts while YouTube is on screen"</string>
     <string name="morphe_queue_manager_open_queue">Open queue</string>
     <string name="morphe_queue_manager_save_queue">Save queue to playlist</string>
 
+    <!-- interaction.nativeplaylistqueue.nativePlaylistQueuePatch -->
+    <string name="morphe_native_playlist_queue_saved">Playlist saved</string>
+    <string name="morphe_native_playlist_queue_saved_to">Saved to %s</string>
+    <string name="morphe_native_playlist_queue_clear">Clear queue</string>
+    <string name="morphe_native_playlist_queue_cleared">Queue cleared</string>
+    <string name="morphe_native_playlist_queue_title">Queue</string>
+    <string name="morphe_native_playlist_queue_last">Play last in native queue</string>
+    <string name="morphe_native_playlist_queue_next">Play next in native queue</string>
+    <string name="morphe_native_playlist_queue_unavailable">YouTube could not display the queue.</string>
+    <string name="morphe_native_playlist_queue_not_ready">The queue is not ready for this video. Open the video player and try again.</string>
+
     <!-- interaction.livering.openChannelOfLiveAvatarPatch -->
     <string name="morphe_open_channel_of_live_avatar_title">Open channel from live avatar</string>
     <string name="morphe_open_channel_of_live_avatar_summary">Prevents the live stream from opening when tapping the channel\'s avatar</string>

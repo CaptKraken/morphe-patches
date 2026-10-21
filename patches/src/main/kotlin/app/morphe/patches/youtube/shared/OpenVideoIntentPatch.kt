@@ -32,6 +32,8 @@ private var videoPlaybackIntentFreeRegister2: Int = 0
 
 private lateinit var shortsPlaybackIntentMethod: WeakReference<MutableMethod>
 
+private val videoIntentContextHooks = mutableListOf<Pair<String, String>>()
+
 @Suppress("unused")
 val openVideoIntentPatch = bytecodePatch(
     description = "Provides hooks into intent components to open videos for extension filtering."
@@ -45,6 +47,7 @@ val openVideoIntentPatch = bytecodePatch(
     )
 
     execute {
+        videoIntentContextHooks.clear()
         VideoPlaybackIntentFingerprint.let {
             it.method.apply {
                 val match = it.instructionMatches[1]
@@ -77,6 +80,23 @@ val openVideoIntentPatch = bytecodePatch(
             else ShortsPlaybackIntentFingerprintLegacy).method
         )
     }
+
+    finalize {
+        // Existing filtering hooks cache an instruction index during execute.
+        // Insert context transforms only after all consumers have used that index.
+        val method = videoPlaybackIntentMethod.get()!!
+        videoIntentContextHooks.asReversed().forEach { (classDescriptor, methodName) ->
+            method.addInstructionsAtControlFlowLabel(0, """
+                invoke-static/range {p1 .. p2}, $classDescriptor->$methodName(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Ljava/util/Map;
+                move-result-object p2
+            """)
+        }
+    }
+}
+
+/** Transform the command context before native watch-descriptor construction, without consuming it. */
+fun hookVideoIntentContext(classDescriptor: String, methodName: String) {
+    videoIntentContextHooks += classDescriptor to methodName
 }
 
 /**

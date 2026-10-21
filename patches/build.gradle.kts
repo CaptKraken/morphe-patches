@@ -47,13 +47,48 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.core)
+    testImplementation(libs.protobuf.javalite)
+    testImplementation("org.json:json:20240303")
     testRuntimeOnly(libs.junit.jupiter.engine)
 }
 
 tasks {
     test {
         useJUnitPlatform()
+        dependsOn(":extensions:youtube:generateReleaseProto")
         jamApk.orNull?.let { systemProperty("jamApk", it) }
+        // The focused state tests compile this Android-free extension source directly.
+        inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/PlaylistQueue.java"
+        )).withPropertyName("playlistQueueStateSource")
+        inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueShortsSession.java"
+        )).withPropertyName("playlistQueueShortsSessionSource")
+        inputs.files(
+            rootProject.file("extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/VideoMetadata.java"),
+            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/queue_card.proto")
+        ).withPropertyName("playlistQueueMetadataSources")
+        inputs.files(
+            rootProject.file("extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueRatingActions.java"),
+            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/playlist_queue.proto"),
+            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/next_response.proto"),
+            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/icon.proto")
+        ).withPropertyName("playlistQueueRatingSources")
+        inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveActions.java"
+        )).withPropertyName("playlistQueueSaveActionsSource")
+        inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveFeedback.java"
+        )).withPropertyName("playlistQueueSaveFeedbackSource")
+        inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueUndoActions.java"
+        )).withPropertyName("playlistQueueUndoActionsSource")
+        inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueStart.java"
+        )).withPropertyName("playlistQueueStartSource")
+        inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/OpenVideosFullscreenHookPatch.java"
+        )).withPropertyName("playlistQueueFullscreenSource")
     }
 
     register<JavaExec>("checkStringResources") {
@@ -86,6 +121,21 @@ tasks {
             val apk = jamApk.orNull
                 ?: throw GradleException("validateJam requires -PjamApk=/absolute/path/to/ytm.apk")
             setArgs(listOfNotNull(apk, jamOutput.orNull))
+        }
+    }
+
+    register<JavaExec>("validatePlaylistQueue") {
+        description = "Applies Native playlist queue to a stock APK and verifies it with Android SDK tools"
+        group = "verification"
+        dependsOn("testClasses")
+        classpath = sourceSets["test"].runtimeClasspath
+        mainClass.set("app.morphe.patches.youtube.interaction.nativeplaylistqueue.PlaylistQueueApkBuildKt")
+        doFirst {
+            val apk = providers.gradleProperty("playlistQueueApk").orNull
+                ?: throw GradleException("validatePlaylistQueue requires -PplaylistQueueApk=/absolute/path/youtube.apk")
+            val mode = providers.gradleProperty("playlistQueueMode").getOrElse("standalone")
+            val output = providers.gradleProperty("playlistQueueOutput").orNull
+            setArgs(listOfNotNull(apk, mode, output))
         }
     }
     // Used by gradle-semantic-release-plugin.
