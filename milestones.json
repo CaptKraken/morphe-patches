@@ -1,17 +1,17 @@
 [
   {
-    "filename": "native-playlist-queue-21.20.405-poc53-undo-capability.mpp",
-    "title": "PoC53: dedicated token-authorized snackbar Undo",
-    "description": "Route native snackbar to separate boolean Undo callback authorized by local capability, independent of enclosing row/menu context. Preserve original native endpoint and context for other actions; existing restoration/session guards retained.",
+    "filename": "native-playlist-queue-21.20.405-poc53-undo-dispatch.mpp",
+    "title": "PoC53: local Undo before native dispatcher guard",
+    "description": "Dedicated token-authorized snackbar callback runs before optional native dispatcher check, independent of row/menu tag. Original ordinary callback inputs/nullguard/dismissal and existing queue restoration/session guards retained.",
     "phone_checks": [
       "Immediate row-removal Undo restores row/order without interrupting playback.",
       "Clear Undo restores queue/controls and continuous playback.",
       "Latest-only/stale/expired/newvideo guards; ordinary Save Undo unchanged."
     ],
-    "validation": "25pass5unrelatedskips;finalMPP31s;freshcombinedSDK12DEX/resources/Undo semanticverifier2m29s;18nativeSaveexact;updatedunselectedabsencecheckonexistingAPK;CRC/currentMPE/37Kotlinclasses/gatepass. Phonepending.",
-    "commit": "24f9e1e02bd0f0be00e82c2dd02178929d97454c",
-    "sha256": "1a841d900507229b6867bf378934c7d0ca759dbede9d6f5d36ccaa3eb4c35d6e",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc53-undo-capability.mpp"
+    "validation": "25pass5unrelatedskips;finalcombinedSDK12DEX/hierarchy/resources/MPP2m14s;semanticbefore-guard/endpoint-reload/callback/dismissal verification;prior18stockSave+unselectedabsence evidence unchanged;CRC/currentMPE/37Kotlinclasses/gatepass. Phonepending.",
+    "commit": "65ed65bfb2f07afdc6e9d40473fcda9eb434927a",
+    "sha256": "4569c3f4307287935011c600a29d139f99ff38a5f5760244b698d18ac7479da2",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc53-undo-dispatch.mpp"
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc52-undo-removal-clear.mpp",

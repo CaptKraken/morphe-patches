@@ -2,17 +2,17 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
-## PoC53 — authorize snackbar Undo independently of row context
+## PoC53 — local Undo independent of native dispatcher and row context
 
-[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc53-undo-capability.mpp) · [Source 24f9e1e02](https://github.com/CaptKraken/morphe-patches/commit/24f9e1e02bd0f0be00e82c2dd02178929d97454c)
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc53-undo-dispatch.mpp) · [Source 65ed65bfb](https://github.com/CaptKraken/morphe-patches/commit/65ed65bfb2f07afdc6e9d40473fcda9eb434927a)
 
-User reports both PoC52 Undo actions failed. Undo now has a dedicated native snackbar callback authorized by its one-use local token, instead of passing through the enclosing row/menu ownership guard. Active video/backend/lifecycle/stale-edit checks remain. Expired/replaced local commands are consumed; ordinary snackbar actions retain their original endpoint, context and callback. Old menu-token routing removed. This corrects the ownership contract; phone confirmation is pending.
+User reports both PoC52 Undo actions failed. Native snackbar Undo now runs before the optional native dispatcher check and uses a dedicated one-use token callback. It no longer depends on an enclosing row/menu ownership tag or native service command dispatcher. Ordinary actions still run the original null check, endpoint load, callback and dismissal. Existing active video/backend/lifecycle/stale-edit guards remain. Old menu-token route removed. Phone confirmation is pending.
 
-Validation:25tests passed/5unrelatedJamAPKskips, final MPP31s. Fresh21.20.405 combined20-related SDK12DEX/hierarchy/resources and semanticUndo callback/register/dismissal verification passed2m29s.18nativeSave methods stock-exact; updated verifier confirms absence on existing unselectedAPK. No freshunselected run; its native wiring is unchanged. Final CRC/currentMPE/37queueKotlinclasses and mandatory gate passed.
+Validation:25tests passed/5unrelatedJamAPKskips; final real21.20.405 combined20-related SDK12DEX/hierarchy/resources+MPP passed2m14s. Semantic verification requires hook before optional guard and preserves both dismissal branches, native field reload and callback inputs. Earlier candidate passed18nativeSave method comparisons and updated absence verifier on existing unselectedAPK; no further unselectedrun claimed for unchangedselection/nativeSave paths. Final CRC/currentMPE/37queueKotlinclasses and mandatory gate passed.
 
-Test Undo immediately after row removal and Clear queue; verify restoration and continuous playback. Check expired/latest-only tokens and ordinary Save Undo.
+Test Undo immediately after row removal and Clear queue; verify restoration and continuous playback. Check expired/latest-only tokens and ordinary Save Undo. Final bundle supersedes the not-yet-delivered intermediate PoC53 file.
 
-SHA-256: `1a841d900507229b6867bf378934c7d0ca759dbede9d6f5d36ccaa3eb4c35d6e`
+SHA-256: `4569c3f4307287935011c600a29d139f99ff38a5f5760244b698d18ac7479da2`
 
 ## PoC52 — Undo removing a video or clearing the queue
 
