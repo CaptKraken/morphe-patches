@@ -577,24 +577,38 @@ private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
         (instructions[index] as? ReferenceInstruction)?.reference?.toString()?.startsWith(
             "L$extensionOwner;->onQueueUndoCommand(") == true
     }
-    check(instructions[hook + 1].opcode == Opcode.MOVE_RESULT &&
+    check(instructions[hook - 2].opcode == Opcode.IGET_OBJECT &&
+            instructions[hook - 1].opcode == Opcode.CHECK_CAST &&
+            instructions[hook + 1].opcode == Opcode.MOVE_RESULT &&
             instructions[hook + 2].opcode == Opcode.IF_NEZ &&
-            instructions[hook + 3].opcode == Opcode.INVOKE_INTERFACE &&
-            instructions[hook + 4].opcode == Opcode.GOTO_16)
-    val original = (instructions[hook + 3] as ReferenceInstruction).reference as MethodReference
+            instructions[hook + 3].opcode == Opcode.IF_EQZ &&
+            instructions[hook + 4].opcode == Opcode.IGET_OBJECT &&
+            instructions[hook + 5].opcode == Opcode.CHECK_CAST &&
+            instructions[hook + 6].opcode == Opcode.INVOKE_INTERFACE &&
+            instructions[hook + 7].opcode == Opcode.GOTO_16)
+    val original = (instructions[hook + 6] as ReferenceInstruction).reference as MethodReference
     check(original.parameterTypes == listOf(command.type, "Ljava/util/Map;"))
-    val nativeCall = instructions[hook + 3] as FiveRegisterInstruction
+    val nativeCall = instructions[hook + 6] as FiveRegisterInstruction
     val undoCall = instructions[hook] as FiveRegisterInstruction
     val result = (instructions[hook + 1] as OneRegisterInstruction).registerA
-    check(undoCall.registerC == nativeCall.registerD &&
-            result !in setOf(nativeCall.registerC, nativeCall.registerD, nativeCall.registerE)) {
-        "Undo consumption must preserve the original dispatcher, endpoint and context registers"
+    val copiedEndpoint = instructions[hook - 2] as TwoRegisterInstruction
+    val originalEndpoint = instructions[hook + 4] as TwoRegisterInstruction
+    check(undoCall.registerC == copiedEndpoint.registerA && result == copiedEndpoint.registerA &&
+            result !in setOf(nativeCall.registerC, nativeCall.registerE, copiedEndpoint.registerB) &&
+            originalEndpoint.registerA == nativeCall.registerD &&
+            originalEndpoint.registerB == copiedEndpoint.registerB &&
+            (instructions[hook - 2] as ReferenceInstruction).reference ==
+            (instructions[hook + 4] as ReferenceInstruction).reference) {
+        "Undo must copy the endpoint before the optional dispatcher guard and retain ordinary action inputs"
     }
     fun address(index: Int) = instructions.take(index).sumOf { it.codeUnits }
-    check(address(hook + 2) + (instructions[hook + 2] as OffsetInstruction).codeOffset == address(hook + 4)) {
+    check(address(hook + 2) + (instructions[hook + 2] as OffsetInstruction).codeOffset == address(hook + 7)) {
         "Consumed Undo must retain the original snackbar dismissal branch"
     }
-    val branchTarget = address(hook + 4) + (instructions[hook + 4] as OffsetInstruction).codeOffset
+    val branchTarget = address(hook + 7) + (instructions[hook + 7] as OffsetInstruction).codeOffset
+    check(address(hook + 3) + (instructions[hook + 3] as OffsetInstruction).codeOffset == branchTarget) {
+        "Native missing-dispatcher behavior must retain its original dismissal target"
+    }
     val load = instructions.indices.single { address(it) == branchTarget }
     check(instructions[load].opcode == Opcode.IGET_OBJECT && instructions[load + 1].opcode == Opcode.CHECK_CAST)
     val dismissal = (instructions[load + 2] as ReferenceInstruction).reference as MethodReference
