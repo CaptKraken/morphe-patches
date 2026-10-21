@@ -559,7 +559,7 @@ private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
                 "Lcom/google/android/libraries/quantum/snackbar/Snackbar;") == true
         } == true && method.implementation!!.instructions.any {
             (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
-                "L$extensionOwner;->onQueueMenuCommand(") == true
+                "L$extensionOwner;->onQueueUndoCommand(") == true
         }
     }
     if (!selected) {
@@ -575,20 +575,26 @@ private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
     val instructions = snackbars.single().implementation!!.instructions.toList()
     val hook = instructions.indices.single { index ->
         (instructions[index] as? ReferenceInstruction)?.reference?.toString()?.startsWith(
-            "L$extensionOwner;->onQueueMenuCommand(") == true
+            "L$extensionOwner;->onQueueUndoCommand(") == true
     }
-    check(instructions[hook + 1].opcode == Opcode.MOVE_RESULT_OBJECT &&
-            instructions[hook + 2].opcode == Opcode.IF_EQZ &&
-            instructions[hook + 3].opcode == Opcode.CHECK_CAST &&
-            instructions[hook + 4].opcode == Opcode.INVOKE_INTERFACE &&
-            instructions[hook + 5].opcode == Opcode.GOTO_16)
-    val original = (instructions[hook + 4] as ReferenceInstruction).reference as MethodReference
+    check(instructions[hook + 1].opcode == Opcode.MOVE_RESULT &&
+            instructions[hook + 2].opcode == Opcode.IF_NEZ &&
+            instructions[hook + 3].opcode == Opcode.INVOKE_INTERFACE &&
+            instructions[hook + 4].opcode == Opcode.GOTO_16)
+    val original = (instructions[hook + 3] as ReferenceInstruction).reference as MethodReference
     check(original.parameterTypes == listOf(command.type, "Ljava/util/Map;"))
+    val nativeCall = instructions[hook + 3] as FiveRegisterInstruction
+    val undoCall = instructions[hook] as FiveRegisterInstruction
+    val result = (instructions[hook + 1] as OneRegisterInstruction).registerA
+    check(undoCall.registerC == nativeCall.registerD &&
+            result !in setOf(nativeCall.registerC, nativeCall.registerD, nativeCall.registerE)) {
+        "Undo consumption must preserve the original dispatcher, endpoint and context registers"
+    }
     fun address(index: Int) = instructions.take(index).sumOf { it.codeUnits }
-    check(address(hook + 2) + (instructions[hook + 2] as OffsetInstruction).codeOffset == address(hook + 5)) {
+    check(address(hook + 2) + (instructions[hook + 2] as OffsetInstruction).codeOffset == address(hook + 4)) {
         "Consumed Undo must retain the original snackbar dismissal branch"
     }
-    val branchTarget = address(hook + 5) + (instructions[hook + 5] as OffsetInstruction).codeOffset
+    val branchTarget = address(hook + 4) + (instructions[hook + 4] as OffsetInstruction).codeOffset
     val load = instructions.indices.single { address(it) == branchTarget }
     check(instructions[load].opcode == Opcode.IGET_OBJECT && instructions[load + 1].opcode == Opcode.CHECK_CAST)
     val dismissal = (instructions[load + 2] as ReferenceInstruction).reference as MethodReference

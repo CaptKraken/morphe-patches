@@ -14,7 +14,7 @@ import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
 import app.morphe.patcher.util.smali.ExternalLabel
 import app.morphe.util.addInstructionsAtControlFlowLabel
-import app.morphe.util.getReference
+import app.morphe.util.findFreeRegister
 import app.morphe.util.matchSingle
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
@@ -69,12 +69,12 @@ internal fun installQueueUndo(context: BytecodePatchContext, endpointType: Strin
             address(dismissalLoadIndex)) {
         "Native playlist queue: snackbar callback must branch to its discovered native dismissal"
     }
-    // Consume only queue-owned commands. Other snackbar actions, including native
-    // playlist Save Undo, retain the exact original callback and dismissal path.
+    val consumed = click.method.findFreeRegister(call.index)
+    // The snackbar's enclosing tag is not authoritative queue ownership. Its local
+    // one-use capability authorizes Undo; preserve the endpoint for every other action.
     click.method.addInstructionsAtControlFlowLabel(call.index, """
-        invoke-static {v${registers.registerD}, v${registers.registerE}}, $EXTENSION_CLASS->onQueueMenuCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;
-        move-result-object v${registers.registerD}
-        if-eqz v${registers.registerD}, :dismiss_queue_undo
-        check-cast v${registers.registerD}, $endpointType
+        invoke-static {v${registers.registerD}}, $EXTENSION_CLASS->onQueueUndoCommand(Lcom/google/protobuf/MessageLite;)Z
+        move-result v$consumed
+        if-nez v$consumed, :dismiss_queue_undo
     """, ExternalLabel("dismiss_queue_undo", click.method.getInstruction(call.index + 1)))
 }

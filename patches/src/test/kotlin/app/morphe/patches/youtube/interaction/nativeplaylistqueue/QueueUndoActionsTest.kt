@@ -62,6 +62,18 @@ class QueueUndoActionsTest {
                         var undo = toast.getActionButton().getButtonRenderer().getServiceEndpoint();
                         require(undo.getQueueUndoToken().equals("capability"));
                         require(!undo.hasHideEnclosingAction() && !undo.hasPlaylistEditEndpoint());
+                        // Native snackbar callbacks have no authoritative queue row/menu tag.
+                        // A matching capability alone reaches Undo; expired ones are consumed.
+                        int[] actions = {0};
+                        require(QueueUndoActions.dispatchUndo(undo, "capability", () -> actions[0]++));
+                        require(actions[0] == 1);
+                        require(QueueUndoActions.dispatchUndo(undo, null, () -> actions[0]++));
+                        require(QueueUndoActions.dispatchUndo(undo, "newer", () -> actions[0]++));
+                        require(actions[0] == 1);
+                        require(!QueueUndoActions.dispatchUndo(NavigationEndpoint.getDefaultInstance(),
+                            "capability", () -> actions[0]++));
+                        require(!QueueUndoActions.dispatchUndo(null, "capability", () -> actions[0]++));
+                        require(actions[0] == 1);
                         return "ok";
                     }
                 }

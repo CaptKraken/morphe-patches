@@ -706,10 +706,6 @@ public final class NativePlaylistQueuePatch {
         if (!header && (!(owner instanceof QueueRow row) || !row.patch_isQueueOwned())) return endpoint;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
-            if (command.hasQueueUndoToken()) {
-                undoQueueEdit(command.getQueueUndoToken());
-                return null;
-            }
             if (header && command.hasAddToPlaylistEndpoint()) {
                 PlaylistController controller = readyController();
                 if (queue == null || controller == null || controller.patch_getModel() != publishedModel
@@ -772,6 +768,19 @@ public final class NativePlaylistQueuePatch {
         return ((QueueUndoActions.Command) endpoint).patch_parseQueueCommand(
                 QueueUndoActions.feedback(undo.token(), message, str("offline_undo_snackbar_button_text"))
                         .toByteArray());
+    }
+
+    /** Native snackbar activation is not a row/menu action and need not retain that owner. */
+    public static boolean onQueueUndoCommand(MessageLite endpoint) {
+        PendingUndo undo = pendingUndo;
+        try {
+            return QueueUndoActions.dispatchUndo(endpoint, undo == null ? null : undo.token(), () -> {
+                if (undo != null) undoQueueEdit(undo.token());
+            });
+        } catch (Exception exception) {
+            Logger.printException(() -> "Could not undo native playlist queue edit", exception);
+            return false;
+        }
     }
 
     private static void undoQueueEdit(String token) {

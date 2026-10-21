@@ -7,6 +7,7 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
 
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.AddToToastAction;
@@ -34,6 +35,17 @@ public final class QueueUndoActions {
                                 .setText(Text.newBuilder().setSimpleText(undoLabel))
                                 .setServiceEndpoint(NavigationEndpoint.newBuilder().setQueueUndoToken(token)))))))
                 .build();
+    }
+
+    /** A snackbar capability owns its action independently of the enclosing row's context. */
+    static boolean dispatchUndo(MessageLite endpoint, String expectedToken, Runnable undo)
+            throws InvalidProtocolBufferException {
+        if (endpoint == null) return false;
+        var command = NavigationEndpoint.parseFrom(endpoint.toByteArray());
+        if (!command.hasQueueUndoToken()) return false;
+        if (command.getQueueUndoToken().equals(expectedToken)) undo.run();
+        // Expired/replaced local capabilities must not reach native service dispatch.
+        return true;
     }
 
     /** Selection may advance; edits and a different playing video must not be overwritten. */
