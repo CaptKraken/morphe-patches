@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc55-clean-undo.mpp",
+    "title": "PoC55: clean queue Undo",
+    "description": "Remove confirmed temporary Undo diagnostic messages only; queue capability guards/restoration/native hooks unchanged. Ordinary playlists fall through unchanged.",
+    "phone_checks": [
+      "Clean row-removal and Clear queue Undo feedback.",
+      "Ordinary playlist/Save Undo regression check."
+    ],
+    "validation": "25pass5unrelatedskips;tests/MPP34s;CRC/currentMPE/38queueKotlinclasses/gate pass. Unchanged native hook evidence reused from PoC54; no fresh APK application.",
+    "commit": "53dcc0c797ae0cc5cffc787562cab6065b2ab284",
+    "sha256": "d0f030e0469278cadd7fc1feedcb1c0089dc80db209a9e275a074d8710c9092b",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc55-clean-undo.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc54-modern-undo.mpp",
     "title": "PoC54: modern watch-screen Undo listener",
     "description": "Trace actual watch-screen toast factory and hook all3native button endpoint slots; remove wrong share-panel listener hook. Temporary owned-action QueueUndo status identifies restoration outcome/guard; existing session/token checks retained.",
@@ -11,7 +24,8 @@
     "validation": "25pass5unrelatedskips;combined20relatedSDK12DEX/resources/modern3slotverifier2m36s;finalMPP11s;oldlistenerstockexact+18stockSavepaths;unselectedabsencecheckonexistingAPK;CRC/currentMPE/38Kotlinclasses/gatepass. Phonepending.",
     "commit": "ad41a504933a959d1c57e193e9cef7bdc7aa7624",
     "sha256": "d830227d5a7d4715e41aa88386770b4299065bc310cbe5a10757efe7b20793e2",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc54-modern-undo.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc54-modern-undo.mpp",
+    "phone_result": "USER CONFIRMED WORKS: queue Undo; ordinary playlist regressions not separately confirmed."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc53-undo-dispatch.mpp",

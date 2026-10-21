@@ -2,7 +2,19 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC55 — clean queue Undo
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc55-clean-undo.mpp) · [Source 53dcc0c79](https://github.com/CaptKraken/morphe-patches/commit/53dcc0c797ae0cc5cffc787562cab6065b2ab284)
+
+User confirmed PoC54 Undo works. This followup removes the temporary developer status messages; restoration, guards and native hooks are unchanged. Only our queue Undo tokens are handled. Ordinary playlist actions continue through YouTube's original callback.
+
+Validation: 25 tests passed, 5 unrelated Jam APK skips; tests/MPP build34s. CRC/currentYouTubeMPE/38queueKotlinclasses exact. Mandatory review gate passed. Runtime diagnostic cleanup only; unchanged hook evidence from PoC54 real combined APK/SDK/resource and18stockSave checks reused. No new device or APK application claimed. Check clean feedback and normal playlist/Save Undo on phone.
+
+SHA-256: `d0f030e0469278cadd7fc1feedcb1c0089dc80db209a9e275a074d8710c9092b`
+
 ## PoC54 — watch-screen snackbar Undo, with targeted status feedback
+
+User confirmed Undo works. Use PoC55 for the same behavior without temporary status messages.
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc54-modern-undo.mpp) · [Source ad41a5049](https://github.com/CaptKraken/morphe-patches/commit/ad41a504933a959d1c57e193e9cef7bdc7aa7624)
 
