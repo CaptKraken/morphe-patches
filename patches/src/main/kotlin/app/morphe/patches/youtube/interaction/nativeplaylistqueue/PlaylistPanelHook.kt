@@ -34,7 +34,7 @@ import com.android.tools.smali.dexlib2.immutable.ImmutableMethodParameter
 // a native playlist navigator through navigationSets.
 private const val DEFAULT_QUEUE_MODE = 1
 
-/** Adds presentation-only access to the accepted native model; never changes the player backend. */
+/** Bridge the accepted watch model; the playback engine is attached separately at runtime. */
 internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context) {
     val description = PlaylistModelDescriptionFingerprint.matchSingle().originalMethod
     val modelType = description.definingClass

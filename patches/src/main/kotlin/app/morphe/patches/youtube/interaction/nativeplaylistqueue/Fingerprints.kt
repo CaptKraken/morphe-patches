@@ -250,7 +250,7 @@ internal object NativeButtonDispatchFingerprint : Fingerprint(
         parameters = listOf("L", "Ljava/util/Map;")))
 )
 
-/** Native overflow handler creates its endpoint map before handing the row to aqxt. */
+/** Native overflow handler creates its endpoint map before handing the row to the menu factory. */
 internal fun playlistRowMenuOpenFingerprint(videoType: String) = Fingerprint(
     filters = listOf(string("com.google.android.libraries.youtube.innertube.endpoint.tag")),
     custom = { method, _ ->

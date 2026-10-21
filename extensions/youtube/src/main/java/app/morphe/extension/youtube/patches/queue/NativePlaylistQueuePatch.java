@@ -69,7 +69,6 @@ public final class NativePlaylistQueuePatch {
         void patch_markQueueRows();
         boolean patch_isAttached();
         Object patch_getNavigator();
-        boolean patch_playQueueRow(int index);
         Object patch_updatePanel(byte[] panel);
         void patch_restorePanel(Object expectedModel, Object originalModel);
     }
@@ -100,7 +99,7 @@ public final class NativePlaylistQueuePatch {
         boolean patch_canNavigateQueue(boolean next);
     }
 
-    /** PoC bridge to YouTube's mutable playback queue, independent of the watch view. */
+    /** Bridge to YouTube's mutable playback queue, independent of the watch view. */
     public interface NativePlayback {
         boolean patch_isLocalQueue();
         boolean patch_attachQueue(byte[] panel);

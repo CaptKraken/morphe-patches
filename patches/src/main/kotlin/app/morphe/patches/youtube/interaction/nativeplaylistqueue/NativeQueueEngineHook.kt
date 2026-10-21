@@ -30,7 +30,7 @@ import com.android.tools.smali.dexlib2.immutable.ImmutableField
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodParameter
 
-/** PoC: supply local rows to the stock mutable queue; its sequencer owns navigation. */
+/** Supply local rows to the stock mutable queue; its sequencer owns navigation. */
 internal fun installNativeQueueEngine(
     context: BytecodePatchContext,
     serviceType: String,

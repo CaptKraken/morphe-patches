@@ -127,42 +127,6 @@ internal fun installPlaylistRowPlayback(
             return v0
         """)
     })
-    val dispatch = click.implementation!!.instructions.mapNotNull { it.getReference<MethodReference>() }
-        .single { it.returnType == "V" && it.parameterTypes == listOf(decorate.returnType, "Ljava/util/Map;") }
-    val serviceField = controller.fields.single { it.type == dispatch.definingClass }
-    // Use the same scoped endpoint dispatcher as a native row click. Selection
-    // remains uncommitted until the shared active-video-ID hook confirms playback.
-    controller.methods.add(ImmutableMethod(controller.type, "patch_playQueueRow",
-        listOf(ImmutableMethodParameter("I", null, null)), "Z",
-        AccessFlags.PUBLIC.value or AccessFlags.FINAL.value, null, null,
-        MutableMethodImplementation(6)).toMutable().apply {
-        addInstructionsWithLabels(0, """
-            iget-object v0, p0, $modelField
-            if-eqz v0, :missing
-            iget-object v0, v0, $panelField
-            if-eqz v0, :missing
-            iget-object v0, v0, $contents
-            if-ltz p1, :missing
-            invoke-interface {v0}, Ljava/util/List;->size()I
-            move-result v1
-            if-ge p1, v1, :missing
-            invoke-interface {v0, p1}, Ljava/util/List;->get(I)Ljava/lang/Object;
-            move-result-object v0
-            check-cast v0, ${itemVideo.definingClass}
-            iget-object v0, v0, $itemVideo
-            if-eqz v0, :missing
-            iget-object v1, v0, $videoEndpoint
-            iget-object v2, p0, $serviceField
-            invoke-static {}, Ljava/util/Collections;->emptyMap()Ljava/util/Map;
-            move-result-object v3
-            invoke-interface {v2, v1, v3}, $dispatch
-            const/4 v0, 0x1
-            return v0
-            :missing
-            const/4 v0, 0x0
-            return v0
-        """)
-    })
     installPlaylistNavigation(context, controller.type, videoEndpoint.type)
     // A nonserialized bit belongs to the exact native object, survives a stale
     // view callback, and disappears with that object. No native model is retained
