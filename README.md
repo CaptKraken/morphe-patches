@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC49 — first-queue native callback timing
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc49-startup-callback-timing.mpp) · [Source fc92eaa85](https://github.com/CaptKraken/morphe-patches/commit/fc92eaa857c17c6fb3e6ed2ce0571e8e66655d3c)
+
+PoC48 user confirms queue creation/miniplayer work, but receives a Could not display native playlist queue error toast. The native acceptance hook runs after its model store, before subscriptions/rendering finish. First queue startup now posts to the main loop instead of reentering this callback synchronously. Existing miniplayer/browsing flow, null-model support and genuine error reporting retained. No native hook/resource/other queue action changes. Exact phone exception was not captured; confirmation pending.
+
+Validation:24tests passed/5unrelatedJamAPKskips and final MPP build31s. Actual shared Utils main-thread post contract/native acceptance order inspected. PoC48selected/unselected SDK/nativefilterordering reused for unchanged hooks; no new APKrun. FinalMPP/currentMPE/37Kotlinpayloads/CRC/defaulttrue and mandatory gate passed.
+
+Test cold start and homepreview: queue/miniplayer/browsing still work without error toast; clear/restart, normal video additions/Last visibility and Save/New/Undo unchanged.
+
+SHA-256: `46746d61561c5b40b4f5c38a5a13323ff536ac9337e5b25821b9c3c576425605`
+
 ## PoC48 — create the first queue in the miniplayer
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc48-miniplayer-queue-start.mpp) · [Source 4c2e7b533](https://github.com/CaptKraken/morphe-patches/commit/4c2e7b533d57e042e3543300d5932733bb788cc3)
