@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc43-save-destination-commands.mpp",
+    "title": "PoC43: bind all queued IDs to native Save destination commands",
+    "description": "Serialized local snapshot survives native command copies. Queue-owned native response binds all IDs to destination Add and New commands; unsupported partial commands follow native error path. Ordinary Save returns original response. Legacy native picker retained. Includes Play last.",
+    "phone_checks": [
+      "3 distinct queued IDs/current middle: existing and New each receive all3/order.",
+      "Ordinary player/per-row/account Save; partial membership/uncheck/WatchLater; cancellation/rotation/clear/reorder while picker open; uninterrupted playback."
+    ],
+    "validation": "23tests passed/5 unrelated Jam APK skips. Combined19related1m50s/unselected+exact-source tests+MPP2m17s SDK12DEX/hierarchy58204/resources. Ten native Save/auth/serializer/error methods matchstock. CurrentMPE/all34Kotlinpayloads/CRC/defaulttrue/gate passed. Authenticated device Save pending.",
+    "commit": "51ad54a7918184f4a7b7bbcaab46efd0bcaf631a",
+    "sha256": "9665746d84089f7378868e8a423946fcb15146dea1832dcdf9b9bba8b6231def",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc43-save-destination-commands.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc42-native-batch-save.mpp",
     "title": "PoC42: real native whole-queue batch Save",
     "description": "Uses older native batchpicker and real repeatedvideoIDs. Onlyownedqueueheader carries immutable selection into savedfragmentargs/native request. Native destination/New/auth/callbacks retained; ordinarySavepasses through. IncludesPlaylast. Modernbatchlayoutdeferred.",
@@ -11,7 +24,8 @@
     "validation": "23tests passed5unrelatedskips; actualcombined19related2m17s/unselected+finalbuild2m35s SDK12DEX/hierarchy58183/resources/nativebridgeisolation.11nativeauth/serializer/callback/modernSavemethodsstockmatch. MPPdefaulttrue/currentMPE/all34Kotlinpayloads/CRC/gatepassed. AuthenticateddeviceSavepending.",
     "commit": "0c5a46e745abb8181a690e504ad6e92a90e71d01",
     "sha256": "b6b65331702a9d65040a9ad8e2a3a520c37343f81592cc1a820e5d9a6a27e811",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc42-native-batch-save.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc42-native-batch-save.mpp",
+    "phone_result": "FAILED: user reports only ONE saved from a THREE-video queue."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc41-play-last.mpp",

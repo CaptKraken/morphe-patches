@@ -2,7 +2,21 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
-## PoC42 — save the whole queue through the native batch picker
+## PoC43 — bind all queued IDs to native save actions
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc43-save-destination-commands.mpp) · [Source 51ad54a79](https://github.com/CaptKraken/morphe-patches/commit/51ad54a7918184f4a7b7bbcaab46efd0bcaf631a)
+
+Replaces the transient endpoint-object selection marker with serialized, extension-owned local command data, then retains the snapshot in native fragment arguments. In addition to the native batch query, the queue picker now explicitly binds the complete list to native destination Add and New playlist commands. An unsupported/partial destination action follows YouTube's original error/close path instead of silently saving one item. Native UI (legacy list/checkbox picker), authentication, edit/create dispatch and playback remain native. Ordinary player/per-row/account Save has no selection marker and passes through unchanged. Includes earlier Play last and player Save restoration.
+
+Validation: 23 tests passed, 5 unrelated Jam APK skips; actual 21.20.405 combined (19 related patches) and unselected SDK 12-DEX/hierarchy/resources checks passed. Ten ordinary Save/auth/serializer/error methods match stock. Final MPP/default=true/current YouTube MPE/all34 Kotlin payloads/CRC and mandatory commit gate passed. **Authenticated device saving remains unverified. PoC42 failed the phone test; this is the next test candidate.**
+
+Please check THREE distinct queued videos -> existing and New playlists each contain all three in order. Also check ordinary player Save, partial membership/uncheck, cancel/rotation, and uninterrupted playback. Watch Later may have separate backend restrictions.
+
+SHA-256: `9665746d84089f7378868e8a423946fcb15146dea1832dcdf9b9bba8b6231def`
+
+## PoC42 — FAILED phone test: only one of three saved
+
+**User confirmed this bundle saves only one video from a three-video queue. Do not treat it as working whole-queue Save.**
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc42-native-batch-save.mpp) · [Source 0c5a46e74](https://github.com/CaptKraken/morphe-patches/commit/0c5a46e745abb8181a690e504ad6e92a90e71d01)
 
