@@ -51,6 +51,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.OffsetInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
+import com.android.tools.smali.dexlib2.iface.reference.StringReference
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.runBlocking
@@ -225,6 +226,40 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
         method.implementation?.instructions?.any {
             (it as? ReferenceInstruction)?.reference?.toString()?.contains("QueueSaveActions;->onPickerResponse(") == true
         } == true
+    }
+    val queueStartHooks = classes.flatMap { it.methods }.flatMap { method ->
+        method.implementation?.instructions?.filter {
+            (it as? ReferenceInstruction)?.reference?.toString()
+                ?.contains("NativePlaylistQueuePatch;->prepareQueueStartContext(") == true
+        }?.toList() ?: emptyList()
+    }
+    check(queueStartHooks.size == if (selected) 1 else 0) {
+        "Queue minimized-start hook must exist only when selected"
+    }
+    // Other patches use a cached insertion index in the watch resolver. A new
+    // entry hook must not move their filters before native descriptor construction.
+    val watch = classes.flatMap { it.methods }.single { method ->
+        !method.definingClass.startsWith("Lapp/morphe/extension/") && method.parameterTypes.size == 2 && method.parameterTypes[1] == "Ljava/util/Map;" &&
+                method.implementation?.instructions?.any {
+                    ((it as? ReferenceInstruction)?.reference as? StringReference)?.string == "start_watch_minimized"
+                } == true
+    }.implementation!!.instructions.toList()
+    watch.forEachIndexed { index, instruction ->
+        val call = (instruction as? ReferenceInstruction)?.reference as? MethodReference
+        if (call?.name != "onVideoIntentLoaded" || call.definingClass !in setOf(
+                "Lapp/morphe/extension/youtube/patches/OpenChannelOfLiveAvatarPatch;",
+                "Lapp/morphe/extension/youtube/patches/components/CommentsFilter;")) return@forEachIndexed
+        val getter = watch[index - 2] as FiveRegisterInstruction
+        val receiver = getter.registerC
+        val lastWrite = (0 until index - 2).last {
+            (watch[it] as? OneRegisterInstruction)?.registerA == receiver
+        }
+        check(watch[lastWrite].opcode == Opcode.MOVE_RESULT_OBJECT) {
+            "Video intent filter ran before the native playback descriptor was constructed"
+        }
+        val construction = (watch[lastWrite - 1] as ReferenceInstruction).reference as MethodReference
+        val videoGetter = (watch[index - 2] as ReferenceInstruction).reference as MethodReference
+        check(construction.returnType == videoGetter.definingClass)
     }
     val feedbackInterface = "Lapp/morphe/extension/youtube/patches/queue/QueueSaveFeedback\$Callback;"
     val feedbackCallbacks = classes.filter { feedbackInterface in it.interfaces }

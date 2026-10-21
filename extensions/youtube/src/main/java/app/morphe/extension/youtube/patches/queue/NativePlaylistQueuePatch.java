@@ -37,6 +37,8 @@ import app.morphe.extension.youtube.innertube.IconOuterClass.YTIconType;
 import app.morphe.extension.youtube.innertube.NextResponseOuterClass.SingleColumnWatchNextResults;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.patches.VideoInformation;
+import app.morphe.extension.youtube.patches.LoadVideoPatch;
+import app.morphe.extension.youtube.patches.OpenVideosFullscreenHookPatch;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
@@ -172,12 +174,15 @@ public final class NativePlaylistQueuePatch {
     private static WeakReference<PlaylistController> shortsControllerRef = new WeakReference<>(null);
     private record RowSelection(PlaylistQueue.Entry entry) {}
     private static RowSelection pendingSelection;
+    // A menu click can open the first video before a watch controller exists.
+    // Keep this intent separate from an attached, usable native queue.
+    private static QueueStart pendingQueueStart;
     private static final Set<RepeatHeader> repeatHeaders = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<PlayerControls> playerControls = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<NotificationControls> notificationControls = Collections.newSetFromMap(new WeakHashMap<>());
     // Native navigation can be rejected (for example while signed out). A failed
     // click must not authorize a much later, unrelated open of the same video.
-    private static final int ROW_NAVIGATION_TIMEOUT_MILLISECONDS = 10_000;
+    private static final int NAVIGATION_TIMEOUT_MILLISECONDS = 10_000;
 
     private NativePlaylistQueuePatch() {}
 
@@ -297,7 +302,10 @@ public final class NativePlaylistQueuePatch {
             }
         }
         controllerRef = new WeakReference<>(controller);
-        if (queue == null) return;
+        if (queue == null) {
+            tryStartQueue();
+            return;
+        }
 
         // A row click authorizes only that exact entry. Wait for the authoritative
         // video-ID hook before committing selection; prefetched responses cannot do it.
@@ -349,7 +357,10 @@ public final class NativePlaylistQueuePatch {
             // The regular player can hide before Shorts attaches, and can reappear
             // before its video-ID callback. Reconcile after the native event finishes.
             Utils.runOnMainThread(() -> {
-                if (queue == null) return;
+                if (queue == null) {
+                    tryStartQueue();
+                    return;
+                }
                 PlaylistController controller = returningController();
                 boolean returningFromShorts = shortsSession.isSuspended();
                 if (updateShortsSession(controller)) return;
@@ -455,7 +466,11 @@ public final class NativePlaylistQueuePatch {
     /** Rebind after native service restoration; UI visibility does not own this sequence. */
     public static void onNativeQueueResponse(NativePlayback playback) {
         Utils.runOnMainThread(() -> {
-            if (queue == null || !VideoInformation.getPlaylistId().isEmpty()) return;
+            if (queue == null) {
+                tryStartQueue();
+                return;
+            }
+            if (!VideoInformation.getPlaylistId().isEmpty()) return;
             if (!queue.currentEntry().videoId().equals(VideoInformation.getVideoId())) {
                 if (isQueueSuspended()) return;
                 PlaylistController controller = readyController();
@@ -524,7 +539,7 @@ public final class NativePlaylistQueuePatch {
         pendingSelection = selection;
         Utils.runOnMainThreadDelayed(() -> {
             if (pendingSelection == selection) pendingSelection = null;
-        }, ROW_NAVIGATION_TIMEOUT_MILLISECONDS);
+        }, NAVIGATION_TIMEOUT_MILLISECONDS);
         return selection;
     }
 
@@ -778,7 +793,9 @@ public final class NativePlaylistQueuePatch {
     /** Shared video-ID hook; prefetched player responses must not change this state. */
     public static void onVideoChanged(String videoId) {
         Utils.runOnMainThread(() -> {
-            if (!videoId.equals(VideoInformation.getVideoId()) || queue == null) return;
+            if (!videoId.equals(VideoInformation.getVideoId())) return;
+            tryStartQueue();
+            if (queue == null) return;
             // This is a presentation snapshot of native selection, not a second navigator.
             syncNativeSelection(videoId);
             boolean returningFromShorts = shortsSession.isSuspended();
@@ -820,12 +837,13 @@ public final class NativePlaylistQueuePatch {
         if (!isPatchIncluded() || dragSession != null || !PlaylistQueue.isVideoId(videoId)) return index;
         PlayerType playerType = PlayerType.getCurrent();
         String playingVideoId = VideoInformation.getVideoId();
-        if (playerType.isNoneOrHidden() || playerType == PlayerType.INLINE_MINIMAL
-                || !PlaylistQueue.isVideoId(playingVideoId) || videoId.equals(playingVideoId)) return index;
+        boolean canStart = canStartQueue();
+        if (!canStart && (playerType.isNoneOrHidden() || playerType == PlayerType.INLINE_MINIMAL
+                || !PlaylistQueue.isVideoId(playingVideoId) || videoId.equals(playingVideoId))) return index;
         // The latest player response can belong to a prefetched video. Only the
         // accepted controller for the playing video can hide this as a playlist.
         PlaylistController controller = controllerRef.get();
-        if (controller != null && playingVideoId.equals(controller.patch_getVideoId())
+        if (!canStart && controller != null && playingVideoId.equals(controller.patch_getVideoId())
                 && hasPlaylist(controller)) return index;
 
         int iconId = ResourceUtils.getIdentifier(ResourceType.DRAWABLE,
@@ -835,6 +853,7 @@ public final class NativePlaylistQueuePatch {
                 str("morphe_native_playlist_queue_next"),
                 view -> addToQueue(videoId, false), index);
         index = nextIndex > index ? nextIndex : index;
+        if (queue == null) return index;
         int lastIconId = ResourceUtils.getIdentifier(ResourceType.DRAWABLE,
                 "yt_outline_experimental_queue_last_vd_theme_24");
         int lastIndex = FlyoutUtils.addFlyoutButton(flyoutPanel,
@@ -842,6 +861,12 @@ public final class NativePlaylistQueuePatch {
                 str("morphe_native_playlist_queue_last"),
                 view -> addToQueue(videoId, true), index);
         return lastIndex > index ? lastIndex : index;
+    }
+
+    private static boolean canStartQueue() {
+        PlayerType type = PlayerType.getCurrent();
+        return queue == null && !ShortsPlayerState.isOpen()
+                && (type == PlayerType.NONE || type == PlayerType.INLINE_MINIMAL);
     }
 
     private static PlaylistController readyController() {
@@ -864,6 +889,22 @@ public final class NativePlaylistQueuePatch {
         String channelName = videoId.equals(FlyoutUtils.getFlyoutVideoId())
                 ? FlyoutUtils.getFlyoutChannelName() : "";
         try {
+            if (!playLast && canStartQueue()) {
+                String title = ChannelIdRequest.getVideoTitleIfAvailable(videoId);
+                rememberChannel(videoId, title.isEmpty() ? videoId : title, channelName);
+                QueueStart start = new QueueStart(new PlaylistQueue(videoId, title), VideoInformation.getVideoId());
+                pendingQueueStart = start;
+                // The shared helper opens YouTube's own watch intent. With false it
+                // does not call a native player bridge or require an existing player.
+                LoadVideoPatch.openVideoIntent("https://www.youtube.com/watch?v=" + videoId, false);
+                FlyoutUtils.dismissFlyout();
+                Utils.runOnMainThreadDelayed(() -> {
+                    if (pendingQueueStart != start) return;
+                    pendingQueueStart = null;
+                    OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
+                }, NAVIGATION_TIMEOUT_MILLISECONDS);
+                return;
+            }
             PlaylistController controller = readyController();
             if (controller == null || dragSession != null) {
                 Utils.showToastShort(str("morphe_native_playlist_queue_not_ready"));
@@ -886,6 +927,41 @@ public final class NativePlaylistQueuePatch {
         } catch (Exception exception) {
             Logger.printException(() -> "Could not add video to native playlist queue", exception);
             Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+        }
+    }
+
+    /** Commit a first-item queue only after native playback accepts the requested video. */
+    private static void tryStartQueue() {
+        QueueStart start = pendingQueueStart;
+        if (start == null || queue != null || publishing) return;
+        String videoId = VideoInformation.getVideoId();
+        String requestedId = start.candidate().currentEntry().videoId();
+        PlayerType type = PlayerType.getCurrent();
+        if (ShortsPlayerState.isOpen() || type == PlayerType.HIDDEN
+                || (!type.isNoneOrHidden() && type != PlayerType.INLINE_MINIMAL
+                && start.isSupersededBy(videoId))) {
+            pendingQueueStart = null;
+            OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
+            return;
+        }
+        PlaylistController controller = controllerRef.get();
+        // Controller callbacks can precede the active video ID or player type.
+        // Recheck when controller, video ID, player type or playback service
+        // becomes ready; prefetch alone cannot attach.
+        if (controller == null || !requestedId.equals(videoId)
+                || !requestedId.equals(controller.patch_getVideoId())) return;
+        if (hasPlaylist(controller)) {
+            pendingQueueStart = null;
+            OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
+            return;
+        }
+        if (readyController() != controller) return;
+        Object baseline = controller.patch_getModel();
+        if (publish(controller, start.candidate(), false)) {
+            originalModel = baseline;
+            pendingQueueStart = null;
+            Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
+            completeMetadata();
         }
     }
 
@@ -917,6 +993,22 @@ public final class NativePlaylistQueuePatch {
                 || queue.entries().stream().noneMatch(item -> item.videoId().equals(videoId))) return;
         PlaylistController controller = readyController();
         if (controller != null && controller.patch_getModel() == publishedModel) publish(controller, queue, false);
+    }
+
+    /** Native watch dispatch reads this flag before constructing the playback descriptor. */
+    public static Map<?, ?> prepareQueueStartContext(MessageLite endpoint, Map<?, ?> context) {
+        QueueStart start = pendingQueueStart;
+        if (start == null || queue != null) return context;
+        try {
+            Map<?, ?> minimized = start.minimizedContext(endpoint, context);
+            if (minimized != context) {
+                OpenVideosFullscreenHookPatch.keepVideoMinimized(start.candidate().currentEntry().videoId());
+            }
+            return minimized;
+        } catch (InvalidProtocolBufferException exception) {
+            Logger.printException(() -> "Could not start native queue in the miniplayer", exception);
+            return context;
+        }
     }
 
     private static boolean publish(PlaylistController controller, PlaylistQueue candidate, boolean reportFailure) {
@@ -967,6 +1059,8 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static void releasePanel() {
+        pendingQueueStart = null;
+        OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
         PlaylistController controller = controllerRef.get();
         Object expectedModel = publishedModel;
         Object restoreModel = originalModel;
