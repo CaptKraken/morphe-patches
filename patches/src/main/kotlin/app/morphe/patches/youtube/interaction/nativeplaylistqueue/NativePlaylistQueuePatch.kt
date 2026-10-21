@@ -36,7 +36,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
     description = "Adds a temporary video queue using YouTube's playlist interface and playback controls. " +
             "Supports Play next/last, reordering, shuffle, repeat, fullscreen playlist controls, " +
             "saving the queue to a playlist, and Undo for removal or clearing. " +
-            "Experimental. YouTube 21.20.405 only.",
+            "Morphe's Local queue takes priority when enabled. Experimental. YouTube 21.20.405 only.",
     default = true
 ) {
     dependsOn(
