@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc47-native-new-dialog.mpp",
+    "title": "PoC47: native New dialog without rejecting queue Save picker",
+    "description": "Queue New header uses native list-capable create-dialog endpoint, clears native7/9/19click slots and retains one action. Existing Save/confirmedUndo untouched; no custom UI/network/auth or newhooks. Native default dialog may differ visually.",
+    "phone_checks": [
+      "Picker opens; existingSaveconfirmationUndo;3distinctIDs New all3/order.",
+      "Singlequeue/ordinaryplayerNew, cancel/rotation and continuous playback."
+    ],
+    "validation": "23pass5unrelatedskips;combined20related SDK12DEX/hierarchy/resources+MPP2m20s;25stockmethodsexact;currentMPE/all36Kotlinpayloads/CRC/defaulttrue/gatepass. Phone pending.",
+    "commit": "e206186550dd9928704e62a9501819e38f0bb029",
+    "sha256": "9424abaf758e9f2ec8a95ca056af49de44e01bd91f03e696e485dccba130f1af",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc47-native-new-dialog.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc46-new-playlist-whole-queue.mpp",
     "title": "PoC46: New playlist saves complete queue",
     "description": "Correct actual native header button field2; existing queue binder now supplies all IDs to native New dialog. No new hooks/customUI/network; PoC45 confirmed feedback retained.",
@@ -10,7 +23,8 @@
     "validation": "Before/after wire regression;23pass5unrelatedskips;combined20related SDK12DEX/hierarchy/resources + MPP passed2m29s;25stockmethodsmatch;currentMPE/all36Kotlinpayloads/CRC/defaulttrue/gatepass. Phone pending.",
     "commit": "2e8e14957cd59cc021cf221bb6b577ba96fdc8e0",
     "sha256": "ccf2bf7ab6456d754a07b8bf0c545a5dad3767c10190176596edb830d1296238",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc46-new-playlist-whole-queue.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc46-new-playlist-whole-queue.mpp",
+    "phone_result": "FAILED: PoC46 cannot open Save picker; QueueSaveActions binding error shown before choosing destination."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc45-save-confirmation-undo.mpp",

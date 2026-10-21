@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC47 — queue picker regression and native New playlist dialog
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc47-native-new-dialog.mpp) · [Source e20618655](https://github.com/CaptKraken/morphe-patches/commit/e206186550dd9928704e62a9501819e38f0bb029)
+
+PoC46 exposed a header command that our binder could not handle and closed the entire picker. Queue-only New playlist now dispatches YouTube's verified list-capable CreatePlaylistDialogEndpoint with every queued ID. Clears all three native click slots before setting one navigation action, avoiding duplicate creation. Original header text/style, picker and existing destination Save/confirmation/Undo retained. YouTube handles sign-in, name/privacy, native playlist/create and callbacks. Uses the native default create dialog; appearance may differ from the server-rendered variant. Ordinary player/row/account Save untouched. No new hooks, customUI/network/auth or playback changes.
+
+Validation:23pass/5unrelatedJamAPKskips; native action-slot regression cases; combined20-related real21.20.405 SDK12DEX/hierarchy/resources and MPP build passed2m20s.25originalSave/New/auth/query/serializer/Snackbar methods stock-exact. Final MPP/currentMPE/all36Kotlinpayloads/CRC/defaulttrue and mandatory commit gate passed. No new unselected run for unchanged hooks. **Phone/backend result pending.**
+
+Test: queue Save picker opens; existing Save toast/Undo still works; THREE distinct IDs -> New native dialog -> created playlist all3/order. Include singlequeue/playerNew, cancel/rotation and continuous playback. Exact server command shape from PoC46 failure was not captured; no wrapper-type diagnosis claimed.
+
+SHA-256: `9424abaf758e9f2ec8a95ca056af49de44e01bd91f03e696e485dccba130f1af`
+
 ## PoC46 — complete queue when creating a New playlist
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc46-new-playlist-whole-queue.mpp) · [Source 2e8e14957](https://github.com/CaptKraken/morphe-patches/commit/2e8e14957cd59cc021cf221bb6b577ba96fdc8e0)
