@@ -1,5 +1,21 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc56-reviewed-cleanup.mpp",
+    "title": "PoC56: reviewed cleanup and publication failure fix",
+    "description": "Preserve committed queue on presentation refresh failure; remove unused row-playback bridge and obsolete Save schemas; description and Undo test-input cleanup.",
+    "phone_checks": [
+      "Ordinary account playlist: Next/Previous and player Save/Undo.",
+      "Queue: next/previous in background and after returning from Shorts.",
+      "Queue row navigation/reorder/shuffle/repeat and fullscreen open/clear.",
+      "Whole queue Save to existing/new playlist, existing-playlist Save Undo.",
+      "Remove/Clear Undo; stale Undo after another edit or closing player."
+    ],
+    "validation": "25pass5unrelatedskips;90675strings;combined20related+queue SDK12DEX/resources2m42s;unselected20relatedSDK/resources1m56s;18stockSavepaths unchanged;CRC/currentMPE/38Kotlinclasses;3gatedsourcecommits. Phone pending.",
+    "commit": "db992a56488e1284ed81366db096ac0ee4445c62",
+    "sha256": "4785b8939a96d9a75778a73d7c66e95c8d2f21ee85194487bfc82e41c2ce4a27",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc56-reviewed-cleanup.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc55-clean-undo.mpp",
     "title": "PoC55: clean queue Undo",
     "description": "Remove confirmed temporary Undo diagnostic messages only; queue capability guards/restoration/native hooks unchanged. Ordinary playlists fall through unchanged.",

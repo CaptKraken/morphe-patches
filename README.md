@@ -2,6 +2,24 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC56 — reviewed cleanup and publication failure fix
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc56-reviewed-cleanup.mpp) · [Source db992a564](https://github.com/CaptKraken/morphe-patches/commit/db992a56488e1284ed81366db096ac0ee4445c62)
+
+Preserve an already committed playback queue if a later controls refresh throws; do not roll back only the visible panel. Remove unused row-playback bridge and obsolete Save schema mappings, update the description, and track Undo source changes in Gradle tests. Native row clicks and active Save/Undo paths remain unchanged. This does not claim every native attachment failure is transactional.
+
+Validation on this exact source: 25 tests passed, 5 unrelated Jam APK skips; 90,675 strings checked without issues; combined20related+queue APK/SDK12DEX/hierarchy/resources passed2m42s, unselected20related APK/SDK/resources passed1m56s.18stockSave methods unchanged. CRC/currentMPE/38queueKotlinclasspayloads exact. Three mandatory gated source commits; no PR. Reuses the reviewed local build without an unnecessary rebuild. Phone regression pass pending.
+
+Phone checklist:
+
+- Ordinary account playlist: Next/Previous and player Save/Undo.
+- Queue: next/previous in background and after returning from Shorts.
+- Queue row navigation/reorder/shuffle/repeat and fullscreen open/clear.
+- Whole queue Save to existing/new playlist, existing-playlist Save Undo.
+- Remove/Clear Undo; stale Undo after another edit or closing player.
+
+SHA-256: `4785b8939a96d9a75778a73d7c66e95c8d2f21ee85194487bfc82e41c2ce4a27`
+
 ## PoC55 — clean queue Undo
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc55-clean-undo.mpp) · [Source 53dcc0c79](https://github.com/CaptKraken/morphe-patches/commit/53dcc0c797ae0cc5cffc787562cab6065b2ab284)
