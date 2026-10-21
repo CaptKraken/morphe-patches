@@ -1,5 +1,21 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc58-dev-feature.mpp",
+    "title": "PoC58: clean dev-based feature branch",
+    "description": "Independent dev port, Morphe Local queue priority and upstream empty flyout-ID handling. Historical main-based branch and PoC57 preserved.",
+    "phone_checks": [
+      "Import the MPP and patch untouched YouTube21.20.405. Native playlist queue should be selected.",
+      "With Morphe Local queue off, check queue starts/miniplayer, next/previous in foreground/background, Shorts return, reorder/shuffle/repeat and fullscreen.",
+      "Check whole-queue Save to existing/new playlists, Save Undo and Remove/Clear Undo; ordinary playlist/player Save should remain normal.",
+      "If both patches are installed, enable Morphe Local queue during native-queue playback: playback should continue, Morphe takes priority and stored Morphe items remain. Disable it and create a fresh native queue."
+    ],
+    "validation": "Delivery buildAndroid24s;CRC/rootDEX/checksums/currentMPE/38Kotlinpayloads exact;3018rootclasses/getter;Jarloader190patches/defaulttrue. Prior same-source29patchpass5unrelatedskips/43extensionpass/104288strings;combined23+queue/unselected23 SDK12DEX/resources;18stockSave methods exact. Phone pending.",
+    "commit": "c61e4bafe8c25bc0e6f2aabf1d29c8e1cca24b80",
+    "sha256": "ffab0152a4d11ec68adbce02a40468c9c3ad29faf8180c81341fb151ea373bfb",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc58-dev-feature.mpp",
+    "phone_result": "PENDING"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc57-bundle-fix.mpp",
     "title": "PoC57: restore root Android DEX in bundle",
     "description": "Packaging-only repair of PoC56. Run buildAndroid last, verify rootDEX and actualJVMloader inventory. Same queue source db992a564.",

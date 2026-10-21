@@ -2,6 +2,25 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC58 — clean dev-based feature branch
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc58-dev-feature.mpp) · [Source feature branch](https://github.com/CaptKraken/morphe-patches/tree/feature/youtube-native-playlist-queue-dev) · [Source c61e4bafe](https://github.com/CaptKraken/morphe-patches/commit/c61e4bafe8c25bc0e6f2aabf1d29c8e1cca24b80)
+
+Independent three-commit port onto upstream dev0488bda28: final working queue, Morphe Local queue priority, and stale flyout-ID fix. Original main-based feature history and user-confirmed PoC57 remain preserved. No PR opened. **Phone testing pending.**
+
+Target remains **YouTube21.20.405 only**. Bundle version1.48.0-dev.18 requires patcher1.15.1 support in Manager. Native playlist queue stays selected by default. Keep Morphe's Local queue setting off to test this queue; enabling it gives Morphe priority when both patches are installed.
+
+Validation: this delivery buildAndroid passed24s, run last. Frozen ZIP CRC, root DEX SHA1/Adler32, current YouTube MPE and38queue Kotlin payloads checked. RootDEX2,855,084bytes/3,018classes contains queue getter; actual PatchLoader.Jar loads190patches including queue/defaulttrue. Same source previously passed29patchtests/5unrelatedskips,43YouTubeunit tests,104288strings, combined23related+queue andunselected23related realAPK/SDK12DEX/hierarchy/resources checks;18stockSave methods exact. SDK/JVM checks do not establish phone behavior.
+
+Phone checklist:
+
+- Import the MPP and patch untouched YouTube21.20.405. Native playlist queue should be selected.
+- With Morphe Local queue off, check queue starts/miniplayer, next/previous in foreground/background, Shorts return, reorder/shuffle/repeat and fullscreen.
+- Check whole-queue Save to existing/new playlists, Save Undo and Remove/Clear Undo; ordinary playlist/player Save should remain normal.
+- If both patches are installed, enable Morphe Local queue during native-queue playback: playback should continue, Morphe takes priority and stored Morphe items remain. Disable it and create a fresh native queue.
+
+SHA-256: `ffab0152a4d11ec68adbce02a40468c9c3ad29faf8180c81341fb151ea373bfb`
+
 ## PoC57 — repair Android bundle packaging
 
 **Phone result: user confirmed “ok all working” after importing PoC57 and receiving the focused regression checklist.**
