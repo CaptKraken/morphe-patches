@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc48-miniplayer-queue-start.mpp",
+    "title": "PoC48: first queue starts in native miniplayer",
+    "description": "Playnext with no player/homepreview starts selected video as one-itemqueue using native minimized watch context. Playlast onlyafterqueueexists. Sharedhookfinalize preserves existingfilters; scopedfullscreenexception preserves browsing. PoC47Save unchanged.",
+    "phone_checks": [
+      "No player/homepreview Playnext visible andLast hidden; first video startsMINIMIZED, browsepositionretained, addedtoast, noqueuepanel expansion.",
+      "ThenNext/Lastorder, ordinarytap/fullscreenmodes, Shorts/accountplaylist/clear/cancel/rapidopens/rotation/service readiness; Save/New/Undo regression."
+    ],
+    "validation": "24pass5unrelatedskips;combined20related1m59s/unselected1m41s SDK12DEX/hierarchy/resources;nativeorderingbefore/afterregression;25Savepathsstock+watchtailunselectedexact;finaltestsMPP31s/currentMPE/37Kotlinpayloads/CRC/defaulttrue/gatepass. Devicepending.",
+    "commit": "4c2e7b533d57e042e3543300d5932733bb788cc3",
+    "sha256": "54afed2f1e5206105c9a32ace00456246aead68fdfa7445776b09966fefc180f",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc48-miniplayer-queue-start.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc47-native-new-dialog.mpp",
     "title": "PoC47: native New dialog without rejecting queue Save picker",
     "description": "Queue New header uses native list-capable create-dialog endpoint, clears native7/9/19click slots and retains one action. Existing Save/confirmedUndo untouched; no custom UI/network/auth or newhooks. Native default dialog may differ visually.",
@@ -10,7 +23,8 @@
     "validation": "23pass5unrelatedskips;combined20related SDK12DEX/hierarchy/resources+MPP2m20s;25stockmethodsexact;currentMPE/all36Kotlinpayloads/CRC/defaulttrue/gatepass. Phone pending.",
     "commit": "e206186550dd9928704e62a9501819e38f0bb029",
     "sha256": "9424abaf758e9f2ec8a95ca056af49de44e01bd91f03e696e485dccba130f1af",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc47-native-new-dialog.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc47-native-new-dialog.mpp",
+    "phone_result": "USER CONFIRMED PoC47 works: picker/New playlist fix. Individual edge cases not separately enumerated."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc46-new-playlist-whole-queue.mpp",

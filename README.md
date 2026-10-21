@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC48 — create the first queue in the miniplayer
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc48-miniplayer-queue-start.mpp) · [Source 4c2e7b533](https://github.com/CaptKraken/morphe-patches/commit/4c2e7b533d57e042e3543300d5932733bb788cc3)
+
+Play next is available with no player or a home feed preview. It opens the selected video using YouTube's watch intent with the native start-minimized flag, then attaches a one-item queue only after the matching native player/service is ready. Play last stays hidden until a queue exists. Browsing stays open, with the existing added toast and no queue-panel expansion. Existing regular-player queue additions/account-playlist/Shorts guards retained. Exact-video fullscreen exception preserves this miniplayer start while subsequent ordinary videos follow user settings. No custom UI/network/auth or unrelated Save changes; PoC47 saving remains the user-confirmed baseline.
+
+Validation:24tests passed/5 unrelated Jam APK skips; selected combined20-related (1m59s) and unselected (1m41s) real21.20.405 SDK12DEX/hierarchy/resources passed. Actual APK ordering regression catches rejected early-injection code; final shared callback preserves native descriptor construction and existing video filters.25Save/New methods stock-exact and original watch dispatch tail matches unselected. Final lifetime-only helper change tests/build31s; currentMPE/36queueKotlin+sharedAPI/CRC/defaulttrue and mandatory gate passed. **Phone miniplayer/browsing flow pending.**
+
+Test no player and homepreview: Play next visible, Last hidden; selected video starts a one-item queue in miniplayer and retains browsing. Then both actions appear/order correctly. Check fullscreen modes, cancellation/rapid opens/clear/Shorts/account playlists, ordinary video taps and PoC47 Save/Undo/New.
+
+SHA-256: `54afed2f1e5206105c9a32ace00456246aead68fdfa7445776b09966fefc180f`
+
 ## PoC47 — queue picker regression and native New playlist dialog
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc47-native-new-dialog.mpp) · [Source e20618655](https://github.com/CaptKraken/morphe-patches/commit/e206186550dd9928704e62a9501819e38f0bb029)
