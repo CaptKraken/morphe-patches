@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC45 — existing-playlist save confirmation and Undo
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc45-save-confirmation-undo.mpp) · [Source 52dd00d1f](https://github.com/CaptKraken/morphe-patches/commit/52dd00d1f64f6fb8fe4f567b6995a5fb0beb8432)
+
+Queue header saves to existing playlists now append YouTube's native Saved to [playlist] confirmation after a successful native response. Undo uses only server-returned newly added entry IDs, preserving older occurrences. Unsafe/missing entry data omits Undo. Ordinary player/per-row/account Save and new-playlist creation are unchanged.
+
+Validation:23 tests passed/5 unrelated Jam APK skips; combined20-related and final unselected real21.20.405 SDK12DEX/hierarchy/resources checks passed; strings90674 clean.18 original native methods match stock. Final MPP/currentMPE/all36Kotlinpayloads/CRC and mandatory commit gate passed. **Phone confirmation/Undo pending.**
+
+Test existing playlist success message and Undo, including a destination with an older occurrence. Check ordinary Save, failed/cancelled save and uninterrupted playback. **Known separate issue: New playlist currently saves only the first queued video; user requested testing this confirmation before fixing New.** PoC44 existing-playlist saving was user-confirmed working; New is now confirmed incomplete.
+
+SHA-256: `05c7f0a78caed1118d8afffd4ebe7c7373a9965ecd6d7749c6197325db4c0743`
+
 ## PoC44 — original picker request, batch destination actions
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc44-stock-save-picker.mpp) · [Source 1b7f38b91](https://github.com/CaptKraken/morphe-patches/commit/1b7f38b9198ef02bdb65fe25f6252f3646a5fc33)

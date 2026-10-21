@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc45-save-confirmation-undo.mpp",
+    "title": "PoC45: existing-playlist native save confirmation and Undo",
+    "description": "Success-only native Saved-to Snackbar, exact returned new entry IDs for Undo. Queue-owned existing Add only. New playlist first-video bug deferred. Ordinary Save untouched.",
+    "phone_checks": [
+      "Existing destination: Saved to correct playlist; Undo removes only newly added entries and preserves previous occurrences.",
+      "Ordinary Save, failure/cancel, native hide-Snackbar setting, rotation and uninterrupted playback."
+    ],
+    "validation": "23pass5unrelatedskips;combined20related/unselected SDK12DEX/hierarchy/resources;strings90674clean;18stockmethodsmatch;finalMPP/currentMPE/all36Kotlinpayloads/CRC/gatepass. Phone pending.",
+    "commit": "52dd00d1f64f6fb8fe4f567b6995a5fb0beb8432",
+    "sha256": "05c7f0a78caed1118d8afffd4ebe7c7373a9965ecd6d7749c6197325db4c0743",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc45-save-confirmation-undo.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc44-stock-save-picker.mpp",
     "title": "PoC44: stock picker request with queue batch destination actions",
     "description": "Remove failing batch query override; entire native picker initializer matches stock. Full queue IDs remain on later native Add/New actions. Multi-video destinations use native UNKNOWN add-and-close mode, single queues retain original checkbox state. No ordinary Save/playback changes.",
@@ -10,7 +23,8 @@
     "validation": "23tests passed/5unrelatedJamAPKskips; combined19related2m12s/unselected+finaltests+MPP1m51s SDK12DEX/hierarchy/resources. Eleven native methods including whole picker initializer matchstock. CurrentMPE/all34Kotlinpayloads/CRC/defaulttrue/gate pass. Authenticated device Save pending.",
     "commit": "1b7f38b9198ef02bdb65fe25f6252f3646a5fc33",
     "sha256": "18a0583a042518251922045ae2f095617b6bd92d206a3bc84ff90152a1d005e8",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc44-stock-save-picker.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc44-stock-save-picker.mpp",
+    "phone_result": "User confirmed existing-playlist saving works; later clarified New playlist creates only the first queued video. New fix deferred until PoC45 confirmation test."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc43-save-destination-commands.mpp",
