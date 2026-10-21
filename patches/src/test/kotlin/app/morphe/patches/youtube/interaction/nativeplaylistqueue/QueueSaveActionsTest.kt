@@ -17,7 +17,7 @@ import kotlin.test.assertEquals
 
 class QueueSaveActionsTest {
     @Test
-    fun `first video save uses a real target without batch ownership`() {
+    fun `native picker request owns the full immutable queue selection and ordinary saves pass through`() {
         val root = generateSequence(File("").absoluteFile) { it.parentFile }
             .first { File(it, "extensions/youtube/src/main/proto").isDirectory }
         val output = createTempDirectory("playlist-queue-save").toFile()
@@ -35,20 +35,34 @@ class QueueSaveActionsTest {
                         try { action.run(); throw new AssertionError("Expected invalid selection rejection"); }
                         catch (IllegalArgumentException expected) {}
                     }
+                    static class Endpoint implements QueueSaveActions.Endpoint {
+                        List<String> videoIds;
+                        public List<String> patch_getQueueSaveVideoIds() { return videoIds; }
+                        public void patch_setQueueSaveVideoIds(List<String> ids) { videoIds = ids; }
+                    }
                     public static String run() throws Exception {
                         var ids = new ArrayList<>(List.of("abcdefghijk", "lmnopqrstuv", "abcdefghijk"));
-                        var original = Map.of(QueueSaveActions.ENDPOINT_TAG, new Object(), "other", "preserved");
-                        var open = QueueSaveActions.openSheet(ids);
-                        var context = QueueSaveActions.prepareContext(open, original, ids);
-                        require(context != original && context.get("other").equals("preserved"));
-                        require(!context.containsKey(QueueSaveActions.ENDPOINT_TAG));
-                        require(original.containsKey(QueueSaveActions.ENDPOINT_TAG));
-                        String params = open.getShowSheetCommand().getPanelLoadingStrategy().getRequestTemplate().getParams();
-                        var target = SavePanelParams.parseFrom(Base64.getUrlDecoder().decode(params.replace("%3D", "=")));
-                        require(target.getTarget().getVideoId().equals("abcdefghijk"));
-                        require(QueueSaveActions.openSheet(List.of("abcdefghijk")).equals(open));
-                        rejects(() -> QueueSaveActions.prepareContext(open, original, List.of("new selection")));
-                        rejects(() -> QueueSaveActions.openSheet(List.of()));
+                        var open = QueueSaveActions.openPicker(ids);
+                        require(open.getAddToPlaylistEndpoint().getVideoId().equals("abcdefghijk"));
+                        var endpoint = new Endpoint();
+                        require(QueueSaveActions.copyVideoIds(endpoint) == null);
+                        QueueSaveActions.prepare(endpoint, ids);
+                        var expected = List.copyOf(ids);
+                        ids.clear(); // Queue clear/reorder cannot change the already opened selection.
+                        var savedArguments = QueueSaveActions.copyVideoIds(endpoint);
+                        require(savedArguments.equals(expected));
+                        savedArguments.add("ZYXWVUTSRQP");
+                        require(QueueSaveActions.copyVideoIds(endpoint).equals(expected));
+                        var request = new ArrayList<>(List.of("abcdefghijk"));
+                        QueueSaveActions.onPickerRequest(() -> endpoint.videoIds, request);
+                        require(request.equals(expected)); // Real separate IDs, including duplicates and order.
+                        QueueSaveActions.onPickerRequest(() -> endpoint.videoIds, request);
+                        require(request.equals(expected)); // Recreating the native request must not duplicate IDs.
+                        var ordinary = List.of("0123456789_"); // Immutable to catch any unowned write.
+                        QueueSaveActions.onPickerRequest(() -> null, ordinary);
+                        require(ordinary.equals(List.of("0123456789_")));
+                        rejects(() -> QueueSaveActions.openPicker(List.of()));
+                        rejects(() -> QueueSaveActions.prepare(endpoint, List.of()));
                         return "ok";
                     }
                 }

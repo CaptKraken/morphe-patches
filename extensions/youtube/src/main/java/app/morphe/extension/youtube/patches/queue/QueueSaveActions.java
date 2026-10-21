@@ -7,53 +7,48 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
-import java.util.Base64;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
+import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.AddToPlaylistEndpoint;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.NavigationEndpoint;
-import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.PanelLoadingStrategy;
-import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.PanelRequestTemplate;
-import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.SavePanelParams;
-import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.SavePanelTarget;
-import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.ShowSheetCommand;
 
-/** Open the native single-video Save sheet without attaching local queue ownership. */
+/** An owned command transfers its immutable selection to the native picker's saved arguments. */
 public final class QueueSaveActions {
-    static final String ENDPOINT_TAG = "com.google.android.libraries.youtube.innertube.endpoint.tag";
-    private static final String PANEL_ID = "PAadd_to_playlist";
+    public interface Endpoint {
+        List<String> patch_getQueueSaveVideoIds();
+        void patch_setQueueSaveVideoIds(List<String> videoIds);
+    }
+
+    public interface Picker {
+        List<String> patch_getQueueSaveVideoIds();
+    }
 
     private QueueSaveActions() {
     }
 
-    static NavigationEndpoint openSheet(List<String> videoIds) {
-        String params = requestParams(videoIds);
-        return NavigationEndpoint.newBuilder().setShowSheetCommand(ShowSheetCommand.newBuilder()
-                .setPanelLoadingStrategy(PanelLoadingStrategy.newBuilder().setRequestTemplate(
-                        PanelRequestTemplate.newBuilder().setPanelId(PANEL_ID).setParams(params)))).build();
-    }
-
-    private static String requestParams(List<String> videoIds) {
+    static NavigationEndpoint openPicker(List<String> videoIds) {
         if (videoIds.isEmpty()) throw new IllegalArgumentException("Empty queue save selection");
-        // Diagnostic phone build: exercise native single-video Save with the first
-        // queue item, independently of the currently playing item or batch expansion.
-        String target = videoIds.get(0);
-        byte[] params = SavePanelParams.newBuilder().setTarget(
-                SavePanelTarget.newBuilder().setVideoId(target)).build().toByteArray();
-        return Base64.getUrlEncoder().encodeToString(params).replace("=", "%3D");
+        return NavigationEndpoint.newBuilder().setAddToPlaylistEndpoint(AddToPlaylistEndpoint.newBuilder()
+                .setVideoId(videoIds.get(0))).build();
     }
 
-    static Map<?, ?> prepareContext(NavigationEndpoint command, Map<?, ?> context, List<String> videoIds) {
-        if (!command.hasShowSheetCommand()) return context;
-        var request = command.getShowSheetCommand().getPanelLoadingStrategy().getRequestTemplate();
-        if (!PANEL_ID.equals(request.getPanelId()) || !requestParams(videoIds).equals(request.getParams())) {
-            throw new IllegalArgumentException("Queue save menu no longer matches the selected queue");
-        }
-        Map<Object, Object> scopedContext = new HashMap<>(context);
-        // The sheet is a native single-video action, not a local queue menu.
-        // Keep its commands and membership toggles outside queue interception.
-        scopedContext.remove(ENDPOINT_TAG);
-        return scopedContext;
+    static void prepare(Endpoint endpoint, List<String> videoIds) {
+        if (videoIds.isEmpty()) throw new IllegalArgumentException("Empty queue save selection");
+        endpoint.patch_setQueueSaveVideoIds(List.copyOf(videoIds));
+    }
+
+    /** Null identifies ordinary commands; no queue state is consulted by the native picker. */
+    public static ArrayList<String> copyVideoIds(Endpoint endpoint) {
+        List<String> videoIds = endpoint.patch_getQueueSaveVideoIds();
+        return videoIds == null ? null : new ArrayList<>(videoIds);
+    }
+
+    /** Native request construction has already inserted the ordinary single video at this point. */
+    public static void onPickerRequest(Picker picker, List<String> requestVideoIds) {
+        List<String> videoIds = picker.patch_getQueueSaveVideoIds();
+        if (videoIds == null) return;
+        requestVideoIds.clear();
+        requestVideoIds.addAll(videoIds);
     }
 }

@@ -202,6 +202,51 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
         "Queue batch Save hooks must not modify the player's native Save paths"
     }
     println("Experimental batch Save hooks, endpoint bridge and shared row factories absent")
+    val batchEndpointInterface = "Lapp/morphe/extension/youtube/patches/queue/QueueSaveActions\$Endpoint;"
+    val batchPickerInterface = "Lapp/morphe/extension/youtube/patches/queue/QueueSaveActions\$Picker;"
+    val batchEndpoints = classes.filter { batchEndpointInterface in it.interfaces }
+    val batchPickers = classes.filter { batchPickerInterface in it.interfaces }
+    val argumentTransfers = classes.flatMap { it.methods }.mapNotNull { method ->
+        val instructions = method.implementation?.instructions?.toList() ?: return@mapNotNull null
+        val index = instructions.indexOfFirst {
+            (it as? ReferenceInstruction)?.reference?.toString()?.contains("->onQueueSaveArguments(") == true
+        }
+        if (index < 0) null else Triple(method, instructions, index)
+    }
+    val batchRequests = classes.flatMap { it.methods }.mapNotNull { method ->
+        val instructions = method.implementation?.instructions?.toList() ?: return@mapNotNull null
+        val index = instructions.indexOfFirst {
+            (it as? ReferenceInstruction)?.reference?.toString()?.contains("QueueSaveActions;->onPickerRequest(") == true
+        }
+        if (index < 0) null else Triple(method, instructions, index)
+    }
+    if (selected) {
+        val endpoint = batchEndpoints.single()
+        val picker = batchPickers.single()
+        check(endpoint.fields.count { it.name == "patch_queueSaveVideoIds" && it.type == "Ljava/util/List;" } == 1)
+        val (factory, factoryInstructions, transferIndex) = argumentTransfers.single()
+        val transfer = factoryInstructions[transferIndex] as FiveRegisterInstruction
+        val serialization = factoryInstructions[transferIndex + 1] as ReferenceInstruction
+        check(factory.parameterTypes.map { it.toString() } == listOf(endpoint.type) &&
+                serialization.reference.toString().endsWith("->toByteArray()[B") &&
+                (serialization as FiveRegisterInstruction).registerC == transfer.registerC) {
+            "Owned selection must enter native saved arguments before endpoint serialization overwrites its register"
+        }
+        val (requestMethod, requestInstructions, requestIndex) = batchRequests.single()
+        check(requestMethod.definingClass == picker.type && requestIndex >= 2 &&
+                requestInstructions[requestIndex - 1].opcode == Opcode.IGET_OBJECT &&
+                (requestInstructions[requestIndex - 2] as? ReferenceInstruction)?.reference?.toString() ==
+                "Ljava/util/List;->add(Ljava/lang/Object;)Z") {
+            "Queue snapshot must replace the native request's singleton after its insertion, using the real picker"
+        }
+        val getter = picker.methods.single { it.name == "patch_getQueueSaveVideoIds" }.implementation!!.instructions
+        check(getter.any { (it as? ReferenceInstruction)?.reference?.toString()?.contains("->getQueueSaveVideoIds(") == true })
+        println("Queue-owned native batch picker: marker, saved arguments, real request list and original callbacks verified")
+    } else {
+        check(batchEndpoints.isEmpty() && batchPickers.isEmpty() && argumentTransfers.isEmpty() && batchRequests.isEmpty()) {
+            "Native batch Save bridge leaked into a patch-unselected build"
+        }
+    }
     if (!selected) {
         check(rowTypes.isEmpty() && menuOpenCalls.isEmpty() && menuDispatches.isEmpty() &&
                 saveEndpoints.isEmpty() && saveDispatches.isEmpty() && taggedSheetGuards.isEmpty() &&
@@ -273,11 +318,6 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
     val removeIndex = dispatchInstructions.indexOfFirst { instruction ->
         (instruction as? ReferenceInstruction)?.reference?.toString()?.startsWith(
             "L$extensionOwner;->onQueueMenuCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)") == true
-    }
-    check(removeIndex >= 2 && (dispatchInstructions[removeIndex - 2] as? ReferenceInstruction)
-        ?.reference?.toString()?.startsWith("L$extensionOwner;->onQueueMenuContext(") == true &&
-            dispatchInstructions[removeIndex - 1].opcode == Opcode.MOVE_RESULT_OBJECT) {
-        "Header selection context must be installed before native menu dispatch"
     }
     check(removeIndex >= 0 && dispatchInstructions[removeIndex + 1].opcode == Opcode.MOVE_RESULT_OBJECT &&
             dispatchInstructions[removeIndex + 2].opcode == Opcode.IF_NEZ &&

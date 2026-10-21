@@ -8,6 +8,7 @@
 package app.morphe.extension.youtube.patches.queue;
 
 import android.net.Uri;
+import android.os.Bundle;
 import android.util.Base64;
 
 import static app.morphe.extension.shared.StringRef.str;
@@ -43,6 +44,7 @@ import app.morphe.extension.youtube.shared.ShortsPlayerState;
 
 @SuppressWarnings("unused")
 public final class NativePlaylistQueuePatch {
+    private static final String SAVE_VIDEO_IDS_ARGUMENT = "app.morphe.native_playlist_queue.save_video_ids";
     private static final ByteTrieSearch CARD_COMPONENTS = new ByteTrieSearch(
             ByteTrieSearch.convertStringsToBytes("video_lockup_with_attachment.eml"));
     private static final Map<String, VideoMetadata> metadataCache =
@@ -652,24 +654,14 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
-    /** Remove local header ownership before opening a native single-video Save sheet. */
-    public static Map<?, ?> onQueueMenuContext(MessageLite endpoint, Map<?, ?> context) {
-        if (endpoint == null || context == null) return context;
-        Object owner = context.get(QueueSaveActions.ENDPOINT_TAG);
-        PlaylistController controller = readyController();
-        if (!(owner instanceof QueuePanel panel) || !panel.patch_isQueueOwned()
-                || queue == null || controller == null || controller.patch_getModel() != publishedModel
-                || owner != controller.patch_getPanel()) return context;
-        try {
-            var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
-            List<String> videoIds = new ArrayList<>();
-            for (PlaylistQueue.Entry entry : queue.entries()) videoIds.add(entry.videoId());
-            return QueueSaveActions.prepareContext(command, context, videoIds);
-        } catch (Exception exception) {
-            Logger.printException(() -> "Could not prepare queue save selection", exception);
-            Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
-            return context;
-        }
+    /** Save arguments belong to this queue-launched native fragment, including after rotation. */
+    public static void onQueueSaveArguments(QueueSaveActions.Endpoint endpoint, Bundle arguments) {
+        ArrayList<String> videoIds = QueueSaveActions.copyVideoIds(endpoint);
+        if (videoIds != null) arguments.putStringArrayList(SAVE_VIDEO_IDS_ARGUMENT, videoIds);
+    }
+
+    public static List<String> getQueueSaveVideoIds(Bundle arguments) {
+        return arguments == null ? null : arguments.getStringArrayList(SAVE_VIDEO_IDS_ARGUMENT);
     }
 
     /** Override only commands from an owned row or the exact published queue header. */
@@ -680,8 +672,18 @@ public final class NativePlaylistQueuePatch {
         if (!header && (!(owner instanceof QueueRow row) || !row.patch_isQueueOwned())) return endpoint;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
-            // Header Save must have had its local ownership removed by prepareContext.
-            if (header && command.hasShowSheetCommand()) return null;
+            if (header && command.hasAddToPlaylistEndpoint()) {
+                PlaylistController controller = readyController();
+                if (queue == null || controller == null || controller.patch_getModel() != publishedModel
+                        || owner != controller.patch_getPanel()
+                        || !command.getAddToPlaylistEndpoint().getVideoId().equals(queue.entries().get(0).videoId())) {
+                    return null;
+                }
+                List<String> videoIds = new ArrayList<>();
+                for (PlaylistQueue.Entry entry : queue.entries()) videoIds.add(entry.videoId());
+                QueueSaveActions.prepare((QueueSaveActions.Endpoint) endpoint, videoIds);
+                return endpoint;
+            }
             if (!command.hasHideEnclosingAction() || command.hasWatchEndpoint()) return endpoint;
             PlaylistController controller = readyController();
             if (queue == null || controller == null || controller.patch_getModel() != publishedModel) return null;
@@ -1016,10 +1018,9 @@ public final class NativePlaylistQueuePatch {
         for (PlaylistQueue.Entry entry : source.entries()) videoIds.add(entry.videoId());
         return PlaylistQueueRenderer.Menu.newBuilder().setMenuRenderer(
                 PlaylistQueueRenderer.MenuRenderer.newBuilder()
-                        // The service callback carries the header's ownership context into
-                        // the native sheet, just as the existing modern Share action does.
+                        // Only an activated, currently owned header may attach a batch selection.
                         .addItems(serviceMenuItem(str("playlist_save"), YTIconType.BOOKMARK_BORDER,
-                                QueueSaveActions.openSheet(videoIds)))
+                                QueueSaveActions.openPicker(videoIds)))
                         .addItems(serviceMenuItem(str("morphe_native_playlist_queue_clear"), YTIconType.DELETE,
                                 PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setHideEnclosingAction(
                                         PlaylistQueueRenderer.HideEnclosingAction.newBuilder().setHack(true)).build()))

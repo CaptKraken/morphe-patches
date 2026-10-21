@@ -24,6 +24,24 @@ import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 
+/** The native batch request, not the modern panel's single-video parameter. */
+internal object QueueSaveRequestFingerprint : Fingerprint(
+    name = "<init>",
+    filters = listOf(string("playlist/get_add_to_playlist"))
+)
+
+internal fun queueSavePickerFingerprint(requestType: String) = Fingerprint(
+    parameters = listOf("Landroid/os/Bundle;"),
+    returnType = "V",
+    filters = listOf(string("navigation_endpoint"), methodCall(definingClass = requestType, name = "<init>"))
+)
+
+internal fun queueSavePickerFactoryFingerprint(pickerType: String, endpointType: String) = Fingerprint(
+    parameters = listOf(endpointType),
+    returnType = "V",
+    filters = listOf(methodCall(definingClass = pickerType, name = "<init>"), string("navigation_endpoint"))
+)
+
 /** Stable diagnostics from the native playback queue, distinct from the panel adapter. */
 internal object NativeQueueDescriptorFingerprint : Fingerprint(
     filters = listOf(string("getNavigationDescriptor for %sreturned NULL"))
