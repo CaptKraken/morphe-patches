@@ -4,6 +4,8 @@ Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source.
 
 ## PoC57 — repair Android bundle packaging
 
+**Phone result: user confirmed “ok all working” after importing PoC57 and receiving the focused regression checklist.**
+
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc57-bundle-fix.mpp) · [Source db992a564](https://github.com/CaptKraken/morphe-patches/commit/db992a56488e1284ed81366db096ac0ee4445c62)
 
 PoC56 was broken: its root classes.dex was missing, so Manager displayed zero patches. The unselected APK validation ran after buildAndroid and regenerated the archive through the jar task, removing the Android DEX. Earlier ZIP/extension/class checks missed this. PoC57 runs buildAndroid last and restores classes.dex; queue source is unchanged.

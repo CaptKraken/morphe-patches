@@ -10,7 +10,8 @@
     "validation": "Finalbuild15s;rootDEX2532236bytes/2686classes/queuegetter;SHA1+Adler32+CRC/currentMPE/38Kotlinpayloads;PatchLoader.Jar171patches/defaulttrue;badPoC56negativecheck. Same-source prior realAPK/tests reused;AndroidManager import pending.",
     "commit": "db992a56488e1284ed81366db096ac0ee4445c62",
     "sha256": "ac77dc4b0f2bf9b66c043284bcf35003b8675a95544f9f0303d21fc9de29a011",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc57-bundle-fix.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc57-bundle-fix.mpp",
+    "phone_result": "USER CONFIRMED WORKS: \"ok all working\" after corrected PoC57 delivery and focused regression checklist; user-reported result, no independent device run."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc56-reviewed-cleanup.mpp",
