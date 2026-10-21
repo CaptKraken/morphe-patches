@@ -652,19 +652,24 @@ internal fun notificationPlaybackStateFingerprint(adapterType: String, callback:
     parameters = callback.parameterTypes.map { it.toString() }
 )
 
-/** Snackbar Undo dispatch retains the original enclosing owner and dismisses after its callback. */
-internal fun queueUndoClickFingerprint(endpointType: String) = Fingerprint(
+/** Both snackbar factories live together; the watch-screen factory is its native sibling. */
+internal object QueueSnackbarFactoryFingerprint : Fingerprint(
+    returnType = "L",
+    parameters = listOf("L", "Ljava/util/Map;"),
+    filters = listOf(string("feedback_undo"))
+)
+
+internal fun queueUndoClickFingerprint(listenerType: String, factoryType: String,
+                                      dispatcherType: String, callback: MethodReference) = Fingerprint(
+    definingClass = listenerType,
     name = "onClick",
     returnType = "V",
     parameters = listOf("Landroid/view/View;"),
     filters = listOf(
         string("com.google.android.libraries.youtube.innertube.endpoint.tag"),
-        methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = listOf(endpointType, "Ljava/util/Map;"),
-            returnType = "V", location = MatchAfterWithin(10)),
-        checkCast("Lcom/google/android/libraries/quantum/snackbar/Snackbar;"),
-        methodCall(opcode = Opcode.INVOKE_VIRTUAL,
-            definingClass = "Lcom/google/android/libraries/quantum/snackbar/Snackbar;",
-            parameters = emptyList(), returnType = "V", location = MatchAfterImmediately())
-    ),
-    custom = { _, type -> "Landroid/view/View\$OnClickListener;" in type.interfaces }
+        fieldAccess(opcode = Opcode.IGET_OBJECT, definingClass = factoryType, type = dispatcherType),
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, definingClass = callback.definingClass,
+            name = callback.name, parameters = callback.parameterTypes.map { it.toString() },
+            returnType = "V", location = MatchAfterWithin(6))
+    )
 )

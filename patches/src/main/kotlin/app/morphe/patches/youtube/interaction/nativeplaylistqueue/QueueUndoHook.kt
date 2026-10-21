@@ -21,12 +21,9 @@ import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.OffsetInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
-import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodParameter
 
@@ -55,48 +52,49 @@ internal fun installQueueUndo(context: BytecodePatchContext, endpointType: Strin
             return-object v0
         """)
     })
-    val click = queueUndoClickFingerprint(endpointType).matchSingle()
-    val call = click.instructionMatches[1]
-    val registers = call.instruction as FiveRegisterInstruction
+    val legacy = QueueSnackbarFactoryFingerprint.matchSingle()
+    val factory = legacy.originalClassDef
+    val modern = factory.methods.single {
+        it.returnType == legacy.originalMethod.returnType && it.parameterTypes.size == 2 &&
+                it.parameterTypes.last() == "Ljava/util/Map;" &&
+                it.parameterTypes.first() != legacy.originalMethod.parameterTypes.first()
+    }
+    val dispatcher = factory.fields.single { field -> classDefByOrNull(field.type)?.methods?.any {
+        it.returnType == "V" && it.parameterTypes == listOf(endpointType, "Ljava/util/Map;")
+    } == true }
+    val callback = classDefBy(dispatcher.type).methods.single {
+        it.returnType == "V" && it.parameterTypes == listOf(endpointType, "Ljava/util/Map;")
+    }
+    val listenerType = modern.implementation!!.instructions.mapNotNull {
+        it.getReference<MethodReference>()?.takeIf { reference -> reference.name == "<init>" &&
+                "Landroid/view/View\$OnClickListener;" in classDefBy(reference.definingClass).interfaces
+        }?.definingClass
+    }.distinct().single()
+    val click = queueUndoClickFingerprint(listenerType, factory.type, dispatcher.type, callback).matchSingle()
     val instructions = click.originalMethod.implementation!!.instructions.toList()
-    val dismissalBranch = instructions[call.index + 1]
-    fun address(index: Int) = instructions.take(index).sumOf { it.codeUnits }
-    val dismissalCast = click.instructionMatches[2]
-    val dismissalLoadIndex = dismissalCast.index - 1
-    val dismissalLoad = instructions[dismissalLoadIndex]
-    check(dismissalLoad.opcode == Opcode.IGET_OBJECT &&
-            (dismissalLoad as TwoRegisterInstruction).registerA ==
-            (dismissalCast.instruction as OneRegisterInstruction).registerA &&
-            dismissalBranch.opcode == Opcode.GOTO_16 &&
-            address(call.index + 1) + (dismissalBranch as OffsetInstruction).codeOffset ==
-            address(dismissalLoadIndex)) {
-        "Native playlist queue: snackbar callback must branch to its discovered native dismissal"
+    val calls = instructions.withIndex().filter {
+        it.value.opcode == Opcode.IGET_OBJECT && it.value.getReference<FieldReference>() == dispatcher
+    }.map { read ->
+        val receiver = (read.value as TwoRegisterInstruction).registerA
+        ((read.index + 1)..minOf(read.index + 6, instructions.lastIndex)).single { index ->
+            val instruction = instructions[index]
+            instruction.opcode == Opcode.INVOKE_INTERFACE &&
+                    instruction.getReference<MethodReference>() == callback &&
+                    (instruction as FiveRegisterInstruction).registerC == receiver
+        }
     }
-    val endpointCast = instructions[call.index - 1]
-    val endpointLoadIndex = call.index - 2
-    val endpointLoad = instructions[endpointLoadIndex]
-    val guardIndex = endpointLoadIndex - 1
-    val guard = instructions[guardIndex]
-    check(endpointCast.opcode == Opcode.CHECK_CAST &&
-            endpointCast.getReference<TypeReference>()?.type == endpointType &&
-            (endpointCast as OneRegisterInstruction).registerA == registers.registerD &&
-            endpointLoad.opcode == Opcode.IGET_OBJECT &&
-            (endpointLoad as TwoRegisterInstruction).registerA == registers.registerD &&
-            guard.opcode == Opcode.IF_EQZ &&
-            (guard as OneRegisterInstruction).registerA == registers.registerC &&
-            address(guardIndex) + (guard as OffsetInstruction).codeOffset == address(dismissalLoadIndex)) {
-        "Native playlist queue: expected optional snackbar dispatcher guarding the endpoint load"
+    // Modern buttons can carry service, navigation and command endpoints. Intercept
+    // only the three dispatches supplied by this snackbar factory, not other lambda cases.
+    check(calls.size == 3 && calls.distinct().size == 3) {
+        "Native playlist queue: expected three modern snackbar endpoint dispatches"
     }
-    val endpointField = endpointLoad.getReference<FieldReference>()!!
-    val temporary = click.method.findFreeRegister(guardIndex)
-    // Local Undo must work even without a native dispatcher. Read its endpoint
-    // before that optional guard; ordinary actions then run the original load/call.
-    // The copied endpoint dies at the hook call, so its register can hold the result.
-    click.method.addInstructionsAtControlFlowLabel(guardIndex, """
-        iget-object v$temporary, v${endpointLoad.registerB}, $endpointField
-        check-cast v$temporary, Lcom/google/protobuf/MessageLite;
-        invoke-static {v$temporary}, $EXTENSION_CLASS->onQueueUndoCommand(Lcom/google/protobuf/MessageLite;)Z
-        move-result v$temporary
-        if-nez v$temporary, :dismiss_queue_undo
-    """, ExternalLabel("dismiss_queue_undo", click.method.getInstruction(call.index + 1)))
+    for (index in calls.sortedDescending()) {
+        val registers = click.method.getInstruction<FiveRegisterInstruction>(index)
+        val consumed = click.method.findFreeRegister(index)
+        click.method.addInstructionsAtControlFlowLabel(index, """
+            invoke-static {v${registers.registerD}}, $EXTENSION_CLASS->onQueueUndoCommand(Lcom/google/protobuf/MessageLite;)Z
+            move-result v$consumed
+            if-nez v$consumed, :local_undo_handled
+        """, ExternalLabel("local_undo_handled", click.method.getInstruction(index + 1)))
+    }
 }
