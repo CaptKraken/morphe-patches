@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC46 — complete queue when creating a New playlist
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc46-new-playlist-whole-queue.mpp) · [Source 2e8e14957](https://github.com/CaptKraken/morphe-patches/commit/2e8e14957cd59cc021cf221bb6b577ba96fdc8e0)
+
+Corrects the native New playlist header button field from 3 to 2. The wrong field caused queue binding to skip the actual button and leave its seed-only command unchanged. The existing binding now supplies all queued IDs to YouTube's original name/privacy dialog and playlist/create list. No new native hooks, custom UI/network or ordinary Save changes. PoC45 existing-playlist confirmation and Undo were user-confirmed working and are retained.
+
+Validation: native wire-format regression failed before the correction and passed afterwards; full suite23pass/5 unrelated Jam APK skips. Combined20-related real21.20.405 SDK12DEX/hierarchy/resources and MPP build passed2m29s.25 original native Save/New/auth/query/serializer/Snackbar methods match stock. MPP/currentMPE/all36Kotlinpayloads/CRC/defaulttrue and mandatory commit gate passed. No fresh unselected run for unchanged hooks. **New playlist phone result pending.**
+
+Test THREE distinct queued videos -> New playlist contains all3 in order. Also single queue/New, ordinary player/New, existing Save confirmation/Undo, cancellation/rotation and continuous playback.
+
+SHA-256: `ccf2bf7ab6456d754a07b8bf0c545a5dad3767c10190176596edb830d1296238`
+
 ## PoC45 — existing-playlist save confirmation and Undo
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc45-save-confirmation-undo.mpp) · [Source 52dd00d1f](https://github.com/CaptKraken/morphe-patches/commit/52dd00d1f64f6fb8fe4f567b6995a5fb0beb8432)

@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc46-new-playlist-whole-queue.mpp",
+    "title": "PoC46: New playlist saves complete queue",
+    "description": "Correct actual native header button field2; existing queue binder now supplies all IDs to native New dialog. No new hooks/customUI/network; PoC45 confirmed feedback retained.",
+    "phone_checks": [
+      "Three distinct queue videos -> New playlist all3 in order.",
+      "Single queue/New, ordinary player/New, existing Save toast+Undo, cancel/rotation and continuous playback."
+    ],
+    "validation": "Before/after wire regression;23pass5unrelatedskips;combined20related SDK12DEX/hierarchy/resources + MPP passed2m29s;25stockmethodsmatch;currentMPE/all36Kotlinpayloads/CRC/defaulttrue/gatepass. Phone pending.",
+    "commit": "2e8e14957cd59cc021cf221bb6b577ba96fdc8e0",
+    "sha256": "ccf2bf7ab6456d754a07b8bf0c545a5dad3767c10190176596edb830d1296238",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc46-new-playlist-whole-queue.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc45-save-confirmation-undo.mpp",
     "title": "PoC45: existing-playlist native save confirmation and Undo",
     "description": "Success-only native Saved-to Snackbar, exact returned new entry IDs for Undo. Queue-owned existing Add only. New playlist first-video bug deferred. Ordinary Save untouched.",
@@ -10,7 +23,8 @@
     "validation": "23pass5unrelatedskips;combined20related/unselected SDK12DEX/hierarchy/resources;strings90674clean;18stockmethodsmatch;finalMPP/currentMPE/all36Kotlinpayloads/CRC/gatepass. Phone pending.",
     "commit": "52dd00d1f64f6fb8fe4f567b6995a5fb0beb8432",
     "sha256": "05c7f0a78caed1118d8afffd4ebe7c7373a9965ecd6d7749c6197325db4c0743",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc45-save-confirmation-undo.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc45-save-confirmation-undo.mpp",
+    "phone_result": "USER CONFIRMED: existing-playlist confirmation and Undo work. New playlist first-video-only bug addressed separately in PoC46."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc44-stock-save-picker.mpp",
