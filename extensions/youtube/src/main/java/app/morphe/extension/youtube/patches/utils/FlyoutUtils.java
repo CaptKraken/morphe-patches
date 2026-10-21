@@ -948,7 +948,8 @@ public final class FlyoutUtils {
         if (bufferObject instanceof FlyoutMenuVideoIdInterface videoIdInterface) {
             isMyTabHistoryFlyout = false;
             String videoId = videoIdInterface.patch_getVideoId();
-            if (videoId != null && !videoId.isEmpty()) {
+            if (videoId != null) {
+                // An empty typed ID must clear the previous menu's video as well.
                 flyoutVideoId = videoId;
                 flyoutPlaylistId = "";
                 isShortFlyout = false;
