@@ -23,6 +23,7 @@ import app.morphe.patches.youtube.layout.flyout.addToQueuePatch
 import app.morphe.patches.youtube.layout.player.fullscreen.exitFullscreenPatch
 import app.morphe.patches.youtube.layout.player.fullscreen.openVideosFullscreenPatch
 import app.morphe.patches.youtube.layout.livering.openChannelOfLiveAvatarPatch
+import app.morphe.patches.youtube.layout.hide.general.hideLayoutComponentsPatch
 import app.morphe.patches.youtube.layout.hide.relatedvideos.hideRelatedVideosPatch
 import app.morphe.patches.youtube.layout.originaltitles.restoreOriginalTitlesPatch
 import app.morphe.patches.youtube.layout.returnyoutubedislike.returnYouTubeDislikePatch
@@ -68,7 +69,7 @@ fun main(arguments: Array<String>) {
         addToQueuePatch, saveToWatchLaterButtonPatch, downloadsPatch, openSystemShareSheetPatch(), loopVideoPatch,
         disablePlaylistAutoplayPatch, hidePlayerOverlayButtonsPatch, hideVideoActionButtonsPatch,
         restoreOriginalTitlesPatch, deArrowPatch, openChannelOfLiveAvatarPatch, returnYouTubeDislikePatch,
-        hideRelatedVideosPatch, exitFullscreenPatch, openVideosFullscreenPatch,
+        hideLayoutComponentsPatch, hideRelatedVideosPatch, exitFullscreenPatch, openVideosFullscreenPatch,
         mediaNotificationControlsPatchYouTube, backgroundPlaybackPatch,
         spoofVideoStreamsPatch, restoreOldVideoActionBarPatch
     )
@@ -224,6 +225,28 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
         method.implementation?.instructions?.any {
             (it as? ReferenceInstruction)?.reference?.toString()?.contains("QueueSaveActions;->onPickerResponse(") == true
         } == true
+    }
+    val feedbackInterface = "Lapp/morphe/extension/youtube/patches/queue/QueueSaveFeedback\$Callback;"
+    val feedbackCallbacks = classes.filter { feedbackInterface in it.interfaces }
+    val feedbackHooks = classes.flatMap { it.methods }.mapNotNull { method ->
+        val calls = method.implementation?.instructions?.filter {
+            (it as? ReferenceInstruction)?.reference?.toString()?.let { reference ->
+                reference.contains("QueueSaveActions;->onEditCreated(") ||
+                        reference.contains("QueueSaveActions;->onEditResult(")
+            } == true
+        }?.toList() ?: emptyList()
+        if (calls.isEmpty()) null else method to calls
+    }
+    if (selected) {
+        val callback = feedbackCallbacks.single()
+        check(callback.fields.count { it.name == "patch_queueSaveSelection" } == 1)
+        check(feedbackHooks.size == 2 && feedbackHooks.sumOf { it.second.size } == 2)
+        check(feedbackHooks.any { it.first.definingClass == callback.type })
+        println("Queue-only save callback ownership and native success feedback bridges present")
+    } else {
+        check(feedbackCallbacks.isEmpty() && feedbackHooks.isEmpty()) {
+            "Queue save confirmation hooks leaked into an unselected build"
+        }
     }
     if (selected) {
         check(batchEndpoints.isEmpty()) { "Transient endpoint instance markers must not own a batch selection" }

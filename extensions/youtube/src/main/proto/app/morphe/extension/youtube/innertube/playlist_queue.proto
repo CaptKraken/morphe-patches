@@ -137,7 +137,12 @@ message MainAppStyle {
 }
 
 message Text {
+    repeated TextRun runs = 1;
     optional string simple_text = 4;
+}
+
+message TextRun {
+    optional string text = 1;
 }
 
 message Thumbnails {
@@ -165,6 +170,8 @@ message NavigationEndpoint {
     // Extension-owned local selection, never a YouTube request field. Keeping it
     // in the command preserves it across native protobuf copies/serialization.
     repeated string queue_save_video_ids = 500000000;
+    optional string queue_save_playlist_title = 500000001;
+    optional AddToToastAction add_to_toast_action = 76623563;
 }
 
 message ShowSheetCommand {
@@ -194,6 +201,7 @@ message PlaylistEditEndpoint {
 }
 
 message PlaylistEditAction {
+    optional string set_video_id = 3;
     optional string added_video_id = 2;
     optional int32 action = 6;
 }
@@ -278,6 +286,7 @@ message SwipeButton {
     optional Style style = 1;
     optional Size size = 2;
     optional bool is_disabled = 3;
+    optional Text text = 5;
     optional NavigationEndpoint service_endpoint = 7;
     optional app.morphe.extension.youtube.innertube.Icon icon = 8;
     optional NavigationEndpoint navigation_endpoint = 9;
@@ -300,6 +309,7 @@ message QueueSaveDestinationItem {
     optional QueueSaveDestination playlist_add_to_option_renderer = 74079946;
 }
 message QueueSaveDestination {
+    optional Text title = 2;
     // Native UNKNOWN=0 is an add-and-close destination, with no membership checkbox.
     optional int32 selection_state = 5;
     optional NavigationEndpoint add_endpoint = 7;
@@ -310,4 +320,28 @@ message QueueSaveHeaderItem {
 }
 message QueueSaveHeader {
     optional SwipeAction button = 3;
+}
+
+// Native browse/edit_playlist success response and exact added-entry results.
+message QueueSaveEditResponse {
+    optional int32 status = 2;
+    repeated NavigationEndpoint actions = 7;
+    repeated QueueSaveEditResult results = 12;
+}
+message QueueSaveEditResult {
+    optional QueueSaveAddedEntry added_entry = 138418859;
+}
+message QueueSaveAddedEntry {
+    optional string video_id = 1;
+    optional string set_video_id = 2;
+}
+message AddToToastAction {
+    optional QueueToastItem item = 1;
+}
+message QueueToastItem {
+    optional QueueToastRenderer toast_renderer = 96140188;
+}
+message QueueToastRenderer {
+    optional Text response_text = 1;
+    optional SwipeAction action_button = 2;
 }

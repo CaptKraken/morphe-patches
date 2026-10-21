@@ -32,6 +32,14 @@ class QueueSaveActionsTest {
                 }
             """.trimIndent())
         }
+        val strings = File(output, "StringRef.java").apply {
+            writeText("""
+                package app.morphe.extension.shared;
+                public class StringRef {
+                    public static String str(String name, Object... args) { return name; }
+                }
+            """.trimIndent())
+        }
         val fixture = File(output, "SaveFixture.java").apply {
             writeText("""
                 package app.morphe.extension.youtube.patches.queue;
@@ -51,6 +59,49 @@ class QueueSaveActionsTest {
                             try { return QueueSaveResponse.parseFrom(bytes); }
                             catch (Exception error) { throw new AssertionError(error); }
                         }
+                    }
+                    static class FeedbackCallback implements QueueSaveFeedback.Callback {
+                        QueueSaveFeedback.Selection selection;
+                        public QueueSaveFeedback.Selection patch_getQueueSaveSelection() { return selection; }
+                        public void patch_setQueueSaveSelection(QueueSaveFeedback.Selection value) { selection = value; }
+                        public com.google.protobuf.MessageLite patch_parseQueueSaveResult(byte[] bytes) {
+                            try { return QueueSaveEditResponse.parseFrom(bytes); }
+                            catch (Exception error) { throw new AssertionError(error); }
+                        }
+                    }
+                    static void verifyFeedback(List<String> ids) {
+                        var selection = new QueueSaveFeedback.Selection("PLdestination", "Test playlist", ids);
+                        var result = QueueSaveEditResponse.newBuilder().setStatus(1)
+                            .addResults(QueueSaveEditResult.newBuilder().setAddedEntry(QueueSaveAddedEntry.newBuilder()
+                                .setVideoId(ids.get(0)).setSetVideoId("NEW_ENTRY_A")))
+                            .addResults(QueueSaveEditResult.newBuilder().setAddedEntry(QueueSaveAddedEntry.newBuilder()
+                                .setVideoId(ids.get(1)).setSetVideoId("NEW_ENTRY_B"))).build();
+                        var decorated = QueueSaveFeedback.decorate(result, selection, "Saved to Test playlist", "Undo");
+                        var toast = decorated.getActions(0).getAddToToastAction().getItem().getToastRenderer();
+                        require(toast.getResponseText().getSimpleText().equals("Saved to Test playlist"));
+                        var undo = toast.getActionButton().getButtonRenderer().getServiceEndpoint().getPlaylistEditEndpoint();
+                        require(undo.getPlaylistId().equals("PLdestination"));
+                        require(toast.getActionButton().getButtonRenderer().getServiceEndpoint()
+                            .getQueueSaveVideoIdsCount() == 0); // Undo is not a second save confirmation.
+
+                        require(undo.getActionsCount() == 2);
+                        require(undo.getActions(0).getAction() == 2);
+                        require(undo.getActions(0).getSetVideoId().equals("NEW_ENTRY_A"));
+                        require(undo.getActions(1).getSetVideoId().equals("NEW_ENTRY_B"));
+                        // Only server-reported newly created entry IDs participate. The
+                        // third queued video / older occurrences are never deleted by ID.
+                        for (var action : undo.getActionsList()) require(!action.hasAddedVideoId());
+                        require(QueueSaveFeedback.decorate(decorated, selection, "duplicate", "Undo") == decorated);
+                        var failure = result.toBuilder().setStatus(0).build();
+                        require(QueueSaveFeedback.decorate(failure, selection, "wrong", "Undo") == failure);
+                        var missingEntries = result.toBuilder().clearResults().build();
+                        require(!QueueSaveFeedback.decorate(missingEntries, selection, "Saved", "Undo")
+                            .getActions(0).getAddToToastAction().getItem().getToastRenderer().hasActionButton());
+                        var foreign = result.toBuilder().addResults(QueueSaveEditResult.newBuilder()
+                            .setAddedEntry(QueueSaveAddedEntry.newBuilder().setVideoId("not-in-queue")
+                                .setSetVideoId("OLD_ENTRY"))).build();
+                        require(!QueueSaveFeedback.decorate(foreign, selection, "Saved", "Undo")
+                            .getActions(0).getAddToToastAction().getItem().getToastRenderer().hasActionButton());
                     }
                     public static String run() throws Exception {
                         var ids = new ArrayList<>(List.of("abcdefghijk", "lmnopqrstuv", "ZYXWVUTSRQP"));
@@ -80,7 +131,8 @@ class QueueSaveActionsTest {
                             QueueSaveResponseItem.newBuilder().setAddToPlaylistRenderer(
                                 QueueSavePickerRenderer.newBuilder().addPlaylists(
                                     QueueSaveDestinationItem.newBuilder().setPlaylistAddToOptionRenderer(
-                                        QueueSaveDestination.newBuilder().setSelectionState(3).setAddEndpoint(add)))
+                                        QueueSaveDestination.newBuilder().setSelectionState(3).setAddEndpoint(add)
+                                            .setTitle(Text.newBuilder().addRuns(TextRun.newBuilder().setText("Test playlist")))))
                                 .addHeaders(QueueSaveHeaderItem.newBuilder().setPlaylistAddToHeaderRenderer(
                                     QueueSaveHeader.newBuilder().setButton(SwipeAction.newBuilder()
                                         .setButtonRenderer(SwipeButton.newBuilder().setNavigationEndpoint(create)))))))
@@ -107,6 +159,16 @@ class QueueSaveActionsTest {
                             .getPlaylistAddToOptionRenderer().getSelectionState() == 3);
                         var edit = destination.getAddEndpoint().getPlaylistEditEndpoint();
                         require(edit.getPlaylistId().equals("PLdestination"));
+                        var callback = new FeedbackCallback();
+                        QueueSaveActions.onEditCreated(callback, destination.getAddEndpoint());
+                        require(callback.selection.videoIds().equals(expected));
+                        require(callback.selection.playlistId().equals("PLdestination"));
+                        require(callback.selection.title().equals("Test playlist"));
+                        var ordinaryCallback = new FeedbackCallback();
+                        QueueSaveActions.onEditCreated(ordinaryCallback, add);
+                        require(ordinaryCallback.selection == null);
+                        var ordinaryResult = QueueSaveEditResponse.newBuilder().setStatus(1).build();
+                        require(QueueSaveActions.onEditResult(ordinaryCallback, ordinaryResult) == ordinaryResult);
                         require(edit.getActionsList().stream().map(PlaylistEditAction::getAddedVideoId)
                             .toList().equals(expected));
                         var newPlaylist = renderer.getHeaders(0).getPlaylistAddToHeaderRenderer()
@@ -129,6 +191,7 @@ class QueueSaveActionsTest {
                                 QueueSavePickerRenderer.newBuilder().addPlaylists(unsupportedRow))).build();
                         require(((QueueSaveResponse) QueueSaveActions.onPickerResponse(picker, unsupported))
                             .getContentsCount() == 0); // Follow native error path instead of partial success.
+                        verifyFeedback(expected);
                         rejects(() -> QueueSaveActions.openPicker(List.of()));
                         return "ok";
                     }
@@ -140,7 +203,8 @@ class QueueSaveActionsTest {
                 "--release", "17", "-classpath", protobuf.path, "-d", output.path,
                 File(root, "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveActions.java").path,
                 File(generated, "IconOuterClass.java").path,
-                File(generated, "queue/PlaylistQueueRenderer.java").path, logger.path, fixture.path))
+                File(generated, "queue/PlaylistQueueRenderer.java").path, logger.path, strings.path,
+                File(root, "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveFeedback.java").path, fixture.path))
             URLClassLoader(arrayOf(output.toURI().toURL()), GeneratedMessageLite::class.java.classLoader).use { loader ->
                 assertEquals("ok", loader.loadClass("app.morphe.extension.youtube.patches.queue.SaveFixture")
                     .getMethod("run").invoke(null))

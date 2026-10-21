@@ -51,6 +51,24 @@ internal fun queueSaveResponseFingerprint(callbackType: String) = Fingerprint(
     filters = listOf(opcode(Opcode.CHECK_CAST), literal(88978004L))
 )
 
+/** Native edit callback error diagnostics identify the same request's success listener. */
+internal object QueueSaveEditErrorFingerprint : Fingerprint(
+    filters = listOf(string("Error editing the playlist"))
+)
+
+internal fun queueSaveEditCreationFingerprint(callbackType: String, endpointType: String) = Fingerprint(
+    parameters = listOf(endpointType, "Ljava/lang/Object;"),
+    returnType = "V",
+    filters = listOf(methodCall(definingClass = callbackType, name = "<init>"))
+)
+
+internal fun queueSaveEditSuccessFingerprint(callbackType: String) = Fingerprint(
+    definingClass = callbackType,
+    parameters = listOf("L"),
+    returnType = "V",
+    filters = listOf(methodCall("Ljava/util/List;->iterator()Ljava/util/Iterator;"))
+)
+
 /** Stable diagnostics from the native playback queue, distinct from the panel adapter. */
 internal object NativeQueueDescriptorFingerprint : Fingerprint(
     filters = listOf(string("getNavigationDescriptor for %sreturned NULL"))

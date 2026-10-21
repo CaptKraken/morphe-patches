@@ -63,6 +63,9 @@ tasks {
         inputs.file(rootProject.file(
             "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveActions.java"
         )).withPropertyName("playlistQueueSaveActionsSource")
+        inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveFeedback.java"
+        )).withPropertyName("playlistQueueSaveFeedbackSource")
     }
 
     register<JavaExec>("checkStringResources") {

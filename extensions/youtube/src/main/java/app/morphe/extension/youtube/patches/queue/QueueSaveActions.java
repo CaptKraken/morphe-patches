@@ -7,6 +7,8 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import static app.morphe.extension.shared.StringRef.str;
+
 import com.google.protobuf.MessageLite;
 import com.google.protobuf.InvalidProtocolBufferException;
 
@@ -18,6 +20,7 @@ import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.AddToP
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.NavigationEndpoint;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.QueueSaveResponse;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.PlaylistEditAction;
+import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.QueueSaveEditResponse;
 
 /** An owned command transfers its immutable selection to the native picker's saved arguments. */
 public final class QueueSaveActions {
@@ -69,7 +72,15 @@ public final class QueueSaveActions {
                 if (!destination.hasPlaylistAddToOptionRenderer()) continue;
                 var option = destination.getPlaylistAddToOptionRenderer();
                 if (!option.hasAddEndpoint()) continue;
-                var updatedOption = option.toBuilder().setAddEndpoint(bindCommand(option.getAddEndpoint(), ids));
+                String title = option.getTitle().getSimpleText();
+                if (title.isEmpty()) {
+                    var text = new StringBuilder();
+                    for (var run : option.getTitle().getRunsList()) text.append(run.getText());
+                    title = text.toString();
+                }
+                var add = bindCommand(option.getAddEndpoint(), ids).toBuilder()
+                        .clearQueueSaveVideoIds().addAllQueueSaveVideoIds(ids).setQueueSavePlaylistTitle(title);
+                var updatedOption = option.toBuilder().setAddEndpoint(add);
                 if (ids.size() > 1) {
                     // The native query describes only its seed video. UNKNOWN uses
                     // YouTube's add-and-close row, avoiding a false whole-queue
@@ -132,4 +143,39 @@ public final class QueueSaveActions {
         }
         throw new IllegalStateException("Unrecognized native queue save destination command");
     }
+
+    /** The native edit callback owns its selection; no process-wide pending save. */
+    public static void onEditCreated(QueueSaveFeedback.Callback callback, MessageLite endpoint) {
+        try {
+            var command = NavigationEndpoint.parseFrom(endpoint.toByteArray());
+            if (command.getQueueSaveVideoIdsCount() == 0 || !command.hasPlaylistEditEndpoint()
+                    || !command.hasQueueSavePlaylistTitle()) return;
+            var edit = command.getPlaylistEditEndpoint();
+            if (edit.getActionsCount() == 0) return;
+            for (var action : edit.getActionsList()) if (action.getAction() != 1) return;
+            callback.patch_setQueueSaveSelection(new QueueSaveFeedback.Selection(edit.getPlaylistId(),
+                    command.getQueueSavePlaylistTitle(), command.getQueueSaveVideoIdsList()));
+        } catch (InvalidProtocolBufferException exception) {
+            Logger.printException(() -> "Could not retain queue save confirmation context", exception);
+        }
+    }
+
+    /** Runs only on the native success response, before its original action dispatch. */
+    public static MessageLite onEditResult(QueueSaveFeedback.Callback callback, MessageLite response) {
+        var selection = callback.patch_getQueueSaveSelection();
+        if (selection == null) return response;
+        try {
+            var result = QueueSaveEditResponse.parseFrom(response.toByteArray());
+            String message = selection.title().isEmpty() ? str("morphe_native_playlist_queue_saved")
+                    : str("morphe_native_playlist_queue_saved_to", selection.title());
+            var decorated = QueueSaveFeedback.decorate(result, selection, message,
+                    str("offline_undo_snackbar_button_text"));
+            return decorated == result ? response : callback.patch_parseQueueSaveResult(decorated.toByteArray());
+        } catch (InvalidProtocolBufferException exception) {
+            // The save already completed; never replace its result with a UI failure.
+            Logger.printException(() -> "Could not display native queue save confirmation", exception);
+            return response;
+        }
+    }
+
 }

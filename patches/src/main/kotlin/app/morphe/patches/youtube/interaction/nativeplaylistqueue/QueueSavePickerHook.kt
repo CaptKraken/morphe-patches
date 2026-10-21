@@ -31,6 +31,7 @@ private const val LIST = "Ljava/util/List;"
 
 /** Supply a real batch only to a picker launched by our queue header; keep native callbacks. */
 internal fun installQueueSavePicker(context: BytecodePatchContext, endpointType: String) = with(context) {
+    installQueueSaveFeedback(context, endpointType)
     val request = QueueSaveRequestFingerprint.matchSingle().originalClassDef
     val picker = queueSavePickerFingerprint(request.type).matchSingle()
     val factory = queueSavePickerFactoryFingerprint(picker.originalClassDef.type, endpointType).matchSingle()
