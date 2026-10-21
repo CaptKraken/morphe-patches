@@ -774,42 +774,36 @@ public final class NativePlaylistQueuePatch {
     public static boolean onQueueUndoCommand(MessageLite endpoint) {
         PendingUndo undo = pendingUndo;
         try {
-            boolean[] activated = {false};
-            boolean consumed = QueueUndoActions.dispatchUndo(endpoint, undo == null ? null : undo.token(), () -> {
-                activated[0] = true;
-                if (undo != null) Utils.showToastLong("Queue Undo/" + undoQueueEdit(undo.token()));
+            return QueueUndoActions.dispatchUndo(endpoint, undo == null ? null : undo.token(), () -> {
+                if (undo != null) undoQueueEdit(undo.token());
             });
-            // Temporary phone diagnostic: no video IDs or account data are exposed.
-            if (consumed && !activated[0]) Utils.showToastLong("Queue Undo/expired or replaced");
-            return consumed;
         } catch (Exception exception) {
             Logger.printException(() -> "Could not undo native playlist queue edit", exception);
             return false;
         }
     }
 
-    private static String undoQueueEdit(String token) {
+    private static void undoQueueEdit(String token) {
         PendingUndo undo = pendingUndo;
-        if (undo == null || !undo.token().equals(token)) return "expired";
+        if (undo == null || !undo.token().equals(token)) return;
         pendingUndo = null; // A native callback can only activate this capability once.
         PlaylistController controller = readyController();
-        if (controller == null) return "player";
-        if (pendingSelection != null || dragSession != null) return "busy";
-        if (!VideoInformation.getPlaylistId().isEmpty()) return "account playlist";
+        if (controller == null) return;
+        if (pendingSelection != null || dragSession != null) return;
+        if (!VideoInformation.getPlaylistId().isEmpty()) return;
         NativePlayback playback = undo.playback().get();
-        if (playback == null) return "backend missing";
-        if (playbackFor(controller) != playback) return "backend changed";
+        if (playback == null) return;
+        if (playbackFor(controller) != playback) return;
         PlaylistQueue restored = QueueUndoActions.restore(undo.before(), undo.after(), queue,
                 VideoInformation.getVideoId());
-        if (restored == null) return "queue changed";
+        if (restored == null) return;
         Object baseline = controller.patch_getModel();
-        if (!publish(controller, restored, true)) return "publish failed";
+        if (!publish(controller, restored, true)) return;
         if (undo.after() == null) {
             originalModel = baseline;
             playback.patch_restoreQueueModes(restored.repeatMode(), undo.shuffled());
             queue = queue.withRepeatMode(playback.patch_getRepeatMode());
         }
-        return "restored";
     }
 
     /** Native row overflow creates its menu context directly, outside shared feed hooks. */
