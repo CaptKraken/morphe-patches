@@ -17,11 +17,9 @@ import app.morphe.util.getReference
 import app.morphe.util.matchSingle
 import app.morphe.util.p0Register
 import com.android.tools.smali.dexlib2.AccessFlags
-import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.TypeReference
@@ -73,36 +71,14 @@ internal fun installQueueSavePicker(context: BytecodePatchContext, endpointType:
                 return-object v0
             """)
         })
-    val listField = request.fields.single { it.type == LIST }
-    val readList = instructions.withIndex().single {
-        it.value.opcode == Opcode.IGET_OBJECT &&
-                it.value.getReference<FieldReference>()?.toString() == listField.toString()
+    // Use the constructor tied to this picker to discover its response callback.
+    // Leave the native picker request entirely unchanged: its batch variation
+    // returns HTTP 400 before the UI can open on the verified client.
+    val callbackConstructor = instructions.mapNotNull { it.getReference<MethodReference>() }.single {
+        it.name == "<init>" && mutablePicker.type in it.parameterTypes.map { type -> type.toString() }
     }
-    val listRegister = (readList.value as TwoRegisterInstruction).registerA
-    val add = instructions.withIndex().drop(readList.index + 1).first {
-        it.value.getReference<MethodReference>()?.toString() == "Ljava/util/List;->add(Ljava/lang/Object;)Z" &&
-                (it.value as FiveRegisterInstruction).registerC == listRegister
-    }
-    check(instructions[add.index + 1].opcode != Opcode.MOVE_RESULT) {
-        "Native playlist queue: request insertion unexpectedly consumes its boolean result"
-    }
-    // The initializer has reused p0 by now. Get the actual picker from the native
-    // response callback, whose singleton ID was just added to the request list.
-    val videoRegister = (add.value as FiveRegisterInstruction).registerD
-    val videoRead = instructions.take(readList.index).last {
-        it.opcode == Opcode.IGET_OBJECT && (it as TwoRegisterInstruction).registerA == videoRegister
-    }
-    val callbackType = videoRead.getReference<FieldReference>()!!.definingClass
-    val callbackRegister = (videoRead as TwoRegisterInstruction).registerB
+    val callbackType = callbackConstructor.definingClass
     val callbackPicker = classDefBy(callbackType).fields.single { it.type == mutablePicker.type }
-    val scratch = picker.method.findFreeRegister(add.index + 1, listRegister, callbackRegister)
-    check(scratch <= 15 && callbackRegister <= 15 && listRegister <= 15) {
-        "Native playlist queue: request selection bridge requires low registers"
-    }
-    picker.method.addInstructionsAtControlFlowLabel(add.index + 1, """
-        iget-object v$scratch, v$callbackRegister, $callbackPicker
-        invoke-static {v$scratch, v$listRegister}, $SAVE_ACTIONS->onPickerRequest($pickerInterface$LIST)V
-    """)
 
     val response = queueSaveResponseFingerprint(callbackType).matchSingle()
     val responseCast = response.instructionMatches.first()

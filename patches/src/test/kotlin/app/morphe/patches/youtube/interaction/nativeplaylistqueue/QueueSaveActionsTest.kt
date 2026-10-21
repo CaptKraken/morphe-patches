@@ -17,7 +17,7 @@ import kotlin.test.assertEquals
 
 class QueueSaveActionsTest {
     @Test
-    fun `native picker request owns the full immutable queue selection and ordinary saves pass through`() {
+    fun `native save actions own the full immutable queue selection and ordinary saves pass through`() {
         val root = generateSequence(File("").absoluteFile) { it.parentFile }
             .first { File(it, "extensions/youtube/src/main/proto").isDirectory }
         val output = createTempDirectory("playlist-queue-save").toFile()
@@ -66,14 +66,6 @@ class QueueSaveActionsTest {
                         savedArguments.add("ZYXWVUTSRQP");
                         require(QueueSaveActions.copyVideoIds(nativeCopy).equals(expected));
                         var picker = new Picker(expected);
-                        var request = new ArrayList<>(List.of("abcdefghijk"));
-                        QueueSaveActions.onPickerRequest(picker, request);
-                        require(request.equals(expected));
-                        QueueSaveActions.onPickerRequest(picker, request);
-                        require(request.equals(expected));
-                        var ordinary = List.of("0123456789_");
-                        QueueSaveActions.onPickerRequest(new Picker(null), ordinary);
-                        require(ordinary.equals(List.of("0123456789_")));
                         require(QueueSaveActions.copyVideoIds(NavigationEndpoint.newBuilder()
                             .setAddToPlaylistEndpoint(AddToPlaylistEndpoint.newBuilder()
                                 .setVideoId("abcdefghijk")).build()) == null);
@@ -88,7 +80,7 @@ class QueueSaveActionsTest {
                             QueueSaveResponseItem.newBuilder().setAddToPlaylistRenderer(
                                 QueueSavePickerRenderer.newBuilder().addPlaylists(
                                     QueueSaveDestinationItem.newBuilder().setPlaylistAddToOptionRenderer(
-                                        QueueSaveDestination.newBuilder().setAddEndpoint(add)))
+                                        QueueSaveDestination.newBuilder().setSelectionState(3).setAddEndpoint(add)))
                                 .addHeaders(QueueSaveHeaderItem.newBuilder().setPlaylistAddToHeaderRenderer(
                                     QueueSaveHeader.newBuilder().setButton(SwipeAction.newBuilder()
                                         .setButtonRenderer(SwipeButton.newBuilder().setNavigationEndpoint(create)))))))
@@ -108,8 +100,12 @@ class QueueSaveActionsTest {
                         }
                         require(keptUnknown);
                         var renderer = bound.getContents(0).getAddToPlaylistRenderer();
-                        var edit = renderer.getPlaylists(0).getPlaylistAddToOptionRenderer()
-                            .getAddEndpoint().getPlaylistEditEndpoint();
+                        var destination = renderer.getPlaylists(0).getPlaylistAddToOptionRenderer();
+                        require(destination.getSelectionState() == 0);
+                        var single = QueueSaveActions.bindResponse(response, List.of("abcdefghijk"));
+                        require(single.getContents(0).getAddToPlaylistRenderer().getPlaylists(0)
+                            .getPlaylistAddToOptionRenderer().getSelectionState() == 3);
+                        var edit = destination.getAddEndpoint().getPlaylistEditEndpoint();
                         require(edit.getPlaylistId().equals("PLdestination"));
                         require(edit.getActionsList().stream().map(PlaylistEditAction::getAddedVideoId)
                             .toList().equals(expected));

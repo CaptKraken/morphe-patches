@@ -236,18 +236,12 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
                 (serialization as FiveRegisterInstruction).registerC == transfer.registerC) {
             "Owned selection must enter native saved arguments before endpoint serialization overwrites its register"
         }
-        val (requestMethod, requestInstructions, requestIndex) = batchRequests.single()
-        check(requestMethod.definingClass == picker.type && requestIndex >= 2 &&
-                requestInstructions[requestIndex - 1].opcode == Opcode.IGET_OBJECT &&
-                (requestInstructions[requestIndex - 2] as? ReferenceInstruction)?.reference?.toString() ==
-                "Ljava/util/List;->add(Ljava/lang/Object;)Z") {
-            "Queue snapshot must replace the native request's singleton after its insertion, using the real picker"
-        }
+        check(batchRequests.isEmpty()) { "Queue Save must retain the stock single-video picker request" }
         val getter = picker.methods.single { it.name == "patch_getQueueSaveVideoIds" }.implementation!!.instructions
         check(getter.any { (it as? ReferenceInstruction)?.reference?.toString()?.contains("->getQueueSaveVideoIds(") == true })
         check(responseHooks.size == 1 && responseHooks.single().definingClass != picker.type)
         check(picker.methods.count { it.name == "patch_parseQueueSaveResponse" } == 1)
-        println("Queue-owned batch Save: serialized selection, saved arguments, request and destination commands wired")
+        println("Queue-owned batch Save: serialized selection, saved arguments and destination commands wired; picker request untouched")
     } else {
         check(batchEndpoints.isEmpty() && batchPickers.isEmpty() && argumentTransfers.isEmpty() &&
                 batchRequests.isEmpty() && responseHooks.isEmpty()) {

@@ -69,8 +69,14 @@ public final class QueueSaveActions {
                 if (!destination.hasPlaylistAddToOptionRenderer()) continue;
                 var option = destination.getPlaylistAddToOptionRenderer();
                 if (!option.hasAddEndpoint()) continue;
-                updated.setPlaylists(row, destination.toBuilder().setPlaylistAddToOptionRenderer(
-                        option.toBuilder().setAddEndpoint(bindCommand(option.getAddEndpoint(), ids))));
+                var updatedOption = option.toBuilder().setAddEndpoint(bindCommand(option.getAddEndpoint(), ids));
+                if (ids.size() > 1) {
+                    // The native query describes only its seed video. UNKNOWN uses
+                    // YouTube's add-and-close row, avoiding a false whole-queue
+                    // checkbox state and its single-video remove action.
+                    updatedOption.setSelectionState(0);
+                }
+                updated.setPlaylists(row, destination.toBuilder().setPlaylistAddToOptionRenderer(updatedOption));
             }
             for (int row = 0; row < renderer.getHeadersCount(); row++) {
                 var header = renderer.getHeaders(row);
@@ -125,13 +131,5 @@ public final class QueueSaveActions {
                     .clearSourcePlaylistId().clearVideoIds().addAllVideoIds(ids)).build();
         }
         throw new IllegalStateException("Unrecognized native queue save destination command");
-    }
-
-    /** Native request construction has already inserted the ordinary single video at this point. */
-    public static void onPickerRequest(Picker picker, List<String> requestVideoIds) {
-        List<String> videoIds = picker.patch_getQueueSaveVideoIds();
-        if (videoIds == null) return;
-        requestVideoIds.clear();
-        requestVideoIds.addAll(videoIds);
     }
 }

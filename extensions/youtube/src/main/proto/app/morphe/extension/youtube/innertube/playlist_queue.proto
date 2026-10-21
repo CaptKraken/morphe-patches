@@ -300,6 +300,8 @@ message QueueSaveDestinationItem {
     optional QueueSaveDestination playlist_add_to_option_renderer = 74079946;
 }
 message QueueSaveDestination {
+    // Native UNKNOWN=0 is an add-and-close destination, with no membership checkbox.
+    optional int32 selection_state = 5;
     optional NavigationEndpoint add_endpoint = 7;
     optional NavigationEndpoint remove_endpoint = 8;
 }
