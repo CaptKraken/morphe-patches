@@ -1,0 +1,69 @@
+syntax = "proto2";
+
+package app.morphe.extension.youtube.innertube.queue;
+
+option java_package = "app.morphe.extension.youtube.innertube.queue";
+option java_outer_classname = "PlaylistQueueRenderer";
+option optimize_for = LITE_RUNTIME;
+
+
+// Subset of YouTube 21.20.405's native playlist renderer and actions.
+message Panel {
+    optional string title = 1;
+    repeated Item items = 2;
+    optional int32 selected_index = 3;
+    optional string playlist_id = 5;
+    optional int32 video_count = 6;
+    // Native counters add selected_index - local_selected_index to the row position.
+    // A local queue contains the complete playlist, without a paginated prefix.
+    optional int32 local_selected_index = 27;
+}
+
+message Item {
+    optional Video video = 51779701;
+}
+
+message Video {
+    optional Text title = 1;
+    optional Thumbnails thumbnails = 3;
+    optional bool selected = 6;
+    optional NavigationEndpoint navigation_endpoint = 7;
+    optional string video_id = 10;
+    optional MainAppStyle main_app_style = 27;
+}
+
+message MainAppStyle {
+    enum Style {
+        UNSPECIFIED = 0;
+        PROMINENT_THUMBNAIL = 2;
+    }
+
+    optional Style value = 1;
+}
+
+message Text {
+    repeated TextRun runs = 1;
+    optional string simple_text = 4;
+}
+
+message TextRun {
+    optional string text = 1;
+}
+
+message Thumbnails {
+    repeated Thumbnail images = 1;
+}
+
+message Thumbnail {
+    optional string url = 1;
+    optional int32 width = 2;
+    optional int32 height = 3;
+}
+
+message NavigationEndpoint {
+    optional WatchEndpoint watch_endpoint = 48687757;
+}
+
+message WatchEndpoint {
+    optional string video_id = 1;
+}

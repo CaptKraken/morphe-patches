@@ -1739,4 +1739,8 @@ Automatic recording is optional. It stops in incognito or when the account chang
     <string name="morphe_series_tracker_no_search_results">No series found</string>
     <string name="morphe_series_tracker_untitled_episode">Untitled episode</string>
     <string name="morphe_series_tracker_unavailable_episode">Unavailable episode</string>
+    <string name="morphe_native_playlist_queue_title">Queue</string>
+    <string name="morphe_native_playlist_queue_next">Play next in native queue</string>
+    <string name="morphe_native_playlist_queue_unavailable">YouTube could not display the queue.</string>
+    <string name="morphe_native_playlist_queue_not_ready">The queue is not ready for this video. Open the video player and try again.</string>
 </resources>
