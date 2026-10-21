@@ -188,10 +188,34 @@ class QueueSaveActionsTest {
                         require(!newPlaylist.hasVideoSelectionEntityKey());
                         require(QueueSaveActions.openPicker(List.of("abcdefghijk", "abcdefghijk"))
                             .getQueueSaveVideoIdsList().equals(List.of("abcdefghijk", "abcdefghijk")));
-                        var directCreate = NavigationEndpoint.newBuilder().setCreatePlaylistEndpoint(
-                            CreatePlaylistEndpoint.newBuilder().addVideoIds("abcdefghijk")).build();
-                        require(QueueSaveActions.bindCommand(directCreate, expected)
-                            .getCreatePlaylistEndpoint().getVideoIdsList().equals(expected));
+                        // A server header may dispatch a wrapper/other command rather
+                        // than a direct create endpoint. Every native click slot must
+                        // become one list-capable dialog without discarding the picker.
+                        var otherCommand = NavigationEndpoint.newBuilder().setWatchEndpoint(
+                            WatchEndpoint.newBuilder().setVideoId("abcdefghijk")).build();
+                        for (var button : List.of(
+                                SwipeButton.newBuilder().setServiceEndpoint(otherCommand),
+                                SwipeButton.newBuilder().setNavigationEndpoint(otherCommand),
+                                SwipeButton.newBuilder().setCommand(otherCommand),
+                                SwipeButton.newBuilder().setServiceEndpoint(otherCommand)
+                                    .setNavigationEndpoint(create).setCommand(otherCommand))) {
+                            button.setText(Text.newBuilder().setSimpleText("New playlist"));
+                            var headerResponse = response.toBuilder().setContents(0,
+                                response.getContents(0).toBuilder().setAddToPlaylistRenderer(
+                                    response.getContents(0).getAddToPlaylistRenderer().toBuilder().setHeaders(0,
+                                        QueueSaveHeaderItem.newBuilder().setPlaylistAddToHeaderRenderer(
+                                            nativeHeader(SwipeAction.newBuilder().setButtonRenderer(button).build())))))
+                                .build();
+                            var result = (QueueSaveResponse) QueueSaveActions.onPickerResponse(picker, headerResponse);
+                            require(result.getContentsCount() == 1);
+                            var nativeButton = result.getContents(0).getAddToPlaylistRenderer().getHeaders(0)
+                                .getPlaylistAddToHeaderRenderer().getButton().getButtonRenderer();
+                            require(!nativeButton.hasServiceEndpoint() && !nativeButton.hasCommand());
+                            require(nativeButton.getText().getSimpleText().equals("New playlist"));
+                            require(nativeButton.getNavigationEndpoint().getCreatePlaylistDialogEndpoint()
+                                .getVideoIdsList().equals(expected));
+                            require(QueueSaveActions.onPickerResponse(new Picker(null), headerResponse) == headerResponse);
+                        }
                         require(QueueSaveActions.bindResponse(bound, expected).equals(bound));
                         require(QueueSaveActions.onPickerResponse(new Picker(null), response) == response);
                         var unsupportedRow = QueueSaveDestinationItem.newBuilder()

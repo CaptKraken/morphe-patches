@@ -17,6 +17,7 @@ import java.util.List;
 
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.AddToPlaylistEndpoint;
+import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.CreatePlaylistDialogEndpoint;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.NavigationEndpoint;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.QueueSaveResponse;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.PlaylistEditAction;
@@ -95,14 +96,13 @@ public final class QueueSaveActions {
                 var content = header.getPlaylistAddToHeaderRenderer();
                 if (!content.getButton().hasButtonRenderer()) continue;
                 var button = content.getButton().getButtonRenderer();
-                var updatedButton = button.toBuilder();
-                if (button.hasServiceEndpoint()) {
-                    updatedButton.setServiceEndpoint(bindCommand(button.getServiceEndpoint(), ids));
-                } else if (button.hasNavigationEndpoint()) {
-                    updatedButton.setNavigationEndpoint(bindCommand(button.getNavigationEndpoint(), ids));
-                } else {
-                    throw new IllegalStateException("Native queue save header has no destination command");
-                }
+                // This native picker header is its New playlist action. Its server
+                // command need not be a direct create endpoint. Use YouTube's own
+                // list-capable dialog instead, without rejecting the whole picker.
+                // Clear all three native click slots so creation dispatches once.
+                var updatedButton = button.toBuilder().clearServiceEndpoint().clearCommand()
+                        .setNavigationEndpoint(NavigationEndpoint.newBuilder().setCreatePlaylistDialogEndpoint(
+                                CreatePlaylistDialogEndpoint.newBuilder().addAllVideoIds(ids)));
                 updated.setHeaders(row, header.toBuilder().setPlaylistAddToHeaderRenderer(content.toBuilder()
                         .setButton(content.getButton().toBuilder().setButtonRenderer(updatedButton))));
             }
@@ -133,13 +133,6 @@ public final class QueueSaveActions {
             for (var action : additions) addedIds.add(action.getAddedVideoId());
             if (addedIds.equals(ids)) return command;
             throw new IllegalStateException("Native queue save did not supply the complete add selection");
-        } else if (command.hasCreatePlaylistDialogEndpoint()) {
-            var create = command.getCreatePlaylistDialogEndpoint();
-            return command.toBuilder().setCreatePlaylistDialogEndpoint(create.toBuilder()
-                    .clearSourcePlaylistId().clearVideoSelectionEntityKey().clearVideoIds().addAllVideoIds(ids)).build();
-        } else if (command.hasCreatePlaylistEndpoint()) {
-            return command.toBuilder().setCreatePlaylistEndpoint(command.getCreatePlaylistEndpoint().toBuilder()
-                    .clearSourcePlaylistId().clearVideoIds().addAllVideoIds(ids)).build();
         }
         throw new IllegalStateException("Unrecognized native queue save destination command");
     }

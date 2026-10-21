@@ -291,6 +291,7 @@ message SwipeButton {
     optional app.morphe.extension.youtube.innertube.Icon icon = 8;
     optional NavigationEndpoint navigation_endpoint = 9;
     optional Accessibility accessibility_data = 16;
+    optional NavigationEndpoint command = 19;
 }
 
 // playlist/get_add_to_playlist response subsets, verified against 21.20.405.
