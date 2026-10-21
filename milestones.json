@@ -1,5 +1,19 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc52-undo-removal-clear.mpp",
+    "title": "PoC52: Undo row removal and Clear queue",
+    "description": "Native snackbar Undo for local queue swipe/menu removal and header Clear; restore order/current selection without playback load/seek/pause. Same session/token/latest edit guards; native repeat/shuffle modes restored after Clear.",
+    "phone_checks": [
+      "Swipe/menu removal->Undo restores row order/current playback and timestamp.",
+      "Clear->Undo restores queue and native controls/repeat/shuffle without interrupting playback.",
+      "Latest-action-only; stale after edits/newvideo/close/newqueue/expiry harmless; ordinary Save/account playlists preserved."
+    ],
+    "validation": "25pass5unrelatedskips;strings/finalMPP39s;combined20relatedSDK12DEX/resources2m16s/unselected2m2s;emittedUndo/dismissal/registry check+18stockSavemethods;CRC/currentMPE/37Kotlinclasses/gatepass. Runtime-only finalguard tested;phonepending.",
+    "commit": "2993f6a16a51ba6fab2e4098bb93e2b44b809703",
+    "sha256": "57f8ceefc6a41340ad2a64ed726cd1bffb383ea6466daa3b9c381cd7c342b67e",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc52-undo-removal-clear.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc51-unbound-service.mpp",
     "title": "PoC51: skip unbound playback services",
     "description": "Null-safe service video-ID comparisons in local queue resolver/restoration; skip not-yet-bound player and retry through existing callbacks. Remove temporary stage diagnostic.",
@@ -10,7 +24,8 @@
     "validation": "24pass5unrelatedskips;testsMPP23s;actual native getter null contract/consumer review;CRC/currentMPE/36queueKotlinclasses/gate pass. Phone pending.",
     "commit": "8c72a131ec6ff67e3494489c234ede93e1a1fb31",
     "sha256": "2b1a65b638954638588bfdda194a6532c1e8ac8cc1495c8d8b57d856d1384c5b",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc51-unbound-service.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc51-unbound-service.mpp",
+    "phone_result": "USER CONFIRMED WORKS: first-start null-service failure fixed."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc50-startup-failure-diagnostic.mpp",

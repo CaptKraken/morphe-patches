@@ -2,6 +2,18 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC52 — Undo removing a video or clearing the queue
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc52-undo-removal-clear.mpp) · [Source 2993f6a16](https://github.com/CaptKraken/morphe-patches/commit/2993f6a16a51ba6fab2e4098bb93e2b44b809703)
+
+Swipe/menu removal and Clear queue now show YouTube's native snackbar with Undo. Removing a row restores its original position while keeping the current playback selection. Clear Undo restores the queue around the same playing video and restores native repeat/shuffle modes. It does not issue a player load, seek or pause. Only the latest removal/clear can be undone; intervening edits, a different playback session or expiry invalidate the action. Native snackbar hiding settings remain effective. Existing account playlists and native Save Undo keep their callbacks.
+
+Validation:25 tests passed,5 unrelated Jam APK skips; string checks and final MPP build passed39s. Real21.20.405 combined20-related-patch SDK12DEX/resources passed2m16s, unselected2m2s. Dedicated emitted-DEX Undo callback/dismissal/registry verification passed,18nativeSave methods remain stock-exact. Final runtime-only stale-session guard covered by final tests/build; native hooks unchanged since APK checks. CRC/currentMPE/37queueKotlinclasses and mandatory gate passed. **Phone behavior pending.**
+
+Phone checks: remove via swipe and menu, then Undo; check row order and uninterrupted timestamp. Clear then Undo, including repeat/shuffle/fullscreen and notification navigation. Check latest-action-only and that opening another video/closing/creating a new queue prevents stale Undo. Existing Save/New/Undo and ordinary playlists unchanged.
+
+SHA-256: `57f8ceefc6a41340ad2a64ed726cd1bffb383ea6466daa3b9c381cd7c342b67e`
+
 ## PoC51 — skip playback services without a bound player
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc51-unbound-service.mpp) · [Source 8c72a131e](https://github.com/CaptKraken/morphe-patches/commit/8c72a131ec6ff67e3494489c234ede93e1a1fb31)
