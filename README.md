@@ -2,7 +2,19 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
+## PoC57 — repair Android bundle packaging
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc57-bundle-fix.mpp) · [Source db992a564](https://github.com/CaptKraken/morphe-patches/commit/db992a56488e1284ed81366db096ac0ee4445c62)
+
+PoC56 was broken: its root classes.dex was missing, so Manager displayed zero patches. The unselected APK validation ran after buildAndroid and regenerated the archive through the jar task, removing the Android DEX. Earlier ZIP/extension/class checks missed this. PoC57 runs buildAndroid last and restores classes.dex; queue source is unchanged.
+
+Validation: final Android build15s; root DEX2,532,236bytes/2,686classes contains Native playlist queue getter; DEX SHA-1/Adler32/ZIP CRC valid. Actual PatchLoader.Jar loads171patches including Native playlist queue/defaulttrue. BadPoC56 rejected by the new required-root-DEX check. Current YouTubeMPE/38queueKotlinpayloads exact; same source previously passed tests/strings/combined+unselectedrealAPK SDK/resources. JVM loader is not Android Manager execution; phone import and the PoC56 regression checklist remain pending. Do not run another archive-producing Gradle task after final packaging without re-finalizing and rechecking the delivered bundle.
+
+SHA-256: `ac77dc4b0f2bf9b66c043284bcf35003b8675a95544f9f0303d21fc9de29a011`
+
 ## PoC56 — reviewed cleanup and publication failure fix
+
+**BROKEN BUNDLE — use PoC57. Root classes.dex missing; Manager cannot load patches.**
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc56-reviewed-cleanup.mpp) · [Source db992a564](https://github.com/CaptKraken/morphe-patches/commit/db992a56488e1284ed81366db096ac0ee4445c62)
 

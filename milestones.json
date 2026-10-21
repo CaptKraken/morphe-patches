@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc57-bundle-fix.mpp",
+    "title": "PoC57: restore root Android DEX in bundle",
+    "description": "Packaging-only repair of PoC56. Run buildAndroid last, verify rootDEX and actualJVMloader inventory. Same queue source db992a564.",
+    "phone_checks": [
+      "MPP import shows patch inventory and Native playlist queue.",
+      "Then run PoC56 regression checklist."
+    ],
+    "validation": "Finalbuild15s;rootDEX2532236bytes/2686classes/queuegetter;SHA1+Adler32+CRC/currentMPE/38Kotlinpayloads;PatchLoader.Jar171patches/defaulttrue;badPoC56negativecheck. Same-source prior realAPK/tests reused;AndroidManager import pending.",
+    "commit": "db992a56488e1284ed81366db096ac0ee4445c62",
+    "sha256": "ac77dc4b0f2bf9b66c043284bcf35003b8675a95544f9f0303d21fc9de29a011",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc57-bundle-fix.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc56-reviewed-cleanup.mpp",
     "title": "PoC56: reviewed cleanup and publication failure fix",
     "description": "Preserve committed queue on presentation refresh failure; remove unused row-playback bridge and obsolete Save schemas; description and Undo test-input cleanup.",
@@ -13,7 +26,8 @@
     "validation": "25pass5unrelatedskips;90675strings;combined20related+queue SDK12DEX/resources2m42s;unselected20relatedSDK/resources1m56s;18stockSavepaths unchanged;CRC/currentMPE/38Kotlinclasses;3gatedsourcecommits. Phone pending.",
     "commit": "db992a56488e1284ed81366db096ac0ee4445c62",
     "sha256": "4785b8939a96d9a75778a73d7c66e95c8d2f21ee85194487bfc82e41c2ce4a27",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc56-reviewed-cleanup.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc56-reviewed-cleanup.mpp",
+    "phone_result": "FAILED IMPORT: Manager shows zero patches. Root classes.dex missing after subsequent jar task overwrote the final Android bundle. Use PoC57."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc55-clean-undo.mpp",
