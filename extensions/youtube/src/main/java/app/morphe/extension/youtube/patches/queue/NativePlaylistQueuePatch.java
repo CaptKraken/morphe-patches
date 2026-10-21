@@ -1093,6 +1093,7 @@ public final class NativePlaylistQueuePatch {
         publishing = true;
         Object previousModel = controller.patch_getModel();
         Object acceptedModel = null;
+        boolean committed = false;
         try {
             NativePlayback playback = playbackFor(controller);
             if (playback == null) {
@@ -1120,12 +1121,19 @@ public final class NativePlaylistQueuePatch {
             if (changedItems) pendingUndo = null;
             publishedModel = acceptedModel;
             selectionNeedsPublishing = false;
+            // From here the panel, playback backend and local snapshot agree.
+            // A presentation refresh cannot roll back only one of those owners.
+            committed = true;
             controller.patch_markQueueRows();
             refreshRepeatHeaders();
             refreshPlayerControls(controller.patch_getNavigator());
             QueueFullscreenActions.refresh();
             return true;
         } catch (Exception exception) {
+            if (committed) {
+                Logger.printException(() -> "Could not refresh native playlist queue controls", exception);
+                return true;
+            }
             if (acceptedModel != null && controller.patch_getModel() == acceptedModel) {
                 controller.patch_restorePanel(acceptedModel, previousModel);
             }
