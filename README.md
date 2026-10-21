@@ -2,7 +2,21 @@
 
 Patch an untouched **YouTube 21.20.405 APK** with the selected local MPP source. Native playlist queue stays selected by default. Each bundle includes earlier features; each feature has its own source commit. Phone checks remain pending until performed on a device.
 
-## PoC43 — bind all queued IDs to native save actions
+## PoC44 — original picker request, batch destination actions
+
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc44-stock-save-picker.mpp) · [Source 1b7f38b91](https://github.com/CaptKraken/morphe-patches/commit/1b7f38b9198ef02bdb65fe25f6252f3646a5fc33)
+
+Removes the batch picker request override that returned HTTP400 before the picker opened. YouTube's original single-video picker request and initializer now match stock. The complete queue snapshot is retained for the later native Add and New playlist commands. For multiple queued videos, playlist destinations use YouTube's native tap-to-add-and-close rows, avoiding a checkbox/removal state that describes only the seed video. Single-video queues and ordinary player/per-row/account Save retain original behavior. No custom network/auth/UI or playback changes.
+
+Validation: 23tests passed/5 unrelated Jam APK skips; actual21.20.405 combined19related (2m12s) and unselected+finaltests/MPP (1m51s) SDK12DEX/hierarchy/resources passed. Eleven native Save/auth/serializer/error/initializer methods match stock exactly. MPP/currentYouTubeMPE/all34Kotlinpayloads/CRC/defaulttrue and mandatory commit gate passed. **Authenticated device Save remains unverified.**
+
+Test: picker opens without400; THREE distinct queued videos saved to existing and New playlists each contain all3/order. Include a fresh destination and one already containing the first video; single queue/ordinary player Save; cancellation/rotation/continuous playback. Multi-video rows add and close rather than expose membership checkboxes.
+
+SHA-256: `18a0583a042518251922045ae2f095617b6bd92d206a3bc84ff90152a1d005e8`
+
+## PoC43 — FAILED: HTTP400 before picker opens
+
+**User confirmed HTTP400 appears before choosing a destination. The batch picker query override is removed in PoC44.**
 
 [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc43-save-destination-commands.mpp) · [Source 51ad54a79](https://github.com/CaptKraken/morphe-patches/commit/51ad54a7918184f4a7b7bbcaab46efd0bcaf631a)
 

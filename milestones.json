@@ -1,5 +1,18 @@
 [
   {
+    "filename": "native-playlist-queue-21.20.405-poc44-stock-save-picker.mpp",
+    "title": "PoC44: stock picker request with queue batch destination actions",
+    "description": "Remove failing batch query override; entire native picker initializer matches stock. Full queue IDs remain on later native Add/New actions. Multi-video destinations use native UNKNOWN add-and-close mode, single queues retain original checkbox state. No ordinary Save/playback changes.",
+    "phone_checks": [
+      "Picker opens without400; THREE distinct IDs -> existing and New all3/order.",
+      "Fresh and first-already-saved destination; native add-and-close rows; single queue/player/per-row/account Save; cancel/rotation/continuous playback."
+    ],
+    "validation": "23tests passed/5unrelatedJamAPKskips; combined19related2m12s/unselected+finaltests+MPP1m51s SDK12DEX/hierarchy/resources. Eleven native methods including whole picker initializer matchstock. CurrentMPE/all34Kotlinpayloads/CRC/defaulttrue/gate pass. Authenticated device Save pending.",
+    "commit": "1b7f38b9198ef02bdb65fe25f6252f3646a5fc33",
+    "sha256": "18a0583a042518251922045ae2f095617b6bd92d206a3bc84ff90152a1d005e8",
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc44-stock-save-picker.mpp"
+  },
+  {
     "filename": "native-playlist-queue-21.20.405-poc43-save-destination-commands.mpp",
     "title": "PoC43: bind all queued IDs to native Save destination commands",
     "description": "Serialized local snapshot survives native command copies. Queue-owned native response binds all IDs to destination Add and New commands; unsupported partial commands follow native error path. Ordinary Save returns original response. Legacy native picker retained. Includes Play last.",
@@ -10,7 +23,8 @@
     "validation": "23tests passed/5 unrelated Jam APK skips. Combined19related1m50s/unselected+exact-source tests+MPP2m17s SDK12DEX/hierarchy58204/resources. Ten native Save/auth/serializer/error methods matchstock. CurrentMPE/all34Kotlinpayloads/CRC/defaulttrue/gate passed. Authenticated device Save pending.",
     "commit": "51ad54a7918184f4a7b7bbcaab46efd0bcaf631a",
     "sha256": "9665746d84089f7378868e8a423946fcb15146dea1832dcdf9b9bba8b6231def",
-    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc43-save-destination-commands.mpp"
+    "url": "https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc43-save-destination-commands.mpp",
+    "phone_result": "FAILED: user confirmed HTTP400 before picker opens, before choosing any destination."
   },
   {
     "filename": "native-playlist-queue-21.20.405-poc42-native-batch-save.mpp",
