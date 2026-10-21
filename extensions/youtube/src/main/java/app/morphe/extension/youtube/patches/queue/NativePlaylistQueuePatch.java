@@ -108,6 +108,8 @@ public final class NativePlaylistQueuePatch {
         int patch_getSelectedIndex();
         int patch_getRepeatMode();
         boolean patch_canShuffle();
+        boolean patch_isShuffled();
+        void patch_restoreQueueModes(int repeatMode, boolean shuffled);
         boolean patch_clearQueue();
     }
 
@@ -181,6 +183,11 @@ public final class NativePlaylistQueuePatch {
     // A menu click can open the first video before a watch controller exists.
     // Keep this intent separate from an attached, usable native queue.
     private static QueueStart pendingQueueStart;
+    private record PendingUndo(String token, PlaylistQueue before, PlaylistQueue after,
+                               WeakReference<NativePlayback> playback, boolean shuffled) {}
+    private static PendingUndo pendingUndo;
+    // Bound retained snapshots even if a native snackbar is dismissed without activation.
+    private static final int UNDO_RETENTION_MILLISECONDS = 10_000;
     private static final Set<RepeatHeader> repeatHeaders = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<PlayerControls> playerControls = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<NotificationControls> notificationControls = Collections.newSetFromMap(new WeakHashMap<>());
@@ -320,6 +327,7 @@ public final class NativePlaylistQueuePatch {
         if (hasPlaylist(controller)) {
             Object navigator = controller.patch_getNavigator();
             queue = null;
+            pendingUndo = null;
             shortsSession.reset();
             shortsControllerRef.clear();
 
@@ -357,6 +365,9 @@ public final class NativePlaylistQueuePatch {
 
     private static void onPlaybackContextChanged() {
         Utils.runOnMainThreadNowOrLater(() -> {
+            PlayerType currentType = PlayerType.getCurrent();
+            if (ShortsPlayerState.isOpen() || currentType.isNoneOrHidden()
+                    || currentType == PlayerType.INLINE_MINIMAL) pendingUndo = null;
             if (queue != null && (ShortsPlayerState.isOpen() || PlayerType.getCurrent() == PlayerType.HIDDEN)) {
                 updateShortsSession(controllerRef.get());
             }
@@ -695,6 +706,10 @@ public final class NativePlaylistQueuePatch {
         if (!header && (!(owner instanceof QueueRow row) || !row.patch_isQueueOwned())) return endpoint;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
+            if (command.hasQueueUndoToken()) {
+                undoQueueEdit(command.getQueueUndoToken());
+                return null;
+            }
             if (header && command.hasAddToPlaylistEndpoint()) {
                 PlaylistController controller = readyController();
                 if (queue == null || controller == null || controller.patch_getModel() != publishedModel
@@ -714,12 +729,19 @@ public final class NativePlaylistQueuePatch {
             if (header) {
                 if (owner != controller.patch_getPanel()) return null;
                 NativePlayback playback = playbackFor(controller);
-                if (pendingSelection != null || dragSession != null || playback == null || !playback.patch_clearQueue()) {
+                if (pendingSelection != null || dragSession != null || playback == null) {
                     Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
-                } else {
-                    releasePanel();
+                    return null;
                 }
-                return null;
+                PlaylistQueue before = queue.withRepeatMode(playback.patch_getRepeatMode());
+                boolean shuffled = playback.patch_isShuffled();
+                if (!playback.patch_clearQueue()) {
+                    Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+                    return null;
+                }
+                releasePanel();
+                return removalFeedback(endpoint, before, null, playback, shuffled,
+                        str("morphe_native_playlist_queue_cleared"));
             }
             int index = controller.patch_findQueueRow(owner);
             if (index < 0 || index >= queue.entries().size()) return null;
@@ -727,14 +749,48 @@ public final class NativePlaylistQueuePatch {
             // remove the current item or race an in-flight row navigation.
             if (index == queue.selectedIndex() || pendingSelection != null || dragSession != null
                     || queue.entries().get(index).videoId().equals(VideoInformation.getVideoId())) return null;
-            publish(controller, queue.remove(index), true);
-            // This command is entirely local. Do not let native hide/edit logic
-            // mutate a second adapter snapshot or send an account-playlist edit.
-            return null;
+            PlaylistQueue before = queue;
+            if (!publish(controller, queue.remove(index), true)) return null;
+            // Replace the local Hide with native feedback; never send an account edit.
+            return removalFeedback(endpoint, before, queue, nativePlaybackRef.get(), false,
+                    str("video_removed_from_tv_queue"));
         } catch (Exception exception) {
             Logger.printException(() -> "Could not run native playlist queue menu action", exception);
             Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
             return null;
+        }
+    }
+
+    private static MessageLite removalFeedback(MessageLite endpoint, PlaylistQueue before, PlaylistQueue after,
+                                               NativePlayback playback, boolean shuffled, String message) {
+        PendingUndo undo = new PendingUndo(UUID.randomUUID().toString(), before, after,
+                new WeakReference<>(playback), shuffled);
+        pendingUndo = undo;
+        Utils.runOnMainThreadDelayed(() -> {
+            if (pendingUndo == undo) pendingUndo = null;
+        }, UNDO_RETENTION_MILLISECONDS);
+        return ((QueueUndoActions.Command) endpoint).patch_parseQueueCommand(
+                QueueUndoActions.feedback(undo.token(), message, str("offline_undo_snackbar_button_text"))
+                        .toByteArray());
+    }
+
+    private static void undoQueueEdit(String token) {
+        PendingUndo undo = pendingUndo;
+        if (undo == null || !undo.token().equals(token)) return;
+        pendingUndo = null; // A native callback can only activate this capability once.
+        PlaylistController controller = readyController();
+        if (controller == null || pendingSelection != null || dragSession != null
+                || !VideoInformation.getPlaylistId().isEmpty()) return;
+        NativePlayback playback = undo.playback().get();
+        if (playback == null || playbackFor(controller) != playback) return;
+        PlaylistQueue restored = QueueUndoActions.restore(undo.before(), undo.after(), queue,
+                VideoInformation.getVideoId());
+        if (restored == null) return;
+        Object baseline = controller.patch_getModel();
+        if (publish(controller, restored, true) && undo.after() == null) {
+            originalModel = baseline;
+            playback.patch_restoreQueueModes(restored.repeatMode(), undo.shuffled());
+            queue = queue.withRepeatMode(playback.patch_getRepeatMode());
         }
     }
 
@@ -800,6 +856,10 @@ public final class NativePlaylistQueuePatch {
     public static void onVideoChanged(String videoId) {
         Utils.runOnMainThread(() -> {
             if (!videoId.equals(VideoInformation.getVideoId())) return;
+            // A cleared queue belongs to the uninterrupted ordinary playback session.
+            // Returning to its video later must not revive an earlier Undo action.
+            if (pendingUndo != null && pendingUndo.after() == null
+                    && !pendingUndo.before().currentEntry().videoId().equals(videoId)) pendingUndo = null;
             tryStartQueue();
             if (queue == null) return;
             // This is a presentation snapshot of native selection, not a second navigator.
@@ -1045,6 +1105,7 @@ public final class NativePlaylistQueuePatch {
             // The native sequencer, including its inherited Loop mode, is authoritative.
             candidate = candidate.withRepeatMode(playback.patch_getRepeatMode());
             queue = candidate;
+            if (changedItems) pendingUndo = null;
             publishedModel = acceptedModel;
             selectionNeedsPublishing = false;
             controller.patch_markQueueRows();
@@ -1065,6 +1126,7 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static void releasePanel() {
+        pendingUndo = null;
         pendingQueueStart = null;
         OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
         PlaylistController controller = controllerRef.get();

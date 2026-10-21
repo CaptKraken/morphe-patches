@@ -28,6 +28,7 @@ internal fun installPlaylistRemoval(context: BytecodePatchContext) = with(contex
     val serviceCall = dispatch.instructionMatches.single()
     val registers = serviceCall.instruction as FiveRegisterInstruction
     val endpointType = serviceCall.instruction.getReference<MethodReference>()!!.parameterTypes.first()
+    installQueueUndo(this, endpointType.toString())
     // Reuse the endpoint result register, keeping every live native local intact.
     // Null consumes our local command; otherwise restore the native endpoint type.
     dispatch.method.addInstructionsAtControlFlowLabel(serviceCall.index, """

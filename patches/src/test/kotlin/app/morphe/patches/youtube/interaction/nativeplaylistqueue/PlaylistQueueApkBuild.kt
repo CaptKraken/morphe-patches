@@ -92,6 +92,7 @@ fun main(arguments: Array<String>) {
             verifyNativePanelAssignment(dexDir, mode != "unselected")
             verifyNativeRowMenuPaths(dexDir, mode != "unselected")
             verifyNativeFullscreenActions(dexDir, mode != "unselected")
+            verifyNativeQueueUndo(dexDir, mode != "unselected")
         }
     }
     Patcher(PatcherConfig(input, workspace, verifier = verifier)).use { patcher ->
@@ -540,4 +541,58 @@ private fun verifyNativeShuffle(classes: List<ClassDef>) {
         (it as? ReferenceInstruction)?.reference?.toString()?.contains("patch_clearShuffleOrder") == true
     }) { "Metadata-only publication must not reset shuffle order" }
     println("Native shuffle: original index maps reset safely, mode restored after row replacement, metadata snapshot preserved")
+}
+
+/** Undo consumes only an owned command and still takes the original snackbar dismissal. */
+private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
+    val extensionOwner = EXTENSION_CLASS.removePrefix("L").removeSuffix(";")
+    val classes = directory.listFiles()!!.filter { it.extension == "dex" }.flatMap { file ->
+        file.inputStream().buffered().use {
+            DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it).classes.toList()
+        }
+    }
+    val commandInterface = "Lapp/morphe/extension/youtube/patches/queue/QueueUndoActions\$Command;"
+    val commandTypes = classes.filter { commandInterface in it.interfaces }
+    val snackbars = classes.flatMap { it.methods }.filter { method ->
+        method.implementation?.instructions?.any {
+            (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+                "Lcom/google/android/libraries/quantum/snackbar/Snackbar;") == true
+        } == true && method.implementation!!.instructions.any {
+            (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+                "L$extensionOwner;->onQueueMenuCommand(") == true
+        }
+    }
+    if (!selected) {
+        check(commandTypes.isEmpty() && snackbars.isEmpty()) { "Queue Undo hooks leaked into an unselected build" }
+        return
+    }
+    val command = commandTypes.single()
+    val parser = command.methods.single { it.name == "patch_parseQueueCommand" }
+    check(parser.implementation!!.instructions.any {
+        (it as? ReferenceInstruction)?.reference?.toString() ==
+                "Lcom/google/protobuf/ExtensionRegistryLite;->getGeneratedRegistry()Lcom/google/protobuf/ExtensionRegistryLite;"
+    }) { "Queue feedback parser lost the native extension registry" }
+    val instructions = snackbars.single().implementation!!.instructions.toList()
+    val hook = instructions.indices.single { index ->
+        (instructions[index] as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+            "L$extensionOwner;->onQueueMenuCommand(") == true
+    }
+    check(instructions[hook + 1].opcode == Opcode.MOVE_RESULT_OBJECT &&
+            instructions[hook + 2].opcode == Opcode.IF_EQZ &&
+            instructions[hook + 3].opcode == Opcode.CHECK_CAST &&
+            instructions[hook + 4].opcode == Opcode.INVOKE_INTERFACE &&
+            instructions[hook + 5].opcode == Opcode.GOTO_16)
+    val original = (instructions[hook + 4] as ReferenceInstruction).reference as MethodReference
+    check(original.parameterTypes == listOf(command.type, "Ljava/util/Map;"))
+    fun address(index: Int) = instructions.take(index).sumOf { it.codeUnits }
+    check(address(hook + 2) + (instructions[hook + 2] as OffsetInstruction).codeOffset == address(hook + 5)) {
+        "Consumed Undo must retain the original snackbar dismissal branch"
+    }
+    val branchTarget = address(hook + 5) + (instructions[hook + 5] as OffsetInstruction).codeOffset
+    val load = instructions.indices.single { address(it) == branchTarget }
+    check(instructions[load].opcode == Opcode.IGET_OBJECT && instructions[load + 1].opcode == Opcode.CHECK_CAST)
+    val dismissal = (instructions[load + 2] as ReferenceInstruction).reference as MethodReference
+    check(dismissal.definingClass == "Lcom/google/android/libraries/quantum/snackbar/Snackbar;" &&
+            dismissal.parameterTypes.isEmpty() && dismissal.returnType == "V")
+    println("Queue Undo: native registry, original unrelated callback and consumed-action snackbar dismissal verified")
 }

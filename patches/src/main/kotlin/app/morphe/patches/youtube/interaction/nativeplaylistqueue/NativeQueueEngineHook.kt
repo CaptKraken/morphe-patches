@@ -189,6 +189,21 @@ internal fun installNativeQueueEngine(
         move-result v0
         return v0
     """)
+    bridge(wrapperType, "patch_isShuffled", emptyList(), "Z", 1, """
+        iget-object v0, p0, $nativeNavigator
+        invoke-interface {v0}, $shuffleGetter
+        move-result v0
+        return v0
+    """)
+    bridge(wrapperType, "patch_restoreQueueModes", listOf("I", "Z"), "V", 1, """
+        iget-boolean v0, p0, $localFlag
+        if-eqz v0, :done
+        iget-object v0, p0, $nativeNavigator
+        invoke-interface {v0, p1}, $repeatSetter
+        invoke-interface {v0, p2}, $shuffleType->${shuffleSetter.name}(Z)V
+        :done
+        return-void
+    """)
     // Disable only the mutable shuffler, without publishing an intermediate mode.
     // The old index links cannot be used while the accepted rows are replaced.
     bridge(mutableType, "patch_clearShuffleOrder", emptyList(), "V", 1, """

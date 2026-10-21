@@ -651,3 +651,20 @@ internal fun notificationPlaybackStateFingerprint(adapterType: String, callback:
     returnType = callback.returnType,
     parameters = callback.parameterTypes.map { it.toString() }
 )
+
+/** Snackbar Undo dispatch retains the original enclosing owner and dismisses after its callback. */
+internal fun queueUndoClickFingerprint(endpointType: String) = Fingerprint(
+    name = "onClick",
+    returnType = "V",
+    parameters = listOf("Landroid/view/View;"),
+    filters = listOf(
+        string("com.google.android.libraries.youtube.innertube.endpoint.tag"),
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = listOf(endpointType, "Ljava/util/Map;"),
+            returnType = "V", location = MatchAfterWithin(10)),
+        checkCast("Lcom/google/android/libraries/quantum/snackbar/Snackbar;"),
+        methodCall(opcode = Opcode.INVOKE_VIRTUAL,
+            definingClass = "Lcom/google/android/libraries/quantum/snackbar/Snackbar;",
+            parameters = emptyList(), returnType = "V", location = MatchAfterImmediately())
+    ),
+    custom = { _, type -> "Landroid/view/View\$OnClickListener;" in type.interfaces }
+)

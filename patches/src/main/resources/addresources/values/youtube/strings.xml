@@ -642,6 +642,7 @@ Info: May not work on live streams"</string>
     <string name="morphe_native_playlist_queue_saved">Playlist saved</string>
     <string name="morphe_native_playlist_queue_saved_to">Saved to %s</string>
     <string name="morphe_native_playlist_queue_clear">Clear queue</string>
+    <string name="morphe_native_playlist_queue_cleared">Queue cleared</string>
     <string name="morphe_native_playlist_queue_title">Queue</string>
     <string name="morphe_native_playlist_queue_last">Play last in native queue</string>
     <string name="morphe_native_playlist_queue_next">Play next in native queue</string>
