@@ -63,6 +63,10 @@ tasks {
     test {
         useJUnitPlatform()
         jamApk.orNull?.let { systemProperty("jamApk", it) }
+        // Exercise the Android-free extension snapshot in the state tests.
+        inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/PlaylistQueue.java"
+        )).withPropertyName("playlistQueueStateSource")
     }
 
     register<JavaExec>("checkStringResources") {
