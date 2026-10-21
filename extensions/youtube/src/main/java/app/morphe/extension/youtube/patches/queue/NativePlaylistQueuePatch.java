@@ -303,7 +303,9 @@ public final class NativePlaylistQueuePatch {
         }
         controllerRef = new WeakReference<>(controller);
         if (queue == null) {
-            tryStartQueue();
+            // The native acceptance hook runs immediately after the model store,
+            // before its subscriptions and rendering finish. Never reenter it.
+            if (pendingQueueStart != null) Utils.runOnMainThread(NativePlaylistQueuePatch::tryStartQueue);
             return;
         }
 
