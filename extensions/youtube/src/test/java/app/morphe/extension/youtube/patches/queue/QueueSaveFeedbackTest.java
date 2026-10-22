@@ -52,6 +52,19 @@ public class QueueSaveFeedbackTest {
         for (var action : undo.getActionsList()) assertFalse(action.hasAddedVideoId());
     }
 
+    @Test public void ownedSaveConfirmationUsesFiveSecondsAfterSerialization() throws Exception {
+        var renderer = toast(result());
+        var parsed = QueueToastRenderer.parseFrom(renderer.toByteArray());
+        assertEquals(5_000, QueueSaveFeedback.confirmationDuration(parsed));
+        assertEquals(2, parsed.getActionButton().getButtonRenderer().getServiceEndpoint()
+                .getPlaylistEditEndpoint().getActionsCount());
+    }
+
+    @Test public void ordinaryConfirmationWithTheSameTextAndUndoKeepsNativeDuration() {
+        var ordinary = toast(result()).toBuilder().clearQueueSaveConfirmation().build();
+        assertEquals(0, QueueSaveFeedback.confirmationDuration(ordinary));
+    }
+
     @Test public void existingFeedbackAndFailedResultsAreUnchanged() {
         var decorated = QueueSaveFeedback.decorate(result(), SELECTION, "Saved", "Undo");
         assertSame(decorated, QueueSaveFeedback.decorate(decorated, SELECTION, "duplicate", "Undo"));

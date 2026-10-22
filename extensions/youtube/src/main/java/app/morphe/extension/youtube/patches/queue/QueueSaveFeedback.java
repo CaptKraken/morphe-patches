@@ -7,12 +7,14 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
 
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 
+import app.morphe.extension.shared.Logger;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.AddToToastAction;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.NavigationEndpoint;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.PlaylistEditAction;
@@ -26,6 +28,8 @@ import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.Text;
 
 /** Native success feedback; Undo targets only entry IDs returned by this Add request. */
 public final class QueueSaveFeedback {
+    private static final int CONFIRMATION_DURATION_MILLISECONDS = 5_000;
+
     public interface Callback {
         Selection patch_getQueueSaveSelection();
         void patch_setQueueSaveSelection(Selection selection);
@@ -41,12 +45,24 @@ public final class QueueSaveFeedback {
     private QueueSaveFeedback() {
     }
 
+    /** Zero leaves the native duration untouched for all other confirmations. */
+    public static int confirmationDuration(MessageLite renderer) {
+        try {
+            return QueueToastRenderer.parseFrom(renderer.toByteArray()).getQueueSaveConfirmation()
+                    ? CONFIRMATION_DURATION_MILLISECONDS : 0;
+        } catch (InvalidProtocolBufferException exception) {
+            Logger.printException(() -> "Could not read queue save confirmation duration", exception);
+            return 0;
+        }
+    }
+
     static QueueSaveEditResponse decorate(QueueSaveEditResponse response, Selection selection,
                                          String message, String undoLabel) {
         // Native PlaylistEditResponse status: 0 unknown, 1 succeeded.
         if (response.getStatus() != 1) return response;
         for (var action : response.getActionsList()) if (action.hasAddToToastAction()) return response;
-        var toast = QueueToastRenderer.newBuilder().setResponseText(Text.newBuilder().setSimpleText(message));
+        var toast = QueueToastRenderer.newBuilder().setQueueSaveConfirmation(true)
+                .setResponseText(Text.newBuilder().setSimpleText(message));
         var requestedIds = new HashSet<>(selection.videoIds());
         var entryIds = new LinkedHashSet<String>();
         boolean validUndo = !selection.playlistId().isEmpty();

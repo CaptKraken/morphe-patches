@@ -59,6 +59,7 @@ internal fun installQueueUndo(context: BytecodePatchContext, endpointType: Strin
                 it.parameterTypes.last() == "Ljava/util/Map;" &&
                 it.parameterTypes.first() != legacy.originalMethod.parameterTypes.first()
     }
+    installQueueSaveConfirmationDuration(context, modern)
     val dispatcher = factory.fields.single { field -> classDefByOrNull(field.type)?.methods?.any {
         it.returnType == "V" && it.parameterTypes == listOf(endpointType, "Ljava/util/Map;")
     } == true }

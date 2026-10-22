@@ -13,12 +13,17 @@ import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.proxy.mutableTypes.MutableField.Companion.toMutable
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
 import app.morphe.util.addInstructionsAtControlFlowLabel
+import app.morphe.util.cloneParameters
+import app.morphe.util.findFreeRegister
 import app.morphe.util.getReference
 import app.morphe.util.matchSingle
 import app.morphe.util.p0Register
 import com.android.tools.smali.dexlib2.AccessFlags
+import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
+import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.immutable.ImmutableField
@@ -91,5 +96,36 @@ internal fun installQueueSaveFeedback(context: BytecodePatchContext, endpointTyp
         invoke-static/range {p0 .. p1}, $SAVE_ACTIONS->onEditResult(${CALLBACK}Lcom/google/protobuf/MessageLite;)Lcom/google/protobuf/MessageLite;
         move-result-object p1
         check-cast p1, $responseType
+    """)
+}
+
+/** Use the native builder and scheduler; only locally marked save feedback gets a shorter timeout. */
+internal fun installQueueSaveConfirmationDuration(context: BytecodePatchContext, factory: Method) = with(context) {
+    val finalization = queueSnackbarDurationFingerprint(factory.returnType).matchSingle()
+    val durationSetter = finalization.originalMethod.implementation!!.instructions.mapNotNull {
+        it.getReference<MethodReference>()?.takeIf { reference ->
+            reference.definingClass == factory.returnType && reference.parameterTypes == listOf("I") &&
+                    reference.returnType == "V"
+        }
+    }.distinct().single()
+    check(AccessFlags.PUBLIC.isSet(classDefBy(factory.returnType).methods.single {
+        it.toString() == durationSetter.toString()
+    }.accessFlags)) { "Native playlist queue: snackbar duration setter must be callable" }
+    // Keep the input renderer even when the native factory reuses its parameters.
+    val method = mutableClassDefBy(factory.definingClass).methods.single { it.toString() == factory.toString() }
+        .cloneParameters()
+    val returns = method.implementation!!.instructions.withIndex().filter { it.value.opcode == Opcode.RETURN_OBJECT }
+    check(returns.size == 1) { "Native playlist queue: expected one initialized snackbar builder exit" }
+    val index = returns.single().index
+    val builder = (returns.single().value as OneRegisterInstruction).registerA
+    val duration = method.findFreeRegister(index)
+    check(builder <= 15 && duration <= 15) { "Native playlist queue: snackbar duration requires low registers" }
+    method.addInstructionsAtControlFlowLabel(index, """
+        invoke-static/range {p1 .. p1}, $FEEDBACK->confirmationDuration(Lcom/google/protobuf/MessageLite;)I
+        move-result v$duration
+        if-lez v$duration, :native_duration
+        invoke-virtual {v$builder, v$duration}, $durationSetter
+        :native_duration
+        nop
     """)
 }

@@ -582,6 +582,32 @@ private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
                 "L$extensionOwner;->onQueueUndoCommand(") == true
         } == true
     }
+    val durationHook = "Lapp/morphe/extension/youtube/patches/queue/QueueSaveFeedback;->confirmationDuration(Lcom/google/protobuf/MessageLite;)I"
+    val durationFactories = classes.filter { !it.type.startsWith("Lapp/morphe/") }.flatMap { it.methods }
+        .filter { method -> method.implementation?.instructions?.any {
+            (it as? ReferenceInstruction)?.reference?.toString() == durationHook
+        } == true }
+    check(durationFactories.size == if (selected) 1 else 0) { "Unexpected queue save duration hook inclusion" }
+    if (selected) {
+        val factory = durationFactories.single()
+        val code = factory.implementation!!.instructions.toList()
+        val hook = code.indexOfFirst { (it as? ReferenceInstruction)?.reference?.toString() == durationHook }
+        val guard = (hook + 1 until code.size).first { code[it].opcode == Opcode.IF_LEZ }
+        val setter = (guard + 1 until code.size).first { code[it].opcode == Opcode.INVOKE_VIRTUAL }
+        val reference = (code[setter] as ReferenceInstruction).reference as MethodReference
+        val guardAddress = code.take(guard).sumOf { it.codeUnits }
+        val skipTarget = guardAddress + (code[guard] as OffsetInstruction).codeOffset
+        check(reference.definingClass == factory.returnType && reference.parameterTypes == listOf("I") &&
+                reference.returnType == "V" && skipTarget > code.take(setter).sumOf { it.codeUnits }) {
+            "Ordinary feedback must bypass the native duration setter"
+        }
+        val returned = (code.last() as OneRegisterInstruction).registerA
+        check(code.last().opcode == Opcode.RETURN_OBJECT &&
+                (code[setter] as FiveRegisterInstruction).registerC == returned) {
+            "Queue save duration must update and return the original native snackbar builder"
+        }
+        println("Queue save duration: owned confirmation guard and original native builder setter verified")
+    }
     if (!selected) {
         check(commandTypes.isEmpty() && snackbars.isEmpty()) { "Queue Undo hooks leaked into an unselected build" }
         return

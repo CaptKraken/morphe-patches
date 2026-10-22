@@ -320,4 +320,6 @@ message QueueToastItem {
 message QueueToastRenderer {
     optional Text response_text = 1;
     optional SwipeAction action_button = 2;
+    // Local presentation marker; native protobuf parsing preserves it as unknown.
+    optional bool queue_save_confirmation = 500000000;
 }

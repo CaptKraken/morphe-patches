@@ -679,6 +679,14 @@ internal fun notificationPlaybackStateFingerprint(adapterType: String, callback:
     parameters = callback.parameterTypes.map { it.toString() }
 )
 
+/** The generated builder's missing-property diagnostic identifies duration finalization. */
+internal fun queueSnackbarDurationFingerprint(builderType: String) = Fingerprint(
+    definingClass = builderType,
+    parameters = emptyList(),
+    returnType = "L",
+    filters = listOf(string("Property \"duration\" has not been set"))
+)
+
 /** Both snackbar factories live together; the watch-screen factory is its native sibling. */
 internal object QueueSnackbarFactoryFingerprint : Fingerprint(
     returnType = "L",
