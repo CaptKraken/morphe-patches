@@ -45,7 +45,7 @@ public final class QueueSaveFeedback {
     private QueueSaveFeedback() {
     }
 
-    /** Zero retains native timing, including its accessible removal/Clear timeout. */
+    /** Zero retains native timing, including its accessible queue-clear timeout. */
     public static int confirmationDuration(MessageLite renderer) {
         try {
             var toast = QueueToastRenderer.parseFrom(renderer.toByteArray());

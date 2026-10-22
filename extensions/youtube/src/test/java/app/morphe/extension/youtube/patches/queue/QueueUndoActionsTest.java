@@ -26,45 +26,18 @@ public class QueueUndoActionsTest {
         return new PlaylistQueue(A, "A").playLast(B).playLast(A).playLast(C);
     }
 
-    @Test public void undoPreservesSelectedDuplicateAndCurrentRepeatMode() {
-        var before = original();
-        var after = before.remove(1);
-        var current = after.select(1).withRepeatMode(PlaylistQueue.REPEAT_ONE);
-        var restored = QueueUndoActions.restore(before, after, current, A);
-        assertEquals(before.entries(), restored.entries());
-        assertEquals(2, restored.selectedIndex());
-        assertEquals(PlaylistQueue.REPEAT_ONE, restored.repeatMode());
-        assertNull(QueueUndoActions.restore(before, after, after.move(0, 1), A));
-        assertEquals(3, QueueUndoActions.restore(before, after, after.select(2), C).selectedIndex());
-    }
-
-    @Test public void undoAdjustsSelectionAfterRemovingPrecedingRow() {
-        var before = original().select(2);
-        var after = before.remove(0);
-        assertEquals(2, QueueUndoActions.restore(before, after, after, A).selectedIndex());
-    }
-
-    @Test public void undoRejectsLaterEditsOrDifferentPlayback() {
-        var before = original().select(2);
-        var after = before.remove(0);
-        assertNull(QueueUndoActions.restore(before, after, after.playLast(B), A));
-        assertNull(QueueUndoActions.restore(before, after, after.move(0, 2), A));
-        assertNull(QueueUndoActions.restore(before, after, after, C));
-        assertNull(QueueUndoActions.restore(before, after, null, A));
-    }
-
     @Test public void clearUndoRequiresSameVideoAndNoNewQueue() {
         var before = original().select(2);
-        assertSame(before, QueueUndoActions.restore(before, null, null, A));
-        assertNull(QueueUndoActions.restore(before, null, null, B));
-        assertNull(QueueUndoActions.restore(before, null, new PlaylistQueue(A, "new"), A));
+        assertSame(before, QueueUndoActions.restore(before, null, A));
+        assertNull(QueueUndoActions.restore(before, null, B));
+        assertNull(QueueUndoActions.restore(before, new PlaylistQueue(A, "new"), A));
     }
 
     @Test public void feedbackCarriesIndependentCapability() throws Exception {
         var feedback = NavigationEndpoint.parseFrom(
-                QueueUndoActions.feedback("capability", "Removed", "Undo").toByteArray());
+                QueueUndoActions.feedback("capability", "Queue cleared", "Undo").toByteArray());
         var toast = feedback.getAddToToastAction().getItem().getToastRenderer();
-        assertEquals("Removed", toast.getResponseText().getSimpleText());
+        assertEquals("Queue cleared", toast.getResponseText().getSimpleText());
         var undo = toast.getActionButton().getButtonRenderer().getServiceEndpoint();
         assertEquals("capability", undo.getQueueUndoToken());
         assertFalse(undo.hasHideEnclosingAction());

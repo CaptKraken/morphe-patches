@@ -43,4 +43,18 @@ public class QueueStartTest {
         assertFalse(start.isSupersededBy("abcdefghijk"));
         assertTrue(start.isSupersededBy("ZYXWVUTSRQP"));
     }
+
+    @Test public void closedPlayerStartPreservesSelectedDuplicateAndUsesSavedTime() throws Exception {
+        var queue = start.candidate().playLast("ZYXWVUTSRQP").playLast("abcdefghijk")
+                .select(2).withRepeatMode(PlaylistQueue.REPEAT_ONE);
+        var restore = new QueueStart(queue, "", 75_432);
+        assertSame(queue, restore.candidate());
+        assertEquals(2, restore.candidate().selectedIndex());
+        assertEquals("https://www.youtube.com/watch?v=abcdefghijk&t=75s", restore.watchUrl());
+        assertTrue(restore.restoresClosedPlayer());
+        assertFalse(start.restoresClosedPlayer());
+        assertEquals("https://www.youtube.com/watch?v=abcdefghijk", start.watchUrl());
+        assertEquals("https://www.youtube.com/watch?v=abcdefghijk&t=0s",
+                new QueueStart(queue, "", 0).watchUrl());
+    }
 }

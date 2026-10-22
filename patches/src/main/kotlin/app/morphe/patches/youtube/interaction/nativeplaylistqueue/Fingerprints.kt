@@ -694,6 +694,15 @@ internal object QueueSnackbarFactoryFingerprint : Fingerprint(
     filters = listOf(string("feedback_undo"))
 )
 
+/** The mini player's close click, rather than programmatic reloads using the same dismiss API. */
+internal fun queuePlayerCloseClickFingerprint(dismiss: MethodReference) = Fingerprint(
+    name = "onClick",
+    parameters = listOf("Landroid/view/View;"),
+    returnType = "V",
+    filters = listOf(methodCall(reference = dismiss)),
+    custom = { _, classDef -> "Landroid/view/View\$OnClickListener;" in classDef.interfaces }
+)
+
 internal fun queueUndoClickFingerprint(listenerType: String, factoryType: String,
                                       dispatcherType: String, callback: MethodReference) = Fingerprint(
     definingClass = listenerType,

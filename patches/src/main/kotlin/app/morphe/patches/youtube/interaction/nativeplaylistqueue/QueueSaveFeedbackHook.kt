@@ -99,7 +99,7 @@ internal fun installQueueSaveFeedback(context: BytecodePatchContext, endpointTyp
     """)
 }
 
-/** Use the native builder and scheduler for owned Save and removal/Clear confirmations. */
+/** Use the native builder and scheduler for owned Save and queue-clear confirmations. */
 internal fun installQueueSaveConfirmationDuration(context: BytecodePatchContext, factory: Method) = with(context) {
     val finalization = queueSnackbarDurationFingerprint(factory.returnType).matchSingle()
     val durationSetter = finalization.originalMethod.implementation!!.instructions.mapNotNull {

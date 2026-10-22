@@ -66,6 +66,7 @@ internal fun installQueueUndo(context: BytecodePatchContext, endpointType: Strin
     val callback = classDefBy(dispatcher.type).methods.single {
         it.returnType == "V" && it.parameterTypes == listOf(endpointType, "Ljava/util/Map;")
     }
+    installQueuePlayerClose(this, endpointType, defaultEndpoint, callback)
     val listenerType = modern.implementation!!.instructions.mapNotNull {
         it.getReference<MethodReference>()?.takeIf { reference -> reference.name == "<init>" &&
                 "Landroid/view/View\$OnClickListener;" in classDefBy(reference.definingClass).interfaces

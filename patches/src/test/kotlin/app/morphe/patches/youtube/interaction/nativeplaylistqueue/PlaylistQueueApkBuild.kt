@@ -26,6 +26,7 @@ import app.morphe.patches.youtube.layout.flyout.addToQueuePatch
 import app.morphe.patches.youtube.layout.player.fullscreen.exitFullscreenPatch
 import app.morphe.patches.youtube.layout.player.fullscreen.openVideosFullscreenPatch
 import app.morphe.patches.youtube.layout.livering.openChannelOfLiveAvatarPatch
+import app.morphe.patches.youtube.layout.miniplayer.miniplayerPatch
 import app.morphe.patches.youtube.layout.hide.general.hideLayoutComponentsPatch
 import app.morphe.patches.youtube.layout.hide.relatedvideos.hideRelatedVideosPatch
 import app.morphe.patches.youtube.layout.originaltitles.restoreOriginalTitlesPatch
@@ -76,7 +77,7 @@ fun main(arguments: Array<String>) {
         hideLayoutComponentsPatch, hideRelatedVideosPatch, exitFullscreenPatch, openVideosFullscreenPatch,
         mediaNotificationControlsPatchYouTube, backgroundPlaybackPatch,
         spoofVideoStreamsPatch, restoreOldVideoActionBarPatch,
-        feedVideoActionsPatch, feedCardLayoutPatch, seriesTrackerPatch
+        feedVideoActionsPatch, feedCardLayoutPatch, seriesTrackerPatch, askFlyoutMenuPatch, miniplayerPatch
     )
     val selected = when (mode) {
         "standalone" -> setOf(nativePlaylistQueuePatch)
@@ -576,6 +577,38 @@ private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
     }
     val commandInterface = "Lapp/morphe/extension/youtube/patches/queue/QueueUndoActions\$Command;"
     val commandTypes = classes.filter { commandInterface in it.interfaces }
+    val nativeMethods = classes.filter { !it.type.startsWith("Lapp/morphe/") }.flatMap { it.methods }
+    val closeHook = "L$extensionOwner;->onQueuePlayerClosing()V"
+    val closeClicks = nativeMethods.filter { method -> method.implementation?.instructions?.any {
+        (it as? ReferenceInstruction)?.reference?.toString() == closeHook
+    } == true }
+    val closeFeedback = nativeMethods.filter { it.name == "patch_showQueueFeedback" }
+    check(closeClicks.size == if (selected) 1 else 0) { "Unexpected queue player-close interception" }
+    check(closeFeedback.size == if (selected) 1 else 0) { "Unexpected queue player-close feedback bridge" }
+    if (selected) {
+        val click = closeClicks.single()
+        check(click.name == "onClick" && click.parameterTypes == listOf("Landroid/view/View;")) {
+            "Only the mini-player close click may capture player-close Undo"
+        }
+        val code = click.implementation!!.instructions.toList()
+        val hookIndex = code.indexOfFirst { (it as? ReferenceInstruction)?.reference?.toString() == closeHook }
+        val original = (code[hookIndex + 1] as ReferenceInstruction).reference as MethodReference
+        check(code[hookIndex].opcode == Opcode.INVOKE_STATIC &&
+                (code[hookIndex] as FiveRegisterInstruction).registerCount == 0 &&
+                code[hookIndex + 1].opcode == Opcode.INVOKE_VIRTUAL &&
+                original.parameterTypes.isEmpty() && original.returnType == "V" &&
+                code[hookIndex + 2].opcode == Opcode.RETURN_VOID) {
+            "Player-close capture must preserve the original dismissal and listener return"
+        }
+        val feedback = closeFeedback.single().implementation!!.instructions.toList()
+        val calls = feedback.mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }
+        check(calls.any { it.name == "patch_parseQueueCommand" } && calls.any {
+            it.definingClass == "Ljava/util/Collections;" && it.name == "emptyMap"
+        } && calls.last().parameterTypes == listOf(commandTypes.single().type, "Ljava/util/Map;")) {
+            "Player-close feedback must use the native command parser and activity dispatcher"
+        }
+        println("Queue player-close: user click keeps native dismissal; feedback uses native parser and dispatcher")
+    }
     val snackbars = classes.filter { !it.type.startsWith("Lapp/morphe/") }.flatMap { it.methods }.filter { method ->
         method.implementation?.instructions?.any {
             (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(

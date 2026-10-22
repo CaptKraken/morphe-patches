@@ -15,8 +15,22 @@ import java.util.Map;
 
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.NavigationEndpoint;
 
-/** One immutable menu intent, kept separate from an attached native queue. */
-record QueueStart(PlaylistQueue candidate, String previousVideoId) {
+/** One immutable start or restore request, separate from an attached native queue. */
+record QueueStart(PlaylistQueue candidate, String previousVideoId, long resumePositionMilliseconds) {
+    QueueStart(PlaylistQueue candidate, String previousVideoId) {
+        this(candidate, previousVideoId, -1);
+    }
+
+    boolean restoresClosedPlayer() {
+        return resumePositionMilliseconds >= 0;
+    }
+
+    String watchUrl() {
+        // Match the native watch intent used by LoadVideoPatch's Reload action.
+        return "https://www.youtube.com/watch?v=" + candidate.currentEntry().videoId()
+                + (restoresClosedPlayer() ? "&t=" + resumePositionMilliseconds / 1000 + "s" : "");
+    }
+
     boolean isSupersededBy(String videoId) {
         return PlaylistQueue.isVideoId(videoId) && !videoId.equals(previousVideoId)
                 && !videoId.equals(candidate.currentEntry().videoId());

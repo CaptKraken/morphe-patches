@@ -18,7 +18,7 @@ import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.SwipeA
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.SwipeButton;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.Text;
 
-/** Native snackbar feedback and immutable, duplicate-safe restoration of local edits. */
+/** Native snackbar feedback and restoration of a cleared local queue. */
 public final class QueueUndoActions {
     public interface Command {
         MessageLite patch_parseQueueCommand(byte[] bytes);
@@ -48,23 +48,8 @@ public final class QueueUndoActions {
         return true;
     }
 
-    /** Selection may advance; edits and a different playing video must not be overwritten. */
-    static PlaylistQueue restore(PlaylistQueue before, PlaylistQueue after,
-                                 PlaylistQueue current, String activeVideoId) {
-        if (after == null) {
-            return current == null && before.currentEntry().videoId().equals(activeVideoId) ? before : null;
-        }
-        if (current == null || current.entries().size() != after.entries().size()
-                || !current.currentEntry().videoId().equals(activeVideoId)) return null;
-        for (int index = 0; index < after.entries().size(); index++) {
-            if (current.entries().get(index) != after.entries().get(index)) return null;
-        }
-        // Entry identity distinguishes repeated instances of the same video.
-        for (int index = 0; index < before.entries().size(); index++) {
-            if (before.entries().get(index) == current.currentEntry()) {
-                return before.select(index).withRepeatMode(current.repeatMode());
-            }
-        }
-        return null;
+    /** A menu Clear leaves playback alive; never overwrite a new queue or watch session. */
+    static PlaylistQueue restore(PlaylistQueue before, PlaylistQueue current, String activeVideoId) {
+        return current == null && before.currentEntry().videoId().equals(activeVideoId) ? before : null;
     }
 }

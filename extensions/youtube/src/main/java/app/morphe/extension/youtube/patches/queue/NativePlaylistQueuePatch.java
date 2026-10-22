@@ -78,6 +78,7 @@ public final class NativePlaylistQueuePatch {
         Object patch_getNavigator();
         Object patch_updatePanel(byte[] panel);
         void patch_restorePanel(Object expectedModel, Object originalModel);
+        void patch_showQueueFeedback(byte[] command);
     }
 
     /** Native control owner; weak registration allows eligibility refresh after local edits. */
@@ -198,8 +199,20 @@ public final class NativePlaylistQueuePatch {
     // A menu click can open the first video before a watch controller exists.
     // Keep this intent separate from an attached, usable native queue.
     private static QueueStart pendingQueueStart;
-    private record PendingUndo(String token, PlaylistQueue before, PlaylistQueue after,
-                               WeakReference<NativePlayback> playback) {}
+    private static final class ClosedPlayback {
+        final long positionMilliseconds;
+        @Nullable PlaylistController feedbackOwner;
+
+        ClosedPlayback(long positionMilliseconds, PlaylistController feedbackOwner) {
+            this.positionMilliseconds = positionMilliseconds;
+            // Keep the dispatcher alive through teardown, then release it on show.
+            // The Undo expiry also bounds a close that never finishes. This owner
+            // is never used to restore playback.
+            this.feedbackOwner = feedbackOwner;
+        }
+    }
+    private record PendingUndo(String token, PlaylistQueue before, WeakReference<NativePlayback> playback,
+                               ClosedPlayback closedPlayback) {}
     private static PendingUndo pendingUndo;
     private static final int UNDO_DURATION_MILLISECONDS = 5_000;
     private static final int ACCESSIBLE_UNDO_DURATION_MILLISECONDS = 20_000;
@@ -391,7 +404,14 @@ public final class NativePlaylistQueuePatch {
                 return;
             }
             PlayerType currentType = PlayerType.getCurrent();
-            if (ShortsPlayerState.isOpen() || currentType.isNoneOrHidden()
+            if (pendingUndo != null && pendingUndo.closedPlayback() != null) {
+                // Closing destroys the old player. A new watch session or Shorts,
+                // rather than that expected teardown, invalidates its Undo.
+                if (ShortsPlayerState.isOpen() || currentType == PlayerType.HIDDEN
+                        || (!currentType.isNoneOrHidden() && currentType != PlayerType.INLINE_MINIMAL)) {
+                    pendingUndo = null;
+                }
+            } else if (ShortsPlayerState.isOpen() || currentType.isNoneOrHidden()
                     || currentType == PlayerType.INLINE_MINIMAL) pendingUndo = null;
             if (queue != null && (ShortsPlayerState.isOpen() || PlayerType.getCurrent() == PlayerType.HIDDEN)) {
                 updateShortsSession(controllerRef.get());
@@ -400,6 +420,7 @@ public final class NativePlaylistQueuePatch {
             // before its video-ID callback. Reconcile after the native event finishes.
             Utils.runOnMainThread(() -> {
                 if (queue == null) {
+                    showClosedQueueFeedback();
                     tryStartQueue();
                     return;
                 }
@@ -780,8 +801,7 @@ public final class NativePlaylistQueuePatch {
                     return null;
                 }
                 releasePanel();
-                return removalFeedback(endpoint, before, null, playback,
-                        str("morphe_native_playlist_queue_cleared"));
+                return clearFeedback(endpoint, before, playback);
             }
             int index = controller.patch_findQueueRow(owner);
             if (index < 0 || index >= queue.entries().size()) return null;
@@ -800,16 +820,71 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
-    private static MessageLite removalFeedback(MessageLite endpoint, PlaylistQueue before, PlaylistQueue after,
-                                               NativePlayback playback, String message) {
-        PendingUndo undo = new PendingUndo(UUID.randomUUID().toString(), before, after,
-                new WeakReference<>(playback));
+    private static PendingUndo beginUndo(PlaylistQueue before, NativePlayback playback, ClosedPlayback closed) {
+        PendingUndo undo = new PendingUndo(UUID.randomUUID().toString(), before, new WeakReference<>(playback), closed);
         pendingUndo = undo;
         // Bound snapshots if native feedback never reaches its snackbar factory.
         expireUndo(undo, ACCESSIBLE_UNDO_DURATION_MILLISECONDS);
+        return undo;
+    }
+
+    private static byte[] clearFeedback(PendingUndo undo) {
+        return QueueUndoActions.feedback(undo.token(), str("morphe_native_playlist_queue_cleared"),
+                str("offline_undo_snackbar_button_text")).toByteArray();
+    }
+
+    private static MessageLite clearFeedback(MessageLite endpoint, PlaylistQueue before, NativePlayback playback) {
+        PendingUndo undo = beginUndo(before, playback, null);
         return ((QueueUndoActions.Command) endpoint).patch_parseQueueCommand(
-                QueueUndoActions.feedback(undo.token(), message, str("offline_undo_snackbar_button_text"))
-                        .toByteArray());
+                clearFeedback(undo));
+    }
+
+    /** Called only from the native mini-player close click, before it destroys the player. */
+    public static void onQueuePlayerClosing() {
+        try {
+            if (queue == null) return;
+            PlaylistController controller = readyController();
+            if (controller == null || controller.patch_getModel() != publishedModel
+                    || pendingSelection != null || dragSession != null) return;
+            NativePlayback playback = playbackFor(controller);
+            long position = VideoInformation.getVideoTime();
+            if (playback == null || !playback.patch_isLocalQueue() || position < 0) return;
+            PlaylistQueue before = queue.withRepeatMode(playback.patch_getRepeatMode());
+            // Detach our local sequence while the original close listener still owns
+            // stopping playback. Never keep a disposed backend as the restore target.
+            if (!playback.patch_clearQueue()) {
+                Logger.printException(() -> "Could not detach native queue before closing the player");
+                return;
+            }
+            releasePanel();
+            beginUndo(before, null, new ClosedPlayback(position, controller));
+            // The original native dismissal runs before this posted callback.
+            Utils.runOnMainThread(NativePlaylistQueuePatch::showClosedQueueFeedback);
+        } catch (Exception exception) {
+            Logger.printException(() -> "Could not retain native queue for player-close Undo", exception);
+        }
+    }
+
+    private static void showClosedQueueFeedback() {
+        PendingUndo undo = pendingUndo;
+        if (undo == null || undo.closedPlayback() == null || queue != null) return;
+        if (morpheQueueTakesPriority() || ShortsPlayerState.isOpen()) {
+            pendingUndo = null;
+            return;
+        }
+        PlayerType type = PlayerType.getCurrent();
+        if (type != PlayerType.NONE && type != PlayerType.INLINE_MINIMAL) return;
+        PlaylistController owner = undo.closedPlayback().feedbackOwner;
+        if (owner == null) return;
+        // The activity dispatcher remains callable after its watch controller detaches.
+        // Clear this reference so repeated teardown notifications cannot show it twice.
+        undo.closedPlayback().feedbackOwner = null;
+        try {
+            owner.patch_showQueueFeedback(clearFeedback(undo));
+        } catch (Exception exception) {
+            if (pendingUndo == undo) pendingUndo = null;
+            Logger.printException(() -> "Could not show native queue player-close confirmation", exception);
+        }
     }
 
     /** Called by the native snackbar factory only for a matching local Undo capability. */
@@ -822,7 +897,7 @@ public final class NativePlaylistQueuePatch {
         boolean accessible = accessibility != null && accessibility.isEnabled()
                 && accessibility.isTouchExplorationEnabled();
         // A new identity prevents an earlier timer from expiring re-created feedback.
-        PendingUndo presented = new PendingUndo(undo.token(), undo.before(), undo.after(), undo.playback());
+        PendingUndo presented = new PendingUndo(undo.token(), undo.before(), undo.playback(), undo.closedPlayback());
         pendingUndo = presented;
         expireUndo(presented, accessible ? ACCESSIBLE_UNDO_DURATION_MILLISECONDS : UNDO_DURATION_MILLISECONDS);
         // Leave the accessible native action timeout at 20 seconds. Setting a positive
@@ -853,6 +928,12 @@ public final class NativePlaylistQueuePatch {
         PendingUndo undo = pendingUndo;
         if (undo == null || !undo.token().equals(token)) return;
         pendingUndo = null; // A native callback can only activate this capability once.
+        if (undo.closedPlayback() != null) {
+            if (!canStartQueue() || pendingQueueStart != null) return;
+            startQueue(new QueueStart(undo.before(), VideoInformation.getVideoId(),
+                    undo.closedPlayback().positionMilliseconds));
+            return;
+        }
         PlaylistController controller = readyController();
         if (controller == null) return;
         if (pendingSelection != null || dragSession != null) return;
@@ -860,16 +941,14 @@ public final class NativePlaylistQueuePatch {
         NativePlayback playback = undo.playback().get();
         if (playback == null) return;
         if (playbackFor(controller) != playback) return;
-        PlaylistQueue restored = QueueUndoActions.restore(undo.before(), undo.after(), queue,
+        PlaylistQueue restored = QueueUndoActions.restore(undo.before(), queue,
                 VideoInformation.getVideoId());
         if (restored == null) return;
         Object baseline = controller.patch_getModel();
         if (!publish(controller, restored, true)) return;
-        if (undo.after() == null) {
-            originalModel = baseline;
-            playback.patch_restoreQueueRepeat(restored.repeatMode());
-            queue = queue.withRepeatMode(playback.patch_getRepeatMode());
-        }
+        originalModel = baseline;
+        playback.patch_restoreQueueRepeat(restored.repeatMode());
+        queue = queue.withRepeatMode(playback.patch_getRepeatMode());
     }
 
     /** Native row overflow creates its menu context directly, outside shared feed hooks. */
@@ -940,7 +1019,7 @@ public final class NativePlaylistQueuePatch {
             }
             // A cleared queue belongs to the uninterrupted ordinary playback session.
             // Returning to its video later must not revive an earlier Undo action.
-            if (pendingUndo != null && pendingUndo.after() == null
+            if (pendingUndo != null && pendingUndo.closedPlayback() == null
                     && !pendingUndo.before().currentEntry().videoId().equals(videoId)) pendingUndo = null;
             tryStartQueue();
             if (queue == null) return;
@@ -1071,16 +1150,10 @@ public final class NativePlaylistQueuePatch {
                 String title = ChannelIdRequest.getVideoTitleIfAvailable(videoId);
                 rememberChannel(videoId, title.isEmpty() ? videoId : title, channelName);
                 QueueStart start = new QueueStart(new PlaylistQueue(videoId, title), VideoInformation.getVideoId());
-                pendingQueueStart = start;
                 // The shared helper opens YouTube's own watch intent. With false it
                 // does not call a native player bridge or require an existing player.
-                LoadVideoPatch.openVideoIntent("https://www.youtube.com/watch?v=" + videoId, false);
+                startQueue(start);
                 FlyoutUtils.dismissFlyout();
-                Utils.runOnMainThreadDelayed(() -> {
-                    if (pendingQueueStart != start) return;
-                    pendingQueueStart = null;
-                    OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
-                }, NAVIGATION_TIMEOUT_MILLISECONDS);
                 return;
             }
             PlaylistController controller = readyController();
@@ -1106,6 +1179,17 @@ public final class NativePlaylistQueuePatch {
             Logger.printException(() -> "Could not add video to native playlist queue", exception);
             Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
         }
+    }
+
+    private static void startQueue(QueueStart start) {
+        pendingUndo = null;
+        pendingQueueStart = start;
+        LoadVideoPatch.openVideoIntent(start.watchUrl(), false);
+        Utils.runOnMainThreadDelayed(() -> {
+            if (pendingQueueStart != start) return;
+            pendingQueueStart = null;
+            OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
+        }, NAVIGATION_TIMEOUT_MILLISECONDS);
     }
 
     /** Commit a first-item queue only after native playback accepts the requested video. */
@@ -1142,7 +1226,13 @@ public final class NativePlaylistQueuePatch {
         if (publish(controller, start.candidate(), false)) {
             originalModel = baseline;
             pendingQueueStart = null;
-            Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
+            if (start.restoresClosedPlayer()) {
+                NativePlayback playback = nativePlaybackRef.get();
+                playback.patch_restoreQueueRepeat(start.candidate().repeatMode());
+                queue = queue.withRepeatMode(playback.patch_getRepeatMode());
+                refreshRepeatHeaders();
+                refreshPlayerControls(controller.patch_getNavigator());
+            } else Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
             completeMetadata();
         }
     }
@@ -1179,9 +1269,16 @@ public final class NativePlaylistQueuePatch {
 
     /** Native watch dispatch reads this flag before constructing the playback descriptor. */
     public static Map<?, ?> prepareQueueStartContext(MessageLite endpoint, Map<?, ?> context) {
+        if (endpoint == null) return context;
         QueueStart start = pendingQueueStart;
-        if (morpheQueueTakesPriority() || start == null || queue != null) return context;
         try {
+            // A deliberate new watch invalidates a closed player's Undo even if it
+            // opens the same video. This hook runs on dispatch, not on prefetch.
+            if (pendingUndo != null && pendingUndo.closedPlayback() != null
+                    && PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray()).hasWatchEndpoint()) {
+                pendingUndo = null;
+            }
+            if (morpheQueueTakesPriority() || start == null || queue != null) return context;
             Map<?, ?> minimized = start.minimizedContext(endpoint, context);
             if (minimized != context) {
                 OpenVideosFullscreenHookPatch.keepVideoMinimized(start.candidate().currentEntry().videoId());
