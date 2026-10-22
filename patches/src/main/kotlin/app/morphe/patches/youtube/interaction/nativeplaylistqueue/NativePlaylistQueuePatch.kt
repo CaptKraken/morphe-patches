@@ -31,7 +31,7 @@ internal const val CONTROLLER_INTERFACE =
 @Suppress("unused")
 val nativePlaylistQueuePatch = bytecodePatch(
     name = "Native playlist queue",
-    description = "Adds a temporary video queue using YouTube's native playlist panel and playback. Renders native video details and rating actions. Experimental. YouTube 21.20.405 only.",
+    description = "Adds a temporary video queue using YouTube's native playlist panel and playback. Renders native video details and rating actions. Supports swipe removal. Experimental. YouTube 21.20.405 only.",
     default = true
 ) {
     dependsOn(
@@ -59,6 +59,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
         }
         installPlaylistPanel(this)
         installRatingCapture(this)
+        installPlaylistRemoval(this)
         hookElement("$EXTENSION_CLASS->onElementLoaded")
         hookVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")
         hookBackgroundPlayVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")

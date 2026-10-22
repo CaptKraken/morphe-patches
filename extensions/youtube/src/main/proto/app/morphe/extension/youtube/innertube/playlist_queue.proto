@@ -32,6 +32,7 @@ message Video {
     optional bool selected = 6;
     optional NavigationEndpoint navigation_endpoint = 7;
     optional string video_id = 10;
+    repeated SwipeAction swipe_buttons = 22;
     optional MainAppStyle main_app_style = 27;
     optional Text video_info = 31;
     repeated RatingAction action_buttons = 32;
@@ -123,8 +124,36 @@ message Thumbnail {
 
 message NavigationEndpoint {
     optional WatchEndpoint watch_endpoint = 48687757;
+    optional HideEnclosingAction hide_enclosing_action = 77297742;
 }
 
 message WatchEndpoint {
     optional string video_id = 1;
+}
+
+message HideEnclosingAction {
+    optional bool hack = 1;
+}
+
+message SwipeAction {
+    optional SwipeButton button_renderer = 65153809;
+}
+
+// Native Mix swipe buttons use BLACK_FILLED, DEFAULT, and VISIBILITY_OFF.
+message SwipeButton {
+    enum Style {
+        BLACK_FILLED = 35;
+    }
+    enum Size {
+        DEFAULT = 1;
+    }
+    optional Style style = 1;
+    optional Size size = 2;
+    optional bool is_disabled = 3;
+    optional Text text = 5;
+    optional NavigationEndpoint service_endpoint = 7;
+    optional app.morphe.extension.youtube.innertube.Icon icon = 8;
+    optional NavigationEndpoint navigation_endpoint = 9;
+    optional Accessibility accessibility_data = 16;
+    optional NavigationEndpoint command = 19;
 }

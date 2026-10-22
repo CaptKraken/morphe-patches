@@ -154,6 +154,57 @@ internal fun playlistNativeClickFingerprint(listenerType: String) = Fingerprint(
     filters = listOf(string("com.google.android.libraries.youtube.logging.interaction_logger"))
 )
 
+/** The standard button click context retains the native enclosing row identity. */
+internal object NativeButtonContextFingerprint : Fingerprint(
+    returnType = "Ljava/util/Map;",
+    parameters = listOf("L", "Z"),
+    filters = listOf(string("anchor_view")),
+    custom = { _, classDef -> "Landroid/view/View\$OnClickListener;" in classDef.interfaces }
+)
+
+internal object NativeButtonDispatchFingerprint : Fingerprint(
+    classFingerprint = NativeButtonContextFingerprint,
+    name = "onClick",
+    returnType = "V",
+    parameters = listOf("Landroid/view/View;"),
+    filters = listOf(methodCall(opcode = Opcode.INVOKE_INTERFACE, returnType = "V",
+        parameters = listOf("L", "Ljava/util/Map;")))
+)
+
+/** Rich playlist rows, as opposed to the compact/offline binders. */
+internal object PlaylistRichRowConstructorFingerprint : Fingerprint(
+    name = "<init>",
+    filters = listOf(resourceLiteral(ResourceType.ID, "playlist_panel_video_item"))
+)
+
+/** Native selection updates replace the swipe foreground's background. */
+internal object PlaylistRowBackgroundFingerprint : Fingerprint(
+    classFingerprint = PlaylistRichRowConstructorFingerprint,
+    parameters = emptyList(),
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(type = "Landroid/view/View;", opcode = Opcode.IGET_OBJECT),
+        methodCall("Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V",
+            location = MatchAfterImmediately()),
+        methodCall("Landroid/widget/TextView;->setTextColor(I)V", location = MatchAfterWithin(8))
+    )
+)
+
+/** SwipeLayout is an unobfuscated native widget; attachment caches its foreground drawable. */
+internal object PlaylistSwipeAttachedFingerprint : Fingerprint(
+    definingClass = "Lcom/google/android/libraries/youtube/common/ui/swipelayout/SwipeLayout;",
+    name = "onAttachedToWindow",
+    parameters = emptyList(),
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(type = "Landroid/view/View;", opcode = Opcode.IPUT_OBJECT),
+        methodCall("Landroid/view/View;->getBackground()Landroid/graphics/drawable/Drawable;",
+            location = MatchAfterImmediately()),
+        fieldAccess(type = "Landroid/graphics/drawable/Drawable;", opcode = Opcode.IPUT_OBJECT,
+            location = MatchAfterWithin(2))
+    )
+)
+
 internal fun playlistNavigationRequestFingerprint(enumType: String) = Fingerprint(
     name = "<init>",
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
