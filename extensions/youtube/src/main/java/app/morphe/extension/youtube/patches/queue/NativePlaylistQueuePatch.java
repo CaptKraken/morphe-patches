@@ -691,6 +691,21 @@ public final class NativePlaylistQueuePatch {
             if (!command.hasHideEnclosingAction() || command.hasWatchEndpoint()) return endpoint;
             PlaylistController controller = readyController();
             if (queue == null || controller == null || controller.patch_getModel() != publishedModel) return null;
+            if (header) {
+                if (owner != controller.patch_getPanel()) return null;
+                NativePlayback playback = playbackFor(controller);
+                if (pendingSelection != null || dragSession != null || playback == null) {
+                    Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+                    return null;
+                }
+                if (!playback.patch_clearQueue()) {
+                    Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+                    return null;
+                }
+                releasePanel();
+                Utils.showToastShort(str("morphe_native_playlist_queue_cleared"));
+                return null;
+            }
             int index = controller.patch_findQueueRow(owner);
             if (index < 0 || index >= queue.entries().size()) return null;
             // Check again at activation: a previously revealed button must never
@@ -1006,6 +1021,9 @@ public final class NativePlaylistQueuePatch {
                         // Only an activated, currently owned header may attach a batch selection.
                         .addItems(serviceMenuItem(str("playlist_save"), YTIconType.BOOKMARK_BORDER,
                                 QueueSaveActions.openPicker(videoIds)))
+                        .addItems(serviceMenuItem(str("morphe_native_playlist_queue_clear"), YTIconType.DELETE,
+                                PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setHideEnclosingAction(
+                                        PlaylistQueueRenderer.HideEnclosingAction.newBuilder().setHack(true)).build()))
                         .setAccessibility(PlaylistQueueRenderer.Accessibility.newBuilder().setAccessibilityData(
                                 PlaylistQueueRenderer.AccessibilityLabel.newBuilder()
                                         .setLabel(str("accessibility_overflow_menu")))))

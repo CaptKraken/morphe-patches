@@ -1741,6 +1741,8 @@ Automatic recording is optional. It stops in incognito or when the account chang
     <string name="morphe_series_tracker_unavailable_episode">Unavailable episode</string>
     <string name="morphe_native_playlist_queue_saved">Playlist saved</string>
     <string name="morphe_native_playlist_queue_saved_to">Saved to %s</string>
+    <string name="morphe_native_playlist_queue_clear">Clear queue</string>
+    <string name="morphe_native_playlist_queue_cleared">Queue cleared</string>
     <string name="morphe_native_playlist_queue_title">Queue</string>
     <string name="morphe_native_playlist_queue_next">Play next in native queue</string>
     <string name="morphe_native_playlist_queue_unavailable">YouTube could not display the queue.</string>
