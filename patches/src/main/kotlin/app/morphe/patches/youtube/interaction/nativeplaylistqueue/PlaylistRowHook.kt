@@ -43,6 +43,7 @@ internal fun installPlaylistRowPlayback(
     }
     val videoIdField = videoIdFields.single()
     val videoType = videoIdField.definingClass
+    installPlaylistReordering(context, videoType)
     val listenerTypes = binders.flatMap { binder ->
         binder.originalClassDef.fields.map { it.type }.distinct().filter { type ->
             classDefByOrNull(type)?.interfaces?.contains("Landroid/view/View\$OnClickListener;") == true

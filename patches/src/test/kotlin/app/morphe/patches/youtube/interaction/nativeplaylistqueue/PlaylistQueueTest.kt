@@ -89,6 +89,34 @@ class PlaylistQueueTest {
     }
 
     @Test
+    fun `moving across or moving the playing row preserves its selection and old order`() = withQueue { type ->
+        val initial = type.getConstructor(String::class.java, String::class.java)
+            .newInstance("abcdefghijk", "Playing video")
+        val insert = type.getMethod("playNext", String::class.java)
+        val populated = insert.invoke(insert.invoke(initial, "lmnopqrstuv"), "0123456789_")
+        val select = type.getMethod("select", Int::class.javaPrimitiveType)
+        val move = type.getMethod("move", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+        val current = type.getMethod("currentEntry")
+        val selection = type.getMethod("selectedIndex")
+        for ((from, to) in listOf(0 to 2, 2 to 0, 1 to 2, 1 to 0, 1 to 1)) {
+            val playing = select.invoke(populated, 1)
+            val moved = move.invoke(playing, from, to)
+            assertEquals(current.invoke(playing), current.invoke(moved))
+            val expected = videos(playing).toMutableList().apply { add(to, removeAt(from)) }
+            assertEquals(expected, videos(moved))
+            assertEquals(expected.indexOf("0123456789_"), selection.invoke(moved))
+            assertEquals(listOf("abcdefghijk", "0123456789_", "lmnopqrstuv"), videos(playing))
+        }
+        // Equal video IDs must not confuse which occurrence is currently playing.
+        val duplicates = insert.invoke(initial, "abcdefghijk")
+        assertEquals(1, selection.invoke(move.invoke(duplicates, 0, 1)))
+        for ((from, to) in listOf(-1 to 0, 0 to 3)) {
+            val failure = assertFailsWith<InvocationTargetException> { move.invoke(populated, from, to) }
+            assertIs<IndexOutOfBoundsException>(failure.cause)
+        }
+    }
+
+    @Test
     fun `invalid insertion cannot corrupt a valid queue`() = withQueue { type ->
         val queue = type.getConstructor(String::class.java, String::class.java)
             .newInstance("abcdefghijk", "Playing video")

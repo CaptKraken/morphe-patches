@@ -205,6 +205,53 @@ internal object PlaylistSwipeAttachedFingerprint : Fingerprint(
     )
 )
 
+/** The native binder configures the drag handle's touch target from resources. */
+internal object PlaylistDragBinderFingerprint : Fingerprint(
+    classFingerprint = PlaylistRichRowConstructorFingerprint,
+    returnType = "V",
+    filters = listOf(resourceLiteral(ResourceType.DIMEN, "playlist_drag_handle_touch_padding_start"))
+)
+
+internal fun playlistDragStartFingerprint(holderType: String) = Fingerprint(
+    definingClass = holderType,
+    returnType = "V",
+    parameters = listOf("L", "L", "I"),
+    filters = listOf(
+        opcode(Opcode.IF_EQ),
+        fieldAccess(type = "Landroid/view/View;", opcode = Opcode.IGET_OBJECT,
+            location = MatchAfterWithin(1)),
+        methodCall("Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V",
+            location = MatchAfterWithin(1))
+    )
+)
+
+internal fun playlistDragEndFingerprint(holderType: String) = Fingerprint(
+    definingClass = holderType,
+    returnType = "V",
+    parameters = listOf("L", "L", "I", "I"),
+    filters = listOf(
+        opcode(Opcode.IF_EQ),
+        methodCall(definingClass = holderType, opcode = Opcode.INVOKE_DIRECT,
+            parameters = emptyList(), returnType = "V", location = MatchAfterWithin(1))
+    )
+)
+
+internal fun playlistDragUnbindFingerprint(holderType: String) = Fingerprint(
+    definingClass = holderType,
+    returnType = "V",
+    parameters = listOf("L"),
+    filters = listOf(
+        methodCall("Landroid/view/View;->setOnTouchListener(Landroid/view/View\$OnTouchListener;)V"),
+        methodCall("Landroid/view/View;->setOnLongClickListener(Landroid/view/View\$OnLongClickListener;)V")
+    )
+)
+
+internal object PlaylistEditEventsFingerprint : Fingerprint(
+    classFingerprint = PlaylistItemsConstructorFingerprint,
+    parameters = listOf("Ljava/lang/Class;", "Ljava/lang/Object;", "I"),
+    returnType = "[Ljava/lang/Class;"
+)
+
 internal fun playlistNavigationRequestFingerprint(enumType: String) = Fingerprint(
     name = "<init>",
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
