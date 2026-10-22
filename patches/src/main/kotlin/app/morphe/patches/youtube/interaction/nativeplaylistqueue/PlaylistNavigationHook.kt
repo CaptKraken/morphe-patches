@@ -74,4 +74,5 @@ internal fun installPlaylistNavigation(context: BytecodePatchContext, controller
     """)
     installPlaylistNotification(context, wrapperType, enumType, commandType)
     installPlaylistRepeat(context, navigatorType)
+    installPlaylistPlayerControls(context, navigatorType, enumType, wrapperType)
 }

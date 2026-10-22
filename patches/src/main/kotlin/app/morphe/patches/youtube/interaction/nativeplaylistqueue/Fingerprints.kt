@@ -410,6 +410,35 @@ internal fun playlistNavigatorProviderFingerprint(controllerType: String, naviga
     )
 )
 
+/** Native player control eligibility, including its alternate history callbacks. */
+internal fun playlistControlAvailabilityFingerprint(navigatorType: String, request: FieldReference) = Fingerprint(
+    accessFlags = listOf(AccessFlags.PRIVATE, AccessFlags.FINAL),
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(
+        fieldAccess(opcode = Opcode.IGET_OBJECT),
+        opcode(Opcode.IF_EQZ, location = MatchAfterImmediately()),
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = emptyList(), returnType = "Z",
+            location = MatchAfterImmediately()),
+        opcode(Opcode.MOVE_RESULT, location = MatchAfterImmediately()),
+        fieldAccess(type = navigatorType, opcode = Opcode.IGET_OBJECT),
+        fieldAccess(reference = request, opcode = Opcode.SGET_OBJECT, location = MatchAfterImmediately()),
+        methodCall(definingClass = navigatorType, parameters = listOf(request.type), returnType = "Z",
+            location = MatchAfterImmediately()),
+        opcode(Opcode.MOVE_RESULT, location = MatchAfterImmediately()),
+        fieldAccess(type = "Z", opcode = Opcode.IGET_BOOLEAN, location = MatchAfterImmediately()),
+        opcode(Opcode.IF_EQ, location = MatchAfterImmediately())
+    )
+)
+
+internal fun playlistControlPressFingerprint(controlsType: String, request: FieldReference) = Fingerprint(
+    definingClass = controlsType,
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(fieldAccess(reference = request, opcode = Opcode.SGET_OBJECT)),
+    custom = { method, _ -> AccessFlags.PUBLIC.isSet(method.accessFlags) }
+)
+
 internal object PlaylistHeaderConstructorFingerprint : Fingerprint(
     name = "<init>",
     filters = listOf(resourceLiteral(ResourceType.LAYOUT, "compact_playlist_panel_header"))
@@ -539,4 +568,54 @@ internal fun notificationPreviousDispatchFingerprint(previous: MethodReference) 
         fieldAccess(definingClass = previous.definingClass, opcode = Opcode.IGET_OBJECT),
         opcode(Opcode.IF_NEZ, location = MatchAfterImmediately())
     )
+)
+
+/** Stable broadcast actions identify the native notification's paired skip controls. */
+internal object NotificationSkipActionsFingerprint : Fingerprint(
+    returnType = "Ljava/lang/String;",
+    parameters = emptyList(),
+    filters = listOf(
+        string("com.google.android.libraries.youtube.player.action.controller_notification_prev"),
+        string("com.google.android.libraries.youtube.player.action.controller_notification_next")
+    )
+)
+
+/** Both native adapter variants publish Previous/Next through the same model setter. */
+internal fun notificationCapabilitiesFingerprint(
+    ownerType: String,
+    setter: MethodReference,
+    adapterType: String? = null
+) = Fingerprint(
+    definingClass = adapterType,
+    parameters = emptyList(),
+    filters = listOf(methodCall(reference = setter)),
+    custom = { method, classDef -> method.returnType in listOf("V", "I") &&
+            classDef.fields.any { it.type == ownerType } }
+)
+
+/** The newer adapter dispatches the setter's returned change flags through its native notifier. */
+internal fun notificationCapabilitiesDispatchFingerprint(computation: MethodReference) = Fingerprint(
+    definingClass = computation.definingClass,
+    filters = listOf(
+        methodCall(reference = computation),
+        opcode(Opcode.MOVE_RESULT, location = MatchAfterImmediately()),
+        methodCall(definingClass = computation.definingClass, parameters = listOf("I"), returnType = "V",
+            location = MatchAfterImmediately())
+    )
+)
+
+/** PCU is the native player-controls update trace in the original notification adapter. */
+internal fun notificationPlaybackStateFingerprint(adapterType: String) = Fingerprint(
+    definingClass = adapterType,
+    returnType = "V",
+    parameters = listOf("L"),
+    filters = listOf(string("PCU"))
+)
+
+/** The newer adapter implements the same playback-state callback without the trace. */
+internal fun notificationPlaybackStateFingerprint(adapterType: String, callback: MethodReference) = Fingerprint(
+    definingClass = adapterType,
+    name = callback.name,
+    returnType = callback.returnType,
+    parameters = callback.parameterTypes.map { it.toString() }
 )

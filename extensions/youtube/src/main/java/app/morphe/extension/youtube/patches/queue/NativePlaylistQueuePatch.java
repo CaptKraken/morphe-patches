@@ -71,9 +71,21 @@ public final class NativePlaylistQueuePatch {
         void patch_restorePanel(Object expectedModel, Object originalModel);
     }
 
+    /** Native control owner; weak registration allows eligibility refresh after local edits. */
+    public interface PlayerControls {
+        Object patch_getNavigator();
+        void patch_refreshNavigation();
+    }
+
     /** Native notification owner; its service navigator can load without a watch screen. */
     public interface MediaControls {
         ServiceNavigator patch_getQueueNavigator();
+    }
+
+    /** Native adapter publishes capability changes to both notification paths. */
+    public interface NotificationControls {
+        MediaControls patch_getQueueMediaControls();
+        void patch_refreshQueueNotification();
     }
 
     public interface ServiceNavigator {
@@ -166,6 +178,8 @@ public final class NativePlaylistQueuePatch {
     private record RowSelection(PlaylistQueue.Entry entry) {}
     private static RowSelection pendingSelection;
     private static final Set<RepeatHeader> repeatHeaders = Collections.newSetFromMap(new WeakHashMap<>());
+    private static final Set<PlayerControls> playerControls = Collections.newSetFromMap(new WeakHashMap<>());
+    private static final Set<NotificationControls> notificationControls = Collections.newSetFromMap(new WeakHashMap<>());
     // Native navigation can be rejected (for example while signed out). A failed
     // click must not authorize a much later, unrelated open of the same video.
     private static final int NAVIGATION_TIMEOUT_MILLISECONDS = 10_000;
@@ -299,6 +313,7 @@ public final class NativePlaylistQueuePatch {
         if (!hasPlaylist(controller) && pendingSelection != null
                 && controller.patch_getVideoId().equals(pendingSelection.entry().videoId())) return;
         if (hasPlaylist(controller)) {
+            Object navigator = controller.patch_getNavigator();
             queue = null;
             shortsSession.reset();
             shortsControllerRef.clear();
@@ -308,6 +323,7 @@ public final class NativePlaylistQueuePatch {
             originalModel = null;
             publishedModel = null;
             selectionNeedsPublishing = false;
+            refreshPlayerControls(navigator);
             return;
         }
         dragSession = null;
@@ -363,6 +379,7 @@ public final class NativePlaylistQueuePatch {
 
                 pendingSelection = null;
                 dragSession = null;
+                refreshPlayerControls(previous == null ? null : previous.patch_getNavigator());
                 return true;
             }
             case WAIT -> { return true; }
@@ -382,6 +399,7 @@ public final class NativePlaylistQueuePatch {
                 }
                 shortsControllerRef.clear();
                 selectionNeedsPublishing = true;
+                refreshNotificationControls();
             }
             case NONE -> { }
         }
@@ -411,11 +429,21 @@ public final class NativePlaylistQueuePatch {
         if (playback != null && playback.patch_isLocalQueue()) return true;
         String videoId = queue.currentEntry().videoId();
         if (!videoId.equals(VideoInformation.getVideoId())) return false;
+        for (NotificationControls controls : new ArrayList<>(notificationControls)) {
+            ServiceNavigator navigator = controls.patch_getQueueMediaControls().patch_getQueueNavigator();
+            if (navigator != null && videoId.equals(navigator.patch_getVideoId())) return true;
+        }
         return false;
     }
 
     private static NativePlayback playbackFor(PlaylistController controller) {
         if (controller != null && controller.patch_getNavigator() instanceof ServiceNavigator service) {
+            NativePlayback playback = service.patch_getQueuePlayback();
+            if (playback != null) return playback;
+        }
+        for (NotificationControls controls : new ArrayList<>(notificationControls)) {
+            ServiceNavigator service = controls.patch_getQueueMediaControls().patch_getQueueNavigator();
+            if (service == null || !VideoInformation.getVideoId().equals(service.patch_getVideoId())) continue;
             NativePlayback playback = service.patch_getQueuePlayback();
             if (playback != null) return playback;
         }
@@ -437,7 +465,12 @@ public final class NativePlaylistQueuePatch {
             }
             if (playback.patch_isLocalQueue()) return;
             boolean current = playbackFor(returningController()) == playback;
-                if (!current) return;
+            for (NotificationControls controls : new ArrayList<>(notificationControls)) {
+                ServiceNavigator service = controls.patch_getQueueMediaControls().patch_getQueueNavigator();
+                if (service != null && VideoInformation.getVideoId().equals(service.patch_getVideoId())
+                        && service.patch_getQueuePlayback() == playback) current = true;
+            }
+            if (!current) return;
             try {
                 if (playback.patch_attachQueue(renderer(queue))) nativePlaybackRef = new WeakReference<>(playback);
             } catch (Exception exception) {
@@ -518,6 +551,66 @@ public final class NativePlaylistQueuePatch {
 
     private static void refreshRepeatHeaders() {
         for (RepeatHeader header : new ArrayList<>(repeatHeaders)) refreshRepeatHeader(header);
+    }
+
+    public static void onPlayerControlsCreated(PlayerControls controls) {
+        Utils.runOnMainThreadNowOrLater(() -> playerControls.add(controls));
+    }
+
+    private static void refreshPlayerControls(Object navigator) {
+        refreshNotificationControls();
+        if (navigator == null) return;
+        for (PlayerControls controls : new ArrayList<>(playerControls)) {
+            if (controls.patch_getNavigator() == navigator) controls.patch_refreshNavigation();
+        }
+    }
+
+    private static void refreshNotificationControls() {
+        for (NotificationControls controls : new ArrayList<>(notificationControls)) {
+            controls.patch_refreshQueueNotification();
+        }
+    }
+
+    public static void onNotificationControlsCreated(NotificationControls controls) {
+        // Finish native construction before consulting its providers or publishing
+        // a refresh through the original observers.
+        Utils.runOnMainThread(() -> {
+            notificationControls.add(controls);
+            if (queue != null) controls.patch_refreshQueueNotification();
+        });
+    }
+
+    public static void onNotificationPlaybackChanged(NotificationControls controls) {
+        // The state handler can reset navigation after selection was published.
+        // Use the active service, independently of foreground video/panel callbacks.
+        if (ownsNativePlayback(controls.patch_getQueueMediaControls().patch_getQueueNavigator())) {
+            controls.patch_refreshQueueNotification();
+        }
+    }
+
+    /** Bridge contract: bit 0 = Previous, bit 1 = Next; -1 keeps native flags. */
+    public static int notificationNavigationAvailability(NotificationControls controls) {
+        ServiceNavigator service = controls.patch_getQueueMediaControls().patch_getQueueNavigator();
+        if (!ownsNativePlayback(service)) return -1;
+        // Both native notification adapters let watch-screen delegates override
+        // sequencer events. Query the same service that handles our skip clicks.
+        return (service.patch_canNavigateQueue(false) ? 1 : 0)
+                | (service.patch_canNavigateQueue(true) ? 2 : 0);
+    }
+
+    public static boolean playerControlAvailability(PlayerControls controls, boolean next, boolean original) {
+        if (controls.patch_getNavigator() instanceof ServiceNavigator service && ownsNativePlayback(service)) {
+            return service.patch_canNavigateQueue(next);
+        }
+        return original;
+    }
+
+    public static boolean onNextPressed(PlayerControls controls) {
+        return controls.patch_getNavigator() instanceof ServiceNavigator service && navigateNative(service, true);
+    }
+
+    public static boolean onPreviousPressed(PlayerControls controls) {
+        return controls.patch_getNavigator() instanceof ServiceNavigator service && navigateNative(service, false);
     }
 
     /** Runs after native media logging, before either foreground or service skip routing. */
@@ -698,6 +791,7 @@ public final class NativePlaylistQueuePatch {
                     pendingSelection = null;
                     // Let the original navigation/response callback finish first.
                     Utils.runOnMainThread(() -> {
+                        refreshNotificationControls();
                         PlaylistController controller = readyController();
                         if (controller == null) return;
                         if (controller.patch_getModel() == publishedModel) refreshOwnedPanel(videoId);
@@ -847,6 +941,7 @@ public final class NativePlaylistQueuePatch {
             committed = true;
             controller.patch_markQueueRows();
             refreshRepeatHeaders();
+            refreshPlayerControls(controller.patch_getNavigator());
             return true;
         } catch (Exception exception) {
             if (committed) {
@@ -868,6 +963,7 @@ public final class NativePlaylistQueuePatch {
         PlaylistController controller = controllerRef.get();
         Object expectedModel = publishedModel;
         Object restoreModel = originalModel;
+        Object navigator = controller == null ? null : controller.patch_getNavigator();
         queue = null;
         nativePlaybackRef.clear();
         shortsSession.reset();
@@ -886,6 +982,7 @@ public final class NativePlaylistQueuePatch {
                 Logger.printException(() -> "Could not restore native playlist panel", exception);
             }
         }
+        refreshPlayerControls(navigator);
     }
 
     private static PlaylistQueueRenderer.SwipeAction removalAction() {

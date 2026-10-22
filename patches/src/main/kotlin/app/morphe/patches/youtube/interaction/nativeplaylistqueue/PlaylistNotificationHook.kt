@@ -160,6 +160,7 @@ internal fun installPlaylistNotification(
         const/4 v0, 0x0
         return-object v0
     """)
+    installPlaylistNotificationControls(context, owner)
     for ((match, hook) in listOf(notification to "onNotificationNext", previous to "onNotificationPrevious")) {
         val method = match.method
         val index = match.instructionMatches.first().index
