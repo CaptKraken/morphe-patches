@@ -32,7 +32,7 @@ class QueueUndoActionsTest {
                     static void require(boolean value) { if (!value) throw new AssertionError(); }
                     public static String run() throws Exception {
                         String a = "abcdefghijk", b = "ZYXWVUTSRQP", c = "12345678901";
-                        var before = new PlaylistQueue(a, "A").playNext(c).playNext(a).playNext(b);
+                        var before = new PlaylistQueue(a, "A").playLast(b).playLast(a).playLast(c);
                         var after = before.remove(1);
                         // The second A is a distinct row. Undo must retain that row's selection.
                         var current = after.select(1).withRepeatMode(PlaylistQueue.REPEAT_ONE);
@@ -47,7 +47,7 @@ class QueueUndoActionsTest {
                         after = before.remove(0);
                         restored = QueueUndoActions.restore(before, after, after, a);
                         require(restored.selectedIndex() == 2);
-                        require(QueueUndoActions.restore(before, after, after.playNext(b), a) == null);
+                        require(QueueUndoActions.restore(before, after, after.playLast(b), a) == null);
                         require(QueueUndoActions.restore(before, after, after.move(0, 2), a) == null);
                         require(QueueUndoActions.restore(before, after, after, c) == null);
                         require(QueueUndoActions.restore(before, after, null, a) == null);

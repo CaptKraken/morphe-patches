@@ -33,12 +33,9 @@ internal const val CONTROLLER_INTERFACE =
 @Suppress("unused")
 val nativePlaylistQueuePatch = bytecodePatch(
     name = "Native playlist queue",
-    description = "Adds a temporary video queue using YouTube's native playlist panel and playback. Renders " +
-            "native video details and rating actions. Supports swipe removal. Supports reordering. " +
-            "Reuses native row Save, Download and Share. Saves the whole queue to a playlist. " +
-            "Supports repeat and shuffle. Updates player and notification controls. Clears the queue " +
-            "without interrupting playback. Supports Undo for queue edits. Supports the fullscreen " +
-            "playlist panel. Starts a queue in the miniplayer without an existing player. " +
+    description = "Adds a temporary video queue using YouTube's playlist interface and playback controls. " +
+            "Supports Play next/last, reordering, shuffle, repeat, fullscreen playlist controls, " +
+            "saving the queue to a playlist, and Undo for removal or clearing. " +
             "Experimental. YouTube 21.20.405 only.",
     default = true
 ) {

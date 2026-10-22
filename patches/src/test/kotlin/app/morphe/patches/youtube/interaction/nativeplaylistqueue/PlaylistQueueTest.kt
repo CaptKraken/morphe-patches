@@ -141,6 +141,29 @@ class PlaylistQueueTest {
     }
 
     @Test
+    fun `play last appends without moving selection or changing an earlier snapshot`() = withQueue { type ->
+        val initial = type.getConstructor(String::class.java, String::class.java)
+            .newInstance("abcdefghijk", "Playing video")
+        val next = type.getMethod("playNext", String::class.java)
+        val populated = next.invoke(next.invoke(initial, "lmnopqrstuv"), "0123456789_")
+        val repeat = type.getMethod("withRepeatMode", Int::class.javaPrimitiveType).invoke(populated, 1)
+        val last = type.getMethod("playLast", String::class.java)
+        for (index in 0..2) {
+            val selected = type.getMethod("select", Int::class.javaPrimitiveType).invoke(repeat, index)
+            val updated = last.invoke(selected, "ZYXWVUTSRQP")
+            assertEquals(videos(selected) + "ZYXWVUTSRQP", videos(updated))
+            assertEquals(index, type.getMethod("selectedIndex").invoke(updated))
+            assertEquals(1, type.getMethod("repeatMode").invoke(updated))
+            assertEquals(listOf("abcdefghijk", "0123456789_", "lmnopqrstuv"), videos(selected))
+            val duplicate = last.invoke(updated, "abcdefghijk")
+            assertEquals(videos(updated) + "abcdefghijk", videos(duplicate))
+            val failure = assertFailsWith<InvocationTargetException> { last.invoke(updated, "invalid ID") }
+            assertIs<IllegalArgumentException>(failure.cause)
+            assertEquals(4, videos(updated).size)
+        }
+    }
+
+    @Test
     fun `invalid insertion cannot corrupt a valid queue`() = withQueue { type ->
         val queue = type.getConstructor(String::class.java, String::class.java)
             .newInstance("abcdefghijk", "Playing video")
@@ -150,5 +173,4 @@ class PlaylistQueueTest {
         assertIs<IllegalArgumentException>(failure.cause)
         assertEquals(listOf("abcdefghijk"), videos(queue))
     }
-
 }
