@@ -18,7 +18,27 @@ import kotlin.test.assertEquals
 /** Tests the compiled extension's session handoff, not Android or native playback. */
 class QueueProviderPriorityTest {
     @Test
-    fun `provider changes cancel stale work and detach only our backend without modifying Morphe items`() {
+    fun `excluded Morphe queue does not suppress native queue`() = withFixture("excludedPatch")
+
+    @Test
+    fun `disabled Local queue does not suppress native queue`() = withFixture("disabledSetting")
+
+    @Test
+    fun `handoff waits for setting cache and rejects late responses without restoring old session`() =
+        withFixture("acceptedHandoff")
+
+    @Test
+    fun `failed detach retains ownership for retry but cancels pending work`() = withFixture("failedDetach")
+
+    @Test
+    fun `handoff never clears a foreign backend`() = withFixture("foreignBackend")
+
+    @Test
+    fun `Morphe priority cancels a pending first video start`() = withFixture("pendingStart")
+
+    // NativePlaylistQueuePatch depends on Android settings, scheduling and UI classes.
+    // Isolate those boundaries while executing its actual compiled handoff code.
+    private fun withFixture(scenario: String) {
         val root = generateSequence(File("").absoluteFile) { it.parentFile }
             .first { File(it, "extensions/youtube/src/main/proto").isDirectory }
         val classes = File(root,
@@ -160,11 +180,16 @@ class QueueProviderPriorityTest {
                     static SharedPreferences.OnSharedPreferenceChangeListener listener() throws Exception {
                         return (SharedPreferences.OnSharedPreferenceChangeListener) field("QUEUE_SETTING_LISTENER").get(null);
                     }
-                    public static String run() throws Exception {
+                    public static void excludedPatch() throws Exception {
                         Settings.LOCAL_QUEUE.value = true; AddToQueuePatch.included = false;
                         require(!(boolean) call("morpheQueueTakesPriority"), "Excluded old patch must not block native queue");
+                    }
+                    public static void disabledSetting() throws Exception {
                         AddToQueuePatch.included = true; Settings.LOCAL_QUEUE.value = false;
                         require(!(boolean) call("morpheQueueTakesPriority"), "Disabled Local queue must not block native queue");
+                    }
+                    public static void acceptedHandoff() throws Exception {
+                        AddToQueuePatch.included = true; Settings.LOCAL_QUEUE.value = false;
                         var live = backend(true, true);
                         PlaylistQueue before = install(live);
                         // Settings notification can precede the setting cache write.
@@ -185,8 +210,10 @@ class QueueProviderPriorityTest {
                         Settings.LOCAL_QUEUE.value = false;
                         listener().onSharedPreferenceChanged(null, Settings.LOCAL_QUEUE.key); Utils.drain();
                         require(field("queue").get(null) == null, "Turning Local queue off must not resurrect old queue");
-                        Settings.LOCAL_QUEUE.value = true;
-                        var rejected = backend(true, false); before = install(rejected);
+                    }
+                    public static void failedDetach() throws Exception {
+                        AddToQueuePatch.included = true; Settings.LOCAL_QUEUE.value = true;
+                        var rejected = backend(true, false); var before = install(rejected);
                         call("yieldToMorpheQueue");
                         require(clears == 1 && field("queue").get(null) == before, "Failed detach must retain ownership for retry");
                         require(((WeakReference<?>) field("nativePlaybackRef").get(null)).get() == rejected,
@@ -194,12 +221,17 @@ class QueueProviderPriorityTest {
                         require(field("pendingQueueStart").get(null) == null && field("pendingUndo").get(null) == null,
                             "Failed detach must still invalidate stale work");
                         require(Logger.errors == 1 && QueueFullscreenActions.refreshes == 0, "Report failure without false UI release");
+                    }
+                    public static void foreignBackend() throws Exception {
+                        AddToQueuePatch.included = true; Settings.LOCAL_QUEUE.value = true;
                         install(backend(false, true)); call("yieldToMorpheQueue");
                         require(clears == 0 && field("queue").get(null) == null, "Never clear an unrelated backend");
+                    }
+                    public static void pendingStart() throws Exception {
+                        AddToQueuePatch.included = true; Settings.LOCAL_QUEUE.value = true;
                         field("pendingQueueStart").set(null, new QueueStart(new PlaylistQueue("abcdefghijk", "Pending"), ""));
                         call("tryStartQueue");
                         require(field("pendingQueueStart").get(null) == null, "Cancel first-video start while Morphe has priority");
-                        return "ok";
                     }
                 }
             """.trimIndent())
@@ -210,8 +242,8 @@ class QueueProviderPriorityTest {
                 "-d", output.path, *stubs.map { it.path }.toTypedArray(), fixture.path))
             URLClassLoader(arrayOf(output.toURI().toURL(), classes.toURI().toURL()),
                 GeneratedMessageLite::class.java.classLoader).use { loader ->
-                assertEquals("ok", loader.loadClass("app.morphe.extension.youtube.patches.queue.ProviderFixture")
-                    .getMethod("run").invoke(null))
+                loader.loadClass("app.morphe.extension.youtube.patches.queue.ProviderFixture")
+                    .getMethod(scenario).invoke(null)
             }
         } finally {
             output.deleteRecursively()

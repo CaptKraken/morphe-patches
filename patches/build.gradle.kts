@@ -57,7 +57,6 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.protobuf.javalite)
-    testImplementation("org.json:json:20240303")
     testRuntimeOnly(libs.junit.jupiter.engine)
 }
 
@@ -66,41 +65,20 @@ tasks {
         useJUnitPlatform()
         dependsOn(":extensions:youtube:generateReleaseProto", ":extensions:youtube:compileReleaseJavaWithJavac")
         jamApk.orNull?.let { systemProperty("jamApk", it) }
-        // The focused state tests compile this Android-free extension source directly.
-        inputs.file(rootProject.file(
-            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/PlaylistQueue.java"
-        )).withPropertyName("playlistQueueStateSource")
-        inputs.file(rootProject.file(
-            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueShortsSession.java"
-        )).withPropertyName("playlistQueueShortsSessionSource")
-        inputs.files(
-            rootProject.file("extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/VideoMetadata.java"),
-            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/queue_card.proto")
-        ).withPropertyName("playlistQueueMetadataSources")
-        inputs.files(
-            rootProject.file("extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueRatingActions.java"),
-            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/playlist_queue.proto"),
-            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/next_response.proto"),
-            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/icon.proto")
-        ).withPropertyName("playlistQueueRatingSources")
-        inputs.file(rootProject.file(
-            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveActions.java"
-        )).withPropertyName("playlistQueueSaveActionsSource")
-        inputs.file(rootProject.file(
-            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveFeedback.java"
-        )).withPropertyName("playlistQueueSaveFeedbackSource")
-        inputs.file(rootProject.file(
-            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch.java"
-        )).withPropertyName("nativePlaylistQueueRuntimeSource")
-        inputs.file(rootProject.file(
-            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueUndoActions.java"
-        )).withPropertyName("playlistQueueUndoActionsSource")
-        inputs.file(rootProject.file(
-            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueStart.java"
-        )).withPropertyName("playlistQueueStartSource")
+        // The Android-boundary tests load release bytecode in isolated class loaders.
+        // Declare those actual classes as inputs so runtime changes invalidate cached results.
+        inputs.dir(rootProject.file(
+            "extensions/youtube/build/intermediates/javac/release/compileReleaseJavaWithJavac/classes"
+        )).withPropertyName("queueRuntimeClasses").withNormalizer(ClasspathNormalizer::class)
         inputs.file(rootProject.file(
             "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/OpenVideosFullscreenHookPatch.java"
-        )).withPropertyName("playlistQueueFullscreenSource")
+        )).withPropertyName("queueFullscreenBoundarySource")
+        inputs.files(
+            rootProject.file("extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveActions.java"),
+            rootProject.file("extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveFeedback.java"),
+            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/playlist_queue.proto"),
+            rootProject.file("extensions/youtube/src/main/proto/app/morphe/extension/youtube/innertube/icon.proto")
+        ).withPropertyName("queueSaveBoundarySources")
     }
 
     register<JavaExec>("checkStringResources") {
