@@ -9,9 +9,9 @@ Test bundles built from the independent dev-based feature branch. Historical PoC
 - Supported YouTube versions: **20.51.39**, **21.16.256**, **21.20.405**.
 - **20.21.37 is not supported.** Its experimental changes are excluded.
 
-[Download ZIP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-f6d38511a.zip) · [Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-f6d38511a.mpp) · [Checksums](SHA256SUMS)
+[Download MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-f6d38511a.mpp) · [Checksums](SHA256SUMS)
 
-Extract the ZIP and import the MPP into Morphe Manager. Select **Native playlist queue**. Disable Morphe's **Premium-style queue** setting when testing this queue; the existing Morphe queue takes priority when enabled.
+Download the MPP and import it directly into Morphe Manager. Select **Native playlist queue**. Disable Morphe's **Premium-style queue** setting when testing this queue; the existing Morphe queue takes priority when enabled.
 
 The patch remains experimental. Queues are temporary and do not persist after restarting the app. Undo after clearing a queue is an intentional addition.
 
