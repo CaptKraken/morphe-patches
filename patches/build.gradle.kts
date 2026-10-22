@@ -64,7 +64,7 @@ dependencies {
 tasks {
     test {
         useJUnitPlatform()
-        dependsOn(":extensions:youtube:generateReleaseProto")
+        dependsOn(":extensions:youtube:generateReleaseProto", ":extensions:youtube:compileReleaseJavaWithJavac")
         jamApk.orNull?.let { systemProperty("jamApk", it) }
         // The focused state tests compile this Android-free extension source directly.
         inputs.file(rootProject.file(
@@ -89,6 +89,9 @@ tasks {
         inputs.file(rootProject.file(
             "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveFeedback.java"
         )).withPropertyName("playlistQueueSaveFeedbackSource")
+        inputs.file(rootProject.file(
+            "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch.java"
+        )).withPropertyName("nativePlaylistQueueRuntimeSource")
         inputs.file(rootProject.file(
             "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueUndoActions.java"
         )).withPropertyName("playlistQueueUndoActionsSource")
