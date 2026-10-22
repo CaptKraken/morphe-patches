@@ -7,10 +7,12 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Base64;
+import android.view.accessibility.AccessibilityManager;
 
 import androidx.annotation.Nullable;
 
@@ -199,8 +201,8 @@ public final class NativePlaylistQueuePatch {
     private record PendingUndo(String token, PlaylistQueue before, PlaylistQueue after,
                                WeakReference<NativePlayback> playback) {}
     private static PendingUndo pendingUndo;
-    // Bound retained snapshots even if a native snackbar is dismissed without activation.
-    private static final int UNDO_RETENTION_MILLISECONDS = 10_000;
+    private static final int UNDO_DURATION_MILLISECONDS = 5_000;
+    private static final int ACCESSIBLE_UNDO_DURATION_MILLISECONDS = 20_000;
     private static final Set<RepeatHeader> repeatHeaders = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<PlayerControls> playerControls = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<NotificationControls> notificationControls = Collections.newSetFromMap(new WeakHashMap<>());
@@ -804,12 +806,35 @@ public final class NativePlaylistQueuePatch {
         PendingUndo undo = new PendingUndo(UUID.randomUUID().toString(), before, after,
                 new WeakReference<>(playback));
         pendingUndo = undo;
-        Utils.runOnMainThreadDelayed(() -> {
-            if (pendingUndo == undo) pendingUndo = null;
-        }, UNDO_RETENTION_MILLISECONDS);
+        // Bound snapshots if native feedback never reaches its snackbar factory.
+        expireUndo(undo, ACCESSIBLE_UNDO_DURATION_MILLISECONDS);
         return ((QueueUndoActions.Command) endpoint).patch_parseQueueCommand(
                 QueueUndoActions.feedback(undo.token(), message, str("offline_undo_snackbar_button_text"))
                         .toByteArray());
+    }
+
+    /** Called by the native snackbar factory only for a matching local Undo capability. */
+    static int queueUndoDuration(String token) {
+        PendingUndo undo = pendingUndo;
+        if (undo == null || !undo.token().equals(token)) return 0;
+        AccessibilityManager accessibility = (AccessibilityManager)
+                Utils.getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
+        // Match YouTube's native snackbar accessibility predicate on supported versions.
+        boolean accessible = accessibility != null && accessibility.isEnabled()
+                && accessibility.isTouchExplorationEnabled();
+        // A new identity prevents an earlier timer from expiring re-created feedback.
+        PendingUndo presented = new PendingUndo(undo.token(), undo.before(), undo.after(), undo.playback());
+        pendingUndo = presented;
+        expireUndo(presented, accessible ? ACCESSIBLE_UNDO_DURATION_MILLISECONDS : UNDO_DURATION_MILLISECONDS);
+        // Leave the accessible native action timeout at 20 seconds. Setting a positive
+        // 20-second duration would make YouTube add another 10 seconds for accessibility.
+        return accessible ? 0 : UNDO_DURATION_MILLISECONDS;
+    }
+
+    private static void expireUndo(PendingUndo undo, int duration) {
+        Utils.runOnMainThreadDelayed(() -> {
+            if (pendingUndo == undo) pendingUndo = null;
+        }, duration);
     }
 
     /** Native snackbar activation is not a row/menu action and need not retain that owner. */

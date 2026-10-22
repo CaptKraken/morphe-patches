@@ -45,11 +45,13 @@ public final class QueueSaveFeedback {
     private QueueSaveFeedback() {
     }
 
-    /** Zero leaves the native duration untouched for all other confirmations. */
+    /** Zero retains native timing, including its accessible removal/Clear timeout. */
     public static int confirmationDuration(MessageLite renderer) {
         try {
-            return QueueToastRenderer.parseFrom(renderer.toByteArray()).getQueueSaveConfirmation()
-                    ? CONFIRMATION_DURATION_MILLISECONDS : 0;
+            var toast = QueueToastRenderer.parseFrom(renderer.toByteArray());
+            if (toast.getQueueSaveConfirmation()) return CONFIRMATION_DURATION_MILLISECONDS;
+            String undoToken = toast.getActionButton().getButtonRenderer().getServiceEndpoint().getQueueUndoToken();
+            return undoToken.isEmpty() ? 0 : NativePlaylistQueuePatch.queueUndoDuration(undoToken);
         } catch (InvalidProtocolBufferException exception) {
             Logger.printException(() -> "Could not read queue save confirmation duration", exception);
             return 0;

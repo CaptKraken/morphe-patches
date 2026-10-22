@@ -15,8 +15,8 @@ import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** Tests the compiled extension's session handoff, not Android or native playback. */
-class QueueProviderPriorityTest {
+/** Tests compiled queue ownership and feedback timing across external Android boundaries. */
+class QueueRuntimeBoundaryTest {
     @Test
     fun `excluded Morphe queue does not suppress native queue`() = withFixture("excludedPatch")
 
@@ -36,6 +36,12 @@ class QueueProviderPriorityTest {
     @Test
     fun `Morphe priority cancels a pending first video start`() = withFixture("pendingStart")
 
+    @Test
+    fun `local Undo follows normal confirmation timing and replacement`() = withFixture("normalUndoTiming")
+
+    @Test
+    fun `local Undo follows accessible confirmation timing`() = withFixture("accessibleUndoTiming")
+
     // NativePlaylistQueuePatch depends on Android settings, scheduling and UI classes.
     // Isolate those boundaries while executing its actual compiled handoff code.
     private fun withFixture(scenario: String) {
@@ -46,7 +52,7 @@ class QueueProviderPriorityTest {
         val protobuf = File(GeneratedMessageLite::class.java.protectionDomain.codeSource.location.toURI())
         val output = createTempDirectory("playlist-queue-provider").toFile()
         // Only external settings/UI/scheduling boundaries are replaced. Queue state,
-        // preference callback, cancellation, release and stale-response guards are real.
+        // preference callback, cancellation, release, feedback and timeout guards are real.
         val stubs = mapOf(
             "SharedPreferences" to """
                 package android.content;
@@ -57,6 +63,23 @@ class QueueProviderPriorityTest {
                 }
             """,
             "Bundle" to "package android.os; public class Bundle {}",
+            "AccessibilityManager" to """
+                package android.view.accessibility;
+                public class AccessibilityManager {
+                    public boolean enabled, touchExploration;
+                    public boolean isEnabled() { return enabled; }
+                    public boolean isTouchExplorationEnabled() { return touchExploration; }
+                }
+            """,
+            "Context" to """
+                package android.content;
+                public class Context {
+                    public static final String ACCESSIBILITY_SERVICE = "accessibility";
+                    public final android.view.accessibility.AccessibilityManager accessibility =
+                        new android.view.accessibility.AccessibilityManager();
+                    public Object getSystemService(String service) { return accessibility; }
+                }
+            """,
             "View" to "package android.view; public class View {}",
             "PlayerType" to "package app.morphe.extension.youtube.shared; public enum PlayerType { NONE }",
             "ByteTrieSearch" to """
@@ -72,6 +95,20 @@ class QueueProviderPriorityTest {
                     private static final java.util.ArrayDeque<Runnable> pending = new java.util.ArrayDeque<>();
                     public static <K,V> java.util.Map<K,V> createSizeRestrictedMap(int size) {
                         return new java.util.LinkedHashMap<>();
+                    }
+                    private record Delayed(Runnable action, long when) {}
+                    private static final java.util.List<Delayed> delayed = new java.util.ArrayList<>();
+                    private static long now;
+                    private static final android.content.Context context = new android.content.Context();
+                    public static android.content.Context getContext() { return context; }
+                    public static void runOnMainThreadDelayed(Runnable action, long delay) {
+                        delayed.add(new Delayed(action, now + delay));
+                    }
+                    public static void advanceBy(long milliseconds) {
+                        now += milliseconds;
+                        for (var item : new java.util.ArrayList<>(delayed)) {
+                            if (item.when() <= now) { delayed.remove(item); item.action().run(); }
+                        }
                     }
                     public static void runOnMainThread(Runnable action) { pending.add(action); }
                     public static void drain() { while (!pending.isEmpty()) pending.remove().run(); }
@@ -132,7 +169,7 @@ class QueueProviderPriorityTest {
                 }
             """
         ).map { (name, source) -> File(output, "$name.java").apply { writeText(source.trimIndent()) } }
-        val fixture = File(output, "ProviderFixture.java").apply {
+        val fixture = File(output, "RuntimeFixture.java").apply {
             writeText("""
                 package app.morphe.extension.youtube.patches.queue;
                 import android.content.SharedPreferences;
@@ -142,7 +179,7 @@ class QueueProviderPriorityTest {
                 import java.lang.ref.WeakReference;
                 import java.lang.reflect.*;
                 import java.util.*;
-                public class ProviderFixture {
+                public class RuntimeFixture {
                     static Class<?> owner = NativePlaylistQueuePatch.class;
                     static Field field(String name) throws Exception {
                         Field value = owner.getDeclaredField(name); value.setAccessible(true); return value;
@@ -179,6 +216,49 @@ class QueueProviderPriorityTest {
                     }
                     static SharedPreferences.OnSharedPreferenceChangeListener listener() throws Exception {
                         return (SharedPreferences.OnSharedPreferenceChangeListener) field("QUEUE_SETTING_LISTENER").get(null);
+                    }
+                    static com.google.protobuf.MessageLite feedback(String token) {
+                        return QueueUndoActions.feedback(token, "Removed", "Undo")
+                            .getAddToToastAction().getItem().getToastRenderer();
+                    }
+                    public static void normalUndoTiming() throws Exception {
+                        install(backend(true, true));
+                        var accessible = Utils.getContext().accessibility;
+                        // Enabled accessibility without touch exploration retains native normal timing.
+                        accessible.enabled = true;
+                        require(QueueSaveFeedback.confirmationDuration(feedback("token")) == 5000,
+                            "Normal removal/Clear snackbar must last five seconds");
+                        var first = field("pendingUndo").get(null);
+                        require(QueueSaveFeedback.confirmationDuration(feedback("foreign")) == 0,
+                            "A stale/foreign token must not override a snackbar");
+                        require(field("pendingUndo").get(null) == first,
+                            "Foreign feedback must not replace the active capability");
+                        Utils.advanceBy(1000);
+                        QueueSaveFeedback.confirmationDuration(feedback("token"));
+                        var renewed = field("pendingUndo").get(null);
+                        require(renewed != first, "Re-created feedback must replace the timer identity");
+                        Utils.advanceBy(4000);
+                        require(field("pendingUndo").get(null) == renewed,
+                            "An old timer must not expire re-created feedback");
+                        Utils.advanceBy(999);
+                        require(field("pendingUndo").get(null) == renewed, "Undo must remain through the visible window");
+                        Utils.advanceBy(1);
+                        require(field("pendingUndo").get(null) == null, "Normal Undo must expire with the five-second confirmation");
+                    }
+                    public static void accessibleUndoTiming() throws Exception {
+                        install(backend(true, true));
+                        var accessible = Utils.getContext().accessibility;
+                        accessible.enabled = true; accessible.touchExploration = true;
+                        require(QueueSaveFeedback.confirmationDuration(feedback("token")) == 0,
+                            "Accessible feedback must retain the verified native twenty-second action timeout");
+                        var current = field("pendingUndo").get(null);
+                        Utils.advanceBy(10000);
+                        require(field("pendingUndo").get(null) == current,
+                            "Accessible Undo must not expire at the old ten-second deadline");
+                        Utils.advanceBy(9999);
+                        require(field("pendingUndo").get(null) == current, "Accessible Undo must remain through the visible window");
+                        Utils.advanceBy(1);
+                        require(field("pendingUndo").get(null) == null, "Accessible Undo must expire at twenty seconds");
                     }
                     public static void excludedPatch() throws Exception {
                         Settings.LOCAL_QUEUE.value = true; AddToQueuePatch.included = false;
@@ -242,7 +322,7 @@ class QueueProviderPriorityTest {
                 "-d", output.path, *stubs.map { it.path }.toTypedArray(), fixture.path))
             URLClassLoader(arrayOf(output.toURI().toURL(), classes.toURI().toURL()),
                 GeneratedMessageLite::class.java.classLoader).use { loader ->
-                loader.loadClass("app.morphe.extension.youtube.patches.queue.ProviderFixture")
+                loader.loadClass("app.morphe.extension.youtube.patches.queue.RuntimeFixture")
                     .getMethod(scenario).invoke(null)
             }
         } finally {
