@@ -330,6 +330,7 @@ public final class NativePlaylistQueuePatch {
             publishedModel = null;
             selectionNeedsPublishing = false;
             refreshPlayerControls(navigator);
+            QueueFullscreenActions.refresh();
             return;
         }
         dragSession = null;
@@ -1023,6 +1024,7 @@ public final class NativePlaylistQueuePatch {
             controller.patch_markQueueRows();
             refreshRepeatHeaders();
             refreshPlayerControls(controller.patch_getNavigator());
+            QueueFullscreenActions.refresh();
             return true;
         } catch (Exception exception) {
             if (committed) {
@@ -1065,6 +1067,17 @@ public final class NativePlaylistQueuePatch {
             }
         }
         refreshPlayerControls(navigator);
+        QueueFullscreenActions.refresh();
+    }
+
+    static boolean ownsFullscreenPlaylist() {
+        PlaylistController controller = controllerRef.get();
+        NativePlayback playback = nativePlaybackRef.get();
+        // Model/backend ownership survives a hidden watch screen. YouTube's native
+        // quick-actions controller, rather than this binding, decides visibility.
+        return queue != null && publishedModel != null && controller != null
+                && controller.patch_getModel() == publishedModel
+                && playback != null && playback.patch_isLocalQueue();
     }
 
     private static PlaylistQueueRenderer.SwipeAction removalAction() {

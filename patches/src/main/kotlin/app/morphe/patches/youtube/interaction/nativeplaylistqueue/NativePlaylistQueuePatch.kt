@@ -35,8 +35,8 @@ val nativePlaylistQueuePatch = bytecodePatch(
             "native video details and rating actions. Supports swipe removal. Supports reordering. " +
             "Reuses native row Save, Download and Share. Saves the whole queue to a playlist. " +
             "Supports repeat and shuffle. Updates player and notification controls. Clears the queue " +
-            "without interrupting playback. Supports Undo for queue edits. Experimental. YouTube " +
-            "21.20.405 only.",
+            "without interrupting playback. Supports Undo for queue edits. Supports the fullscreen " +
+            "playlist panel. Experimental. YouTube 21.20.405 only.",
     default = true
 ) {
     dependsOn(
@@ -65,6 +65,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
         installPlaylistPanel(this)
         installRatingCapture(this)
         installPlaylistRemoval(this)
+        installFullscreenPlaylist(this)
         hookElement("$EXTENSION_CLASS->onElementLoaded")
         hookVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")
         hookBackgroundPlayVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")

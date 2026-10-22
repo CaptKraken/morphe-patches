@@ -95,6 +95,7 @@ fun main(arguments: Array<String>) {
             sdkVerifier.verifyDexDirectory(dexDir)
             verifyNativePanelAssignment(dexDir, mode != "unselected")
             verifyNativeRowMenuPaths(dexDir, mode != "unselected")
+            verifyNativeFullscreenActions(dexDir, mode != "unselected")
             verifyNativeQueueUndo(dexDir, mode != "unselected")
         }
     }
@@ -113,6 +114,46 @@ fun main(arguments: Array<String>) {
 }
 
 /** Verify the emitted UI bridge reaches the native setter and size subject, not playback. */
+private fun verifyNativeFullscreenActions(directory: File, selected: Boolean) {
+    val classes = directory.listFiles()!!.filter { it.extension == "dex" }.flatMap { file ->
+        file.inputStream().buffered().use {
+            DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it).classes.toList()
+        }
+    }
+    val extension = "Lapp/morphe/extension/youtube/patches/queue/QueueFullscreenActions;"
+    val controllerInterface = "${extension.removeSuffix(";")}\$Controller;"
+    val controllers = classes.filter { controllerInterface in it.interfaces }
+    if (!selected) {
+        check(controllers.isEmpty()) { "Fullscreen queue UI bridge leaked into an unselected build" }
+        println("Native fullscreen playlist bridge absent when unselected")
+        return
+    }
+    val controller = controllers.single()
+    fun references(name: String) = controller.methods.single { it.name == name }.implementation!!
+        .instructions.mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }
+    val setter = controller.methods.single { method -> method.implementation?.instructions?.any {
+        (it as? ReferenceInstruction)?.reference?.toString()?.startsWith("$extension->onModelLoaded(") == true
+    } == true }
+    val refresh = references("patch_refreshQuickActions")
+    val reset = refresh.first()
+    check(reset.definingClass == controller.type && reset.toString() != setter.toString()) {
+        "Fullscreen refresh must dispose the cached native UI before setting a new model"
+    }
+    val nativeReset = controller.methods.single { it.toString() == reset.toString() }
+    check(nativeReset.implementation!!.instructions.any {
+        (it as? ReferenceInstruction)?.reference?.toString() == setter.toString()
+    }) { "Fullscreen refresh no longer uses the original native model cleanup" }
+    check(refresh.any { it.toString() == setter.toString() }) {
+        "Fullscreen refresh does not reuse the native model setter"
+    }
+    check(refresh.any { it.parameterTypes == listOf("Ljava/lang/Object;") && it.returnType == "V" &&
+            it.definingClass != controller.type }) { "Fullscreen refresh lost the native size emission" }
+    check(references("patch_parseQuickActions").any {
+        it.definingClass == "Lcom/google/protobuf/ExtensionRegistryLite;" && it.name == "getGeneratedRegistry"
+    }) { "Fullscreen model parser does not retain native extensions" }
+    println("Native fullscreen playlist cleanup, setter, size refresh and registry bridges verified")
+}
+
 /** Check the emitted native video bridge and queue-only menu dispatch paths. */
 private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
     val dexFiles = directory.listFiles()!!.filter { it.extension == "dex" }.map { file ->
