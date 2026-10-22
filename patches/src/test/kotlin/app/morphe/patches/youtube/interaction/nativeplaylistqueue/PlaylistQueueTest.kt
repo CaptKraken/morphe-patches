@@ -117,6 +117,30 @@ class PlaylistQueueTest {
     }
 
     @Test
+    fun `opening an outside video inserts after the playing entry and preserves the remaining queue`() = withQueue { type ->
+        val initial = type.getConstructor(String::class.java, String::class.java)
+            .newInstance("abcdefghijk", "Playing video")
+        val insert = type.getMethod("playNext", String::class.java)
+        val populated = insert.invoke(initial, "lmnopqrstuv")
+        val repeated = type.getMethod("withRepeatMode", Int::class.javaPrimitiveType).invoke(populated, 1)
+        val open = type.getMethod("playNextAndSelect", String::class.java)
+        val opened = open.invoke(repeated, "0123456789_")
+        assertEquals(listOf("abcdefghijk", "0123456789_", "lmnopqrstuv"), videos(opened))
+        assertEquals(1, type.getMethod("selectedIndex").invoke(opened))
+        assertEquals(1, type.getMethod("repeatMode").invoke(opened))
+        assertEquals(listOf("abcdefghijk", "lmnopqrstuv"), videos(repeated))
+        assertEquals(0, type.getMethod("selectedIndex").invoke(repeated))
+        val next = insert.invoke(opened, "ZYXWVUTSRQP")
+        assertEquals(listOf("abcdefghijk", "0123456789_", "ZYXWVUTSRQP", "lmnopqrstuv"), videos(next))
+        val another = open.invoke(opened, "ZYXWVUTSRQP")
+        assertEquals(videos(next), videos(another))
+        assertEquals(2, type.getMethod("selectedIndex").invoke(another))
+        val failure = assertFailsWith<InvocationTargetException> { open.invoke(opened, "not a video ID") }
+        assertIs<IllegalArgumentException>(failure.cause)
+        assertEquals(3, videos(opened).size)
+    }
+
+    @Test
     fun `invalid insertion cannot corrupt a valid queue`() = withQueue { type ->
         val queue = type.getConstructor(String::class.java, String::class.java)
             .newInstance("abcdefghijk", "Playing video")

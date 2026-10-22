@@ -73,6 +73,11 @@ public final class PlaylistQueue {
         return new PlaylistQueue(updated, selectedIndex, repeatMode);
     }
 
+    /** Insert after the playing entry when an outside video becomes the active watch video. */
+    public PlaylistQueue playNextAndSelect(String videoId) {
+        return playNext(videoId).select(selectedIndex + 1);
+    }
+
     public PlaylistQueue remove(int index) {
         if (index < 0 || index >= entries.size()) throw new IndexOutOfBoundsException(index);
         if (index == selectedIndex) return this;
