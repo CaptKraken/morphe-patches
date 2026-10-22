@@ -95,6 +95,7 @@ fun main(arguments: Array<String>) {
             sdkVerifier.verifyDexDirectory(dexDir)
             verifyNativePanelAssignment(dexDir, mode != "unselected")
             verifyNativeRowMenuPaths(dexDir, mode != "unselected")
+            verifyNativeQueueUndo(dexDir, mode != "unselected")
         }
     }
     Patcher(PatcherConfig(input, workspace, verifier = verifier)).use { patcher ->
@@ -506,3 +507,57 @@ private fun verifyNativeShuffle(classes: List<ClassDef>) {
 }
 
 /** Undo consumes only local capabilities and preserves the modern snackbar click continuation. */
+private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
+    val extensionOwner = EXTENSION_CLASS.removePrefix("L").removeSuffix(";")
+    val classes = directory.listFiles()!!.filter { it.extension == "dex" }.flatMap { file ->
+        file.inputStream().buffered().use {
+            DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it).classes.toList()
+        }
+    }
+    val commandInterface = "Lapp/morphe/extension/youtube/patches/queue/QueueUndoActions\$Command;"
+    val commandTypes = classes.filter { commandInterface in it.interfaces }
+    val snackbars = classes.filter { !it.type.startsWith("Lapp/morphe/") }.flatMap { it.methods }.filter { method ->
+        method.implementation?.instructions?.any {
+            (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+                "L$extensionOwner;->onQueueUndoCommand(") == true
+        } == true
+    }
+    if (!selected) {
+        check(commandTypes.isEmpty() && snackbars.isEmpty()) { "Queue Undo hooks leaked into an unselected build" }
+        return
+    }
+    val command = commandTypes.single()
+    val parser = command.methods.single { it.name == "patch_parseQueueCommand" }
+    check(parser.implementation!!.instructions.any {
+        (it as? ReferenceInstruction)?.reference?.toString() ==
+                "Lcom/google/protobuf/ExtensionRegistryLite;->getGeneratedRegistry()Lcom/google/protobuf/ExtensionRegistryLite;"
+    }) { "Queue feedback parser lost the native extension registry" }
+    val instructions = snackbars.single().implementation!!.instructions.toList()
+    check(instructions.none {
+        (it as? ReferenceInstruction)?.reference?.toString()?.contains("quantum/snackbar/Snackbar;") == true
+    }) { "Queue Undo still targets the unrelated legacy share-panel snackbar" }
+    val hooks = instructions.indices.filter { index ->
+        (instructions[index] as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+            "L$extensionOwner;->onQueueUndoCommand(") == true
+    }
+    check(hooks.size == 3) { "Modern snackbar must handle all three endpoint slots" }
+    for (hook in hooks) {
+        check(instructions[hook + 1].opcode == Opcode.MOVE_RESULT &&
+                instructions[hook + 2].opcode == Opcode.IF_NEZ &&
+                instructions[hook + 3].opcode == Opcode.INVOKE_INTERFACE)
+        val original = (instructions[hook + 3] as ReferenceInstruction).reference as MethodReference
+        check(original.parameterTypes == listOf(command.type, "Ljava/util/Map;"))
+        val nativeCall = instructions[hook + 3] as FiveRegisterInstruction
+        val undoCall = instructions[hook] as FiveRegisterInstruction
+        val result = (instructions[hook + 1] as OneRegisterInstruction).registerA
+        check(undoCall.registerC == nativeCall.registerD &&
+                result !in setOf(nativeCall.registerC, nativeCall.registerD, nativeCall.registerE)) {
+            "Modern snackbar Undo must preserve every original callback input"
+        }
+        fun address(index: Int) = instructions.take(index).sumOf { it.codeUnits }
+        check(address(hook + 2) + (instructions[hook + 2] as OffsetInstruction).codeOffset == address(hook + 4)) {
+            "Consumed Undo must skip only its native dispatch and retain remaining click behavior"
+        }
+    }
+    println("Queue Undo: modern snackbar's three slots, native registry, original callbacks and click continuation verified")
+}

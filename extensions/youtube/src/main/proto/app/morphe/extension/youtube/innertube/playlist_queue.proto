@@ -169,6 +169,8 @@ message NavigationEndpoint {
     // in the command preserves it across native protobuf copies/serialization.
     repeated string queue_save_video_ids = 500000000;
     optional string queue_save_playlist_title = 500000001;
+    // Local snackbar capability; never dispatched to a YouTube service.
+    optional string queue_undo_token = 500000002;
     optional AddToToastAction add_to_toast_action = 76623563;
 }
 

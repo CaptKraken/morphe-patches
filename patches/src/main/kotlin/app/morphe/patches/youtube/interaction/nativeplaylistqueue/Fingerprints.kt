@@ -619,3 +619,25 @@ internal fun notificationPlaybackStateFingerprint(adapterType: String, callback:
     returnType = callback.returnType,
     parameters = callback.parameterTypes.map { it.toString() }
 )
+
+/** Both snackbar factories live together; the watch-screen factory is its native sibling. */
+internal object QueueSnackbarFactoryFingerprint : Fingerprint(
+    returnType = "L",
+    parameters = listOf("L", "Ljava/util/Map;"),
+    filters = listOf(string("feedback_undo"))
+)
+
+internal fun queueUndoClickFingerprint(listenerType: String, factoryType: String,
+                                      dispatcherType: String, callback: MethodReference) = Fingerprint(
+    definingClass = listenerType,
+    name = "onClick",
+    returnType = "V",
+    parameters = listOf("Landroid/view/View;"),
+    filters = listOf(
+        string("com.google.android.libraries.youtube.innertube.endpoint.tag"),
+        fieldAccess(opcode = Opcode.IGET_OBJECT, definingClass = factoryType, type = dispatcherType),
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, definingClass = callback.definingClass,
+            name = callback.name, parameters = callback.parameterTypes.map { it.toString() },
+            returnType = "V", location = MatchAfterWithin(6))
+    )
+)
