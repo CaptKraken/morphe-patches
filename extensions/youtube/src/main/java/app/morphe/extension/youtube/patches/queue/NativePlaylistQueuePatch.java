@@ -7,6 +7,8 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import android.net.Uri;
+import android.util.Base64;
 
 import androidx.annotation.Nullable;
 
@@ -20,6 +22,7 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import app.morphe.extension.shared.ByteTrieSearch;
 import app.morphe.extension.shared.Logger;
@@ -542,6 +545,16 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
+    /** Native row overflow creates its menu context directly, outside shared feed hooks. */
+    public static void onRowMenuOpened(Map<?, ?> context) {
+        if (context == null) return;
+        Object row = context.get("com.google.android.libraries.youtube.innertube.endpoint.tag");
+        if (row instanceof QueueRow owned && owned.patch_isQueueOwned()
+                && row instanceof FlyoutUtils.FlyoutMenuVideoIdInterface) {
+            FlyoutUtils.extractFlyoutIdFromMap(context);
+        }
+    }
+
     /** Observe native start/end notifications; never replace the gesture listeners. */
     public static void onReorderStarted(Object holder, ReorderItems items, int index) {
         PlaylistController controller = readyController();
@@ -817,6 +830,66 @@ public final class NativePlaylistQueuePatch {
         return PlaylistQueueRenderer.SwipeAction.newBuilder().setButtonRenderer(button).build();
     }
 
+    private static PlaylistQueueRenderer.Menu rowMenu(PlaylistQueue source, int index) {
+        PlaylistQueue.Entry entry = source.entries().get(index);
+        String videoId = entry.videoId();
+        var items = PlaylistQueueRenderer.MenuRenderer.newBuilder();
+        items.addItems(PlaylistQueueRenderer.MenuItem.newBuilder().setMenuNavigationItemRenderer(
+                PlaylistQueueRenderer.MenuNavigationItem.newBuilder()
+                        .setText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(str("accessibility_save_to_playlists")))
+                        .setIcon(Icon.newBuilder().setYtIconType(YTIconType.BOOKMARK_BORDER))
+                        .setNavigationEndpoint(PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
+                                .setAddToPlaylistEndpoint(PlaylistQueueRenderer.AddToPlaylistEndpoint.newBuilder()
+                                        .setVideoId(videoId)))));
+
+        var download = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setOfflineVideoEndpoint(
+                PlaylistQueueRenderer.OfflineVideoEndpoint.newBuilder().setVideoId(videoId)
+                        .setAction(PlaylistQueueRenderer.OfflineVideoEndpoint.Action.INFER_AUTOMATICALLY)
+                        .setOnAdd(PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
+                                .setGetDownloadActionCommand(PlaylistQueueRenderer.GetDownloadActionCommand.newBuilder()
+                                        // Captured native GetDownloadActionCommand parameters for a row action.
+                                        .setVideoId(videoId).setParams("CAIQAA%3D%3D"))));
+        items.addItems(serviceMenuItem(str("download"), YTIconType.OFFLINE_DOWNLOAD, download.build()));
+
+        String entity = Base64.encodeToString(
+                PlaylistQueueRenderer.ShareEntity.newBuilder().setVideoId(videoId).build().toByteArray(), Base64.NO_WRAP);
+        String escapedEntity = Uri.encode(entity);
+        String sheetId = "native-playlist-queue-share-" + UUID.randomUUID();
+        var request = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setShareEntityServiceEndpoint(
+                PlaylistQueueRenderer.ShareEntityServiceEndpoint.newBuilder()
+                        .setSerializedShareEntity(escapedEntity)
+                        .setPanelType(PlaylistQueueRenderer.ShareEntityServiceEndpoint.PanelType.ACTION_SHEET)
+                        .setSheetId(sheetId));
+        // Native onShow runs after the named sheet is created. Its service response
+        // populates that sheet; no extension layout or share-target list is needed.
+        var share = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setElementsCommand(
+                PlaylistQueueRenderer.ElementsCommand.newBuilder().setShowActionSheetCommand(
+                        PlaylistQueueRenderer.ShowActionSheetCommand.newBuilder().setSheetId(sheetId)
+                                .setOnShow(PlaylistQueueRenderer.ElementsCommand.newBuilder()
+                                        .setInnertubeCommand(request))));
+        items.addItems(serviceMenuItem(str("accessibility_share_video"), YTIconType.SHARE, share.build()));
+
+        if (index != source.selectedIndex() && !videoId.equals(VideoInformation.getVideoId())) {
+            var remove = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setHideEnclosingAction(
+                    PlaylistQueueRenderer.HideEnclosingAction.newBuilder().setHack(true));
+            items.addItems(serviceMenuItem(str("remove"), YTIconType.VISIBILITY_OFF, remove.build()));
+        }
+        return PlaylistQueueRenderer.Menu.newBuilder().setMenuRenderer(items
+                .setAccessibility(PlaylistQueueRenderer.Accessibility.newBuilder().setAccessibilityData(
+                        PlaylistQueueRenderer.AccessibilityLabel.newBuilder()
+                                .setLabel(str("accessibility_overflow_menu")))))
+                .build();
+    }
+
+    private static PlaylistQueueRenderer.MenuItem serviceMenuItem(
+            String label, YTIconType icon, PlaylistQueueRenderer.NavigationEndpoint endpoint) {
+        return PlaylistQueueRenderer.MenuItem.newBuilder().setMenuServiceItemRenderer(
+                PlaylistQueueRenderer.MenuServiceItem.newBuilder()
+                        .setText(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(label))
+                        .setIcon(Icon.newBuilder().setYtIconType(icon))
+                        .setServiceEndpoint(endpoint)).build();
+    }
+
     private static byte[] renderer(PlaylistQueue source) {
         var panel = PlaylistQueueRenderer.Panel.newBuilder()
                 .setTitle(str("morphe_native_playlist_queue_title"))
@@ -832,6 +905,7 @@ public final class NativePlaylistQueuePatch {
                     .setWidth(480).setHeight(360);
             var video = PlaylistQueueRenderer.Video.newBuilder()
                     .setVideoId(entry.videoId()).setSelected(index == source.selectedIndex()).setCanReorder(true)
+                    .setMenu(rowMenu(source, index))
                     .setNavigationEndpoint(PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
                             .setWatchEndpoint(PlaylistQueueRenderer.WatchEndpoint.newBuilder().setVideoId(entry.videoId())))
                     .setTitle(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(

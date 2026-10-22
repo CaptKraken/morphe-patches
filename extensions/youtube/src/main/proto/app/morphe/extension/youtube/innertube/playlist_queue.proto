@@ -20,6 +20,33 @@ message Panel {
     optional int32 local_selected_index = 27;
 }
 
+// Native queue header and row overflow menus.
+message Menu {
+    optional MenuRenderer menu_renderer = 66439850;
+}
+
+message MenuRenderer {
+    repeated MenuItem items = 1;
+    optional Accessibility accessibility = 10;
+}
+
+message MenuItem {
+    optional MenuNavigationItem menu_navigation_item_renderer = 66441108;
+    optional MenuServiceItem menu_service_item_renderer = 66441155;
+}
+
+message MenuNavigationItem {
+    optional Text text = 1;
+    optional app.morphe.extension.youtube.innertube.Icon icon = 2;
+    optional NavigationEndpoint navigation_endpoint = 3;
+}
+
+message MenuServiceItem {
+    optional Text text = 1;
+    optional app.morphe.extension.youtube.innertube.Icon icon = 2;
+    optional NavigationEndpoint service_endpoint = 3;
+}
+
 message Item {
     optional Video video = 51779701;
 }
@@ -32,6 +59,8 @@ message Video {
     optional bool selected = 6;
     optional NavigationEndpoint navigation_endpoint = 7;
     optional string video_id = 10;
+    // Native per-row overflow actions are supplied only for local queue rows.
+    optional Menu menu = 19;
     repeated SwipeAction swipe_buttons = 22;
     optional MainAppStyle main_app_style = 27;
     optional Text video_info = 31;
@@ -128,6 +157,55 @@ message Thumbnail {
 message NavigationEndpoint {
     optional WatchEndpoint watch_endpoint = 48687757;
     optional HideEnclosingAction hide_enclosing_action = 77297742;
+    optional AddToPlaylistEndpoint add_to_playlist_endpoint = 69487224;
+    optional OfflineVideoEndpoint offline_video_endpoint = 73080600;
+    optional ElementsCommand elements_command = 204158123;
+    optional ShareEntityServiceEndpoint share_entity_service_endpoint = 387863284;
+    optional GetDownloadActionCommand get_download_action_command = 382320942;
+}
+
+message AddToPlaylistEndpoint {
+    optional string video_id = 1;
+}
+
+message OfflineVideoEndpoint {
+    enum Action {
+        INFER_AUTOMATICALLY = 11;
+    }
+    optional string video_id = 1;
+    optional Action action = 2;
+    optional NavigationEndpoint on_add = 8;
+}
+
+// The named native sheet opens before requesting its contents. The service response
+// supplies an updateActionSheetCommand for this same sheet ID.
+message ElementsCommand {
+    optional NavigationEndpoint innertube_command = 169495254;
+    optional ShowActionSheetCommand show_action_sheet_command = 278463287;
+}
+
+message ShowActionSheetCommand {
+    optional string sheet_id = 4;
+    optional ElementsCommand on_show = 5;
+}
+
+message ShareEntityServiceEndpoint {
+    enum PanelType {
+        // Type 1 returns the legacy unified grid; type 2 updates an action sheet.
+        ACTION_SHEET = 2;
+    }
+    optional string serialized_share_entity = 1;
+    optional PanelType panel_type = 2;
+    optional string sheet_id = 3;
+}
+
+message ShareEntity {
+    optional string video_id = 1;
+}
+
+message GetDownloadActionCommand {
+    optional string video_id = 1;
+    optional string params = 5;
 }
 
 message WatchEndpoint {

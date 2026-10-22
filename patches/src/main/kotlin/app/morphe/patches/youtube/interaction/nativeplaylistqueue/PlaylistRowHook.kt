@@ -18,6 +18,7 @@ import app.morphe.util.matchSingle
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.immutable.ImmutableField
@@ -43,6 +44,24 @@ internal fun installPlaylistRowPlayback(
     }
     val videoIdField = videoIdFields.single()
     val videoType = videoIdField.definingClass
+    installPlaylistMenuDispatch(context, videoType)
+    val nativeRowMenu = playlistRowMenuOpenFingerprint(videoType).matchSingle()
+    val contextCreations = nativeRowMenu.method.implementation!!.instructions.mapIndexedNotNull { index, instruction ->
+        val reference = instruction.getReference<MethodReference>() ?: return@mapIndexedNotNull null
+        if (!reference.returnType.startsWith("L") || reference.parameterTypes.size != 4 ||
+                reference.parameterTypes.any { it != "Ljava/lang/Object;" }) return@mapIndexedNotNull null
+        val next = nativeRowMenu.method.implementation!!.instructions.getOrNull(index + 1)
+        if (next?.opcode != com.android.tools.smali.dexlib2.Opcode.MOVE_RESULT_OBJECT) return@mapIndexedNotNull null
+        index to (reference to next)
+    }
+    check(contextCreations.size == 1) {
+        "Native playlist queue: expected one native row context map creation, found ${contextCreations.size}: " +
+                contextCreations.map { it.second.first }
+    }
+    val nativeContextCreation = contextCreations.single().let { it.first to it.second.second }
+    val contextRegister = (nativeContextCreation.second as OneRegisterInstruction).registerA
+    nativeRowMenu.method.addInstruction(nativeContextCreation.first + 2,
+        "invoke-static {v$contextRegister}, $EXTENSION_CLASS->onRowMenuOpened(Ljava/util/Map;)V")
     installPlaylistReordering(context, videoType)
     val listenerTypes = binders.flatMap { binder ->
         binder.originalClassDef.fields.map { it.type }.distinct().filter { type ->

@@ -31,7 +31,7 @@ internal const val CONTROLLER_INTERFACE =
 @Suppress("unused")
 val nativePlaylistQueuePatch = bytecodePatch(
     name = "Native playlist queue",
-    description = "Adds a temporary video queue using YouTube's native playlist panel and playback. Renders native video details and rating actions. Supports swipe removal. Supports reordering. Experimental. YouTube 21.20.405 only.",
+    description = "Adds a temporary video queue using YouTube's native playlist panel and playback. Renders native video details and rating actions. Supports swipe removal. Supports reordering. Reuses native row Save, Download and Share. Experimental. YouTube 21.20.405 only.",
     default = true
 ) {
     dependsOn(

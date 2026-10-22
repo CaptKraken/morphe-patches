@@ -17,10 +17,12 @@ import app.morphe.patcher.fieldAccess
 import app.morphe.patcher.methodCall
 import app.morphe.patcher.opcode
 import app.morphe.patcher.string
+import app.morphe.util.getReference
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
+import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 
 /** Stable diagnostics from the native playback queue, distinct from the panel adapter. */
 internal object NativeQueueDescriptorFingerprint : Fingerprint(
@@ -169,6 +171,63 @@ internal object NativeButtonDispatchFingerprint : Fingerprint(
     parameters = listOf("Landroid/view/View;"),
     filters = listOf(methodCall(opcode = Opcode.INVOKE_INTERFACE, returnType = "V",
         parameters = listOf("L", "Ljava/util/Map;")))
+)
+
+/** Native overflow handler creates its endpoint map before handing the row to the menu factory. */
+internal fun playlistRowMenuOpenFingerprint(videoType: String) = Fingerprint(
+    filters = listOf(string("com.google.android.libraries.youtube.innertube.endpoint.tag")),
+    custom = { method, _ ->
+        val instructions = method.implementation?.instructions
+        instructions != null && videoType in method.parameterTypes &&
+                instructions.mapNotNull { it.getReference<MethodReference>() }
+                    .any { reference ->
+                        reference.returnType.startsWith("L") && reference.parameterTypes.size == 4 &&
+                                reference.parameterTypes.all { it == "Ljava/lang/Object;" }
+                    } &&
+                instructions.mapNotNull { it.getReference<MethodReference>() }
+                    .any { "Ljava/util/Map;" in it.parameterTypes && it.returnType == "V" }
+    }
+)
+
+/** Native sheet dispatch calls its endpoint callback immediately before its terminal dismissal. */
+internal fun playlistRowMenuDispatchFingerprint(
+    sheetType: String,
+    callbackType: String,
+    callbackParameters: List<String>
+) = Fingerprint(
+    definingClass = sheetType,
+    returnType = "V",
+    custom = { method, _ ->
+        val implementation = method.implementation
+        val instructions = implementation?.instructions?.toList()
+        if (implementation == null || instructions == null ||
+            AccessFlags.STATIC.isSet(method.accessFlags)) {
+            false
+        } else {
+            val callbackIndex = instructions.indexOfFirst { instruction ->
+                instruction.getReference<MethodReference>()?.let { reference ->
+                    reference.definingClass == callbackType && reference.returnType == "V" &&
+                            reference.parameterTypes.map { it.toString() } == callbackParameters
+                } == true
+            }
+            if (callbackIndex < 0 || callbackIndex + 2 >= instructions.size) {
+                false
+            } else {
+                val dismissal = instructions[callbackIndex + 1]
+                val dismissalReference = dismissal.getReference<MethodReference>()
+                val dismissalRegisters = dismissal as? FiveRegisterInstruction
+                val parameterWords = method.parameterTypes.sumOf { type ->
+                    if (type == "J" || type == "D") 2 else 1
+                }
+                val thisRegister = implementation.registerCount - parameterWords - 1
+                dismissal.opcode == Opcode.INVOKE_VIRTUAL && dismissalReference != null &&
+                        dismissalReference.returnType == "V" && dismissalReference.parameterTypes.isEmpty() &&
+                        dismissalRegisters?.registerCount == 1 &&
+                        dismissalRegisters.registerC == thisRegister &&
+                        instructions[callbackIndex + 2].opcode == Opcode.RETURN_VOID
+            }
+        }
+    }
 )
 
 /** Rich playlist rows, as opposed to the compact/offline binders. */
