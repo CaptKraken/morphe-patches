@@ -410,6 +410,50 @@ internal fun playlistNavigatorProviderFingerprint(controllerType: String, naviga
     )
 )
 
+internal object PlaylistHeaderConstructorFingerprint : Fingerprint(
+    name = "<init>",
+    filters = listOf(resourceLiteral(ResourceType.LAYOUT, "compact_playlist_panel_header"))
+)
+
+internal object PlaylistShuffleViewFingerprint : Fingerprint(
+    classFingerprint = PlaylistHeaderConstructorFingerprint,
+    name = "<init>",
+    filters = listOf(
+        resourceLiteral(ResourceType.ID, "shuffle"),
+        methodCall("Landroid/view/View;->findViewById(I)Landroid/view/View;", location = MatchAfterImmediately()),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+        checkCast("Landroid/widget/ImageView;", location = MatchAfterImmediately()),
+        fieldAccess(type = "Landroid/widget/ImageView;", opcode = Opcode.IPUT_OBJECT,
+            location = MatchAfterImmediately())
+    )
+)
+
+/** Both native repeat controls observe this exact mode/shuffle pair. */
+internal object PlaylistRepeatBindingFingerprint : Fingerprint(
+    classFingerprint = PlaylistHeaderConstructorFingerprint,
+    returnType = "V",
+    parameters = listOf("L", "L", "I"),
+    filters = listOf(
+        fieldAccess(opcode = Opcode.IGET_OBJECT),
+        fieldAccess(type = "I", opcode = Opcode.IGET, location = MatchAfterImmediately()),
+        fieldAccess(type = "Z", opcode = Opcode.IGET_BOOLEAN, location = MatchAfterImmediately()),
+        methodCall(parameters = listOf("I", "Z"), returnType = "V", location = MatchAfterImmediately())
+    )
+)
+
+internal object PlaylistRepeatCapabilitiesFingerprint : Fingerprint(
+    classFingerprint = PlaylistHeaderConstructorFingerprint,
+    returnType = "V",
+    parameters = listOf("L", "L", "I"),
+    filters = listOf(
+        fieldAccess(type = "Z", opcode = Opcode.IGET_BOOLEAN),
+        opcode(Opcode.IF_NEZ, location = MatchAfterImmediately()),
+        fieldAccess(type = "Z", opcode = Opcode.IGET_BOOLEAN, location = MatchAfterImmediately()),
+        opcode(Opcode.IF_EQZ, location = MatchAfterImmediately()),
+        methodCall("Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;->setEnabled(Z)V")
+    )
+)
+
 /** Observe the native notification before it compares old state or notifies either control. */
 internal fun notificationSkipCallbackFingerprint(callbackName: String) = Fingerprint(
     name = callbackName,

@@ -34,7 +34,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
     description = "Adds a temporary video queue using YouTube's native playlist panel and playback. Renders " +
             "native video details and rating actions. Supports swipe removal. Supports reordering. " +
             "Reuses native row Save, Download and Share. Saves the whole queue to a playlist. " +
-            "Experimental. YouTube 21.20.405 only.",
+            "Supports repeat and shuffle. Experimental. YouTube 21.20.405 only.",
     default = true
 ) {
     dependsOn(

@@ -27,6 +27,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.WeakHashMap;
 
 import app.morphe.extension.shared.ByteTrieSearch;
 import app.morphe.extension.shared.Logger;
@@ -97,6 +98,13 @@ public final class NativePlaylistQueuePatch {
         boolean patch_clearQueue();
     }
 
+    public interface RepeatHeader {
+        Object patch_getNavigator();
+        Object patch_getPanel();
+        void patch_enableRepeat();
+        void patch_setShuffleAvailable(boolean available);
+    }
+
     /** Native listener bridge retains the bound endpoint before logging decorates it. */
     public interface RowClick {
         Object patch_getQueueEndpoint();
@@ -157,6 +165,7 @@ public final class NativePlaylistQueuePatch {
     private static WeakReference<PlaylistController> shortsControllerRef = new WeakReference<>(null);
     private record RowSelection(PlaylistQueue.Entry entry) {}
     private static RowSelection pendingSelection;
+    private static final Set<RepeatHeader> repeatHeaders = Collections.newSetFromMap(new WeakHashMap<>());
     // Native navigation can be rejected (for example while signed out). A failed
     // click must not authorize a much later, unrelated open of the same video.
     private static final int NAVIGATION_TIMEOUT_MILLISECONDS = 10_000;
@@ -261,6 +270,7 @@ public final class NativePlaylistQueuePatch {
             if (selectionNeedsPublishing && readyController() == controller) {
                 publish(controller, queue, false);
             }
+            refreshRepeatHeaders();
             return;
         }
 
@@ -440,6 +450,7 @@ public final class NativePlaylistQueuePatch {
         Utils.runOnMainThread(() -> {
             if (queue == null || isQueueSuspended()) return;
             syncNativeSelection(VideoInformation.getVideoId());
+            refreshRepeatHeaders();
             if (selectionNeedsPublishing) refreshOwnedPanel(VideoInformation.getVideoId());
         });
     }
@@ -485,6 +496,30 @@ public final class NativePlaylistQueuePatch {
         return selection;
     }
 
+    public static void onRepeatHeaderBound(RepeatHeader header) {
+        Utils.runOnMainThreadNowOrLater(() -> {
+            repeatHeaders.add(header);
+            PlaylistController controller = ownedNavigator(header.patch_getNavigator());
+            if (controller != null && header.patch_getPanel() == controller.patch_getPanel()) {
+                refreshRepeatHeaders();
+            }
+        });
+    }
+
+    private static void refreshRepeatHeader(RepeatHeader header) {
+        PlaylistController controller = ownedNavigator(header.patch_getNavigator());
+        if (controller != null && header.patch_getPanel() == controller.patch_getPanel()) {
+            header.patch_enableRepeat();
+            NativePlayback playback = playbackFor(controller);
+            header.patch_setShuffleAvailable(playback != null
+                    && playback.patch_isLocalQueue() && playback.patch_canShuffle());
+        }
+    }
+
+    private static void refreshRepeatHeaders() {
+        for (RepeatHeader header : new ArrayList<>(repeatHeaders)) refreshRepeatHeader(header);
+    }
+
     /** Runs after native media logging, before either foreground or service skip routing. */
     public static boolean onNotificationNext(MediaControls controls) {
         return navigateNative(controls.patch_getQueueNavigator(), true);
@@ -505,6 +540,12 @@ public final class NativePlaylistQueuePatch {
         if (!ownsNativePlayback(service)) return false;
         service.patch_navigateQueue(next);
         return true;
+    }
+
+    private static PlaylistController ownedNavigator(Object navigator) {
+        PlaylistController controller = readyController();
+        return queue != null && controller != null && controller.patch_getModel() == publishedModel
+                && controller.patch_getNavigator() == navigator ? controller : null;
     }
 
     /** Keep the swipe restore drawable in sync when an attached queue row changes selection. */
@@ -805,6 +846,7 @@ public final class NativePlaylistQueuePatch {
             // A presentation refresh cannot roll back only one of those owners.
             committed = true;
             controller.patch_markQueueRows();
+            refreshRepeatHeaders();
             return true;
         } catch (Exception exception) {
             if (committed) {
