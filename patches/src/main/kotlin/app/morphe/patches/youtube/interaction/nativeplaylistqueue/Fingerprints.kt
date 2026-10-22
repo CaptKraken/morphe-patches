@@ -489,6 +489,18 @@ internal object PlaylistShuffleViewFingerprint : Fingerprint(
     )
 )
 
+/** The fallback header action reads its service and shuffle view before toggling. */
+internal fun playlistShufflePressFingerprint(navigator: FieldReference, view: FieldReference) = Fingerprint(
+    name = "onClick",
+    parameters = listOf("Landroid/view/View;"),
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(reference = navigator, opcode = Opcode.IGET_OBJECT),
+        fieldAccess(reference = view, opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        methodCall("Landroid/widget/ImageView;->isSelected()Z", location = MatchAfterImmediately())
+    )
+)
+
 /** Both native repeat controls observe this exact mode/shuffle pair. */
 internal object PlaylistRepeatBindingFingerprint : Fingerprint(
     classFingerprint = PlaylistHeaderConstructorFingerprint,

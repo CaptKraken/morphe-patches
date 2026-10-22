@@ -99,22 +99,9 @@ internal fun installNativeQueueEngine(
             it.definingClass == mutableType && instruction.opcode in setOf(Opcode.IPUT_BOOLEAN, Opcode.IPUT_OBJECT)
         }
     }.distinct()
-    val shuffleEnabled = shuffleWrites.single { it.type == "Z" }
     val shuffleLinks = shuffleWrites.filter { it.type == "[I" }
     check(shuffleLinks.size == 2) {
         "Native playlist queue: shuffle must build distinct successor and predecessor arrays"
-    }
-    val mutableShuffleGetter = mutableQueue.methods.single { method ->
-        method.parameterTypes.isEmpty() && method.returnType == "Z" &&
-                method.implementation?.instructions?.any {
-                    it.opcode == Opcode.IGET_BOOLEAN && it.getReference<FieldReference>() == shuffleEnabled
-                } == true
-    }
-    val shuffleGetter = classDefBy(shuffleType).methods.single {
-        it.name == mutableShuffleGetter.name && it.parameterTypes.isEmpty() && it.returnType == "Z"
-    }
-    val shuffleCapability = classDefBy(shuffleType).methods.single {
-        it.parameterTypes.isEmpty() && it.returnType == "Z" && it.name != shuffleGetter.name
     }
     check(classDefBy(shuffleType).methods.any {
         it.name == shuffleSetter.name && it.parameterTypes == listOf("Z") && it.returnType == "V"
@@ -183,24 +170,11 @@ internal fun installNativeQueueEngine(
         const/4 v0, 0x0
         return-object v0
     """)
-    bridge(wrapperType, "patch_canShuffle", emptyList(), "Z", 1, """
-        iget-object v0, p0, $nativeNavigator
-        invoke-interface {v0}, $shuffleCapability
-        move-result v0
-        return v0
-    """)
-    bridge(wrapperType, "patch_isShuffled", emptyList(), "Z", 1, """
-        iget-object v0, p0, $nativeNavigator
-        invoke-interface {v0}, $shuffleGetter
-        move-result v0
-        return v0
-    """)
-    bridge(wrapperType, "patch_restoreQueueModes", listOf("I", "Z"), "V", 1, """
+    bridge(wrapperType, "patch_restoreQueueRepeat", listOf("I"), "V", 1, """
         iget-boolean v0, p0, $localFlag
         if-eqz v0, :done
         iget-object v0, p0, $nativeNavigator
         invoke-interface {v0, p1}, $repeatSetter
-        invoke-interface {v0, p2}, $shuffleType->${shuffleSetter.name}(Z)V
         :done
         return-void
     """)
@@ -213,15 +187,13 @@ internal fun installNativeQueueEngine(
         iput-object v0, p0, ${shuffleLinks[1]}
         return-void
     """)
-    bridge(wrapperType, "patch_attachQueue", listOf("[B"), "Z", 8, """
+    bridge(wrapperType, "patch_attachQueue", listOf("[B"), "Z", 7, """
         invoke-virtual {p0, p1}, $wrapperType->patch_localPanel([B)$responseType
         move-result-object v0
         if-eqz v0, :missing
         iget-object v1, p0, $nativeNavigator
         invoke-interface {v1}, $repeatGetter
         move-result v6
-        invoke-interface {v1}, $shuffleGetter
-        move-result v7
         new-instance v2, ${builderConstructor.definingClass}
         invoke-direct {v2}, $builderConstructor
         iget-object v3, v0, $watchCommand
@@ -253,7 +225,6 @@ internal fun installNativeQueueEngine(
         iput-boolean v5, p0, $nativeQueueFlag
         iput-boolean v5, p0, $localFlag
         invoke-interface {v3, v6}, $repeatSetter
-        invoke-interface {v3, v7}, $shuffleType->${shuffleSetter.name}(Z)V
         invoke-virtual {v3, v5}, $refresh
         return v5
         :missing

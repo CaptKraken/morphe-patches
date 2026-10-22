@@ -437,7 +437,27 @@ private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
     val panelInterface = EXTENSION_CLASS.removeSuffix(";") + "\$QueuePanel;"
     val panels = dexFiles.flatMap { it.classes }.filter { panelInterface in it.interfaces }
     check(panels.size == if (selected) 1 else 0) { "Queue header ownership must be included only with this patch" }
+    val shufflePresses = dexFiles.flatMap { it.classes }.filter { !it.type.startsWith("Lapp/morphe/") }
+        .flatMap { it.methods }.filter { method -> method.implementation?.instructions?.any {
+            (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+                "$EXTENSION_CLASS->onQueueShuffle(") == true
+        } == true }
+    check(shufflePresses.size == if (selected) 1 else 0) {
+        "Queue shuffle command must intercept one native listener only when selected"
+    }
     if (!selected) return
+    val shufflePress = shufflePresses.single().implementation!!.instructions.toList()
+    val shuffleIndex = shufflePress.indexOfFirst {
+        (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+            "$EXTENSION_CLASS->onQueueShuffle(") == true
+    }
+    check(shufflePress[shuffleIndex + 1].opcode == Opcode.MOVE_RESULT &&
+            shufflePress[shuffleIndex + 2].opcode == Opcode.IF_EQZ &&
+            shufflePress[shuffleIndex + 3].opcode == Opcode.RETURN_VOID &&
+            shufflePress.drop(shuffleIndex + 4).any {
+                (it as? ReferenceInstruction)?.reference?.toString() ==
+                        "Landroid/widget/ImageView;->isSelected()Z"
+            }) { "A consumed queue shuffle must return before the original fallback toggle" }
     val panelFlag = panels.single().methods.single { it.name == "patch_isQueueOwned" }
         .implementation!!.instructions.single { it.opcode == Opcode.IGET_BOOLEAN }
         .let { (it as ReferenceInstruction).reference as FieldReference }
@@ -504,7 +524,7 @@ private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
     println("Native playback panel field assignments: compatible register types")
 }
 
-/** Shuffle links refer to row indexes: replacing rows must rebuild them without losing the mode. */
+/** A local shuffle command changes the rows; native playback must then follow their visible order. */
 private fun verifyNativeShuffle(classes: List<ClassDef>) {
     val mutableQueue = classes.single { type -> type.methods.any { it.name == "patch_clearShuffleOrder" } }
     val clear = mutableQueue.methods.single { it.name == "patch_clearShuffleOrder" }
@@ -535,28 +555,15 @@ private fun verifyNativeShuffle(classes: List<ClassDef>) {
     val acceptIndex = attach.indices.single { index -> reference(index)?.let {
         it.returnType == "V" && it.parameterTypes == listOf(responseType)
     } == true }
-    val restoreIndex = attach.indices.single { index -> reference(index)?.let {
-        it.name == disable.name && it.parameterTypes == listOf("Z") && it.returnType == "V" &&
-                attach[index].opcode == Opcode.INVOKE_INTERFACE
-    } == true }
-    val enabledField = nativeSetter.implementation!!.instructions.single { it.opcode == Opcode.IPUT_BOOLEAN }
-        .let { ((it as ReferenceInstruction).reference as FieldReference) }
-    val getterName = mutableQueue.methods.single { method ->
-        method.parameterTypes.isEmpty() && method.returnType == "Z" &&
-                method.implementation?.instructions?.any {
-                    it.opcode == Opcode.IGET_BOOLEAN && (it as ReferenceInstruction).reference == enabledField
-                } == true
-    }.name
-    val captureIndex = attach.indices.single { reference(it)?.name == getterName && reference(it)?.returnType == "Z" }
-    check(captureIndex < clearIndex && clearIndex < acceptIndex && acceptIndex < restoreIndex &&
-            (attach[captureIndex + 1] as OneRegisterInstruction).registerA ==
-                    (attach[restoreIndex] as FiveRegisterInstruction).registerD) {
-        "Native shuffle mode must be captured before reset and restored after accepting replacement rows"
+    check(clearIndex < acceptIndex && attach.indices.none { index -> reference(index)?.let {
+        it.name == disable.name && it.parameterTypes == listOf("Z") && it.returnType == "V"
+    } == true }) {
+        "Local rows must disable hidden shuffle before replacement and must not restore it afterward"
     }
     check(playback.methods.single { it.name == "patch_updateSnapshot" }.implementation!!.instructions.none {
         (it as? ReferenceInstruction)?.reference?.toString()?.contains("patch_clearShuffleOrder") == true
     }) { "Metadata-only publication must not reset shuffle order" }
-    println("Native shuffle: original index maps reset safely, mode restored after row replacement, metadata snapshot preserved")
+    println("Native shuffle command: original index maps disabled, visible row order controls playback")
 }
 
 /** Undo consumes only local capabilities and preserves the modern snackbar click continuation. */

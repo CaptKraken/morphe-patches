@@ -173,7 +173,7 @@ class QueueProviderPriorityTest {
                         Class<?> undo = Class.forName(owner.getName() + "${'$'}PendingUndo");
                         Constructor<?> create = undo.getDeclaredConstructors()[0]; create.setAccessible(true);
                         field("pendingUndo").set(null, create.newInstance("token", queue, null,
-                            new WeakReference<>(playback), false));
+                            new WeakReference<>(playback)));
                         clears = 0; Logger.errors = 0; QueueFullscreenActions.refreshes = 0;
                         return queue;
                     }

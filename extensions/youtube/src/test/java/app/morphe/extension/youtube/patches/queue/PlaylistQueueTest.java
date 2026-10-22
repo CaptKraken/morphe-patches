@@ -8,6 +8,7 @@
 package app.morphe.extension.youtube.patches.queue;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 
@@ -114,5 +115,43 @@ public class PlaylistQueueTest {
         var queue = new PlaylistQueue(A, "Playing");
         assertThrows(IllegalArgumentException.class, () -> queue.playNext("invalid"));
         assertEquals(List.of(A), videos(queue));
+    }
+
+    @Test public void shufflePreservesPlayingOccurrenceRepeatAndEarlierSnapshot() {
+        var before = populated().playLast(A).select(3).withRepeatMode(PlaylistQueue.REPEAT_ALL);
+        var shuffled = before.shuffle();
+        assertEquals(0, shuffled.selectedIndex());
+        assertSame(before.currentEntry(), shuffled.currentEntry());
+        assertEquals(PlaylistQueue.REPEAT_ALL, shuffled.repeatMode());
+        assertEquals(before.entries().size(), shuffled.entries().size());
+        // Compare occurrence identity, including equal-valued duplicate videos.
+        for (var entry : before.entries()) {
+            assertEquals(1, shuffled.entries().stream().filter(candidate -> candidate == entry).count());
+        }
+        assertEquals(List.of(A, C, B, A), videos(before));
+        assertEquals(3, before.selectedIndex());
+        assertNotSame(before, shuffled);
+        var again = shuffled.shuffle();
+        assertSame(before.currentEntry(), again.currentEntry());
+        assertEquals(0, again.selectedIndex());
+        assertEquals(shuffled.entries().size(), again.entries().size());
+    }
+
+    @Test public void shuffledOrderIsUsedBySubsequentQueueEdits() {
+        var shuffled = populated().shuffle();
+        var next = shuffled.playNext(D);
+        assertSame(shuffled.currentEntry(), next.currentEntry());
+        assertEquals(D, next.entries().get(1).videoId());
+        assertEquals(shuffled.entries().subList(1, 3), next.entries().subList(2, 4));
+        var last = shuffled.playLast(D);
+        assertEquals(shuffled.entries(), last.entries().subList(0, 3));
+        assertEquals(D, last.entries().get(3).videoId());
+        var selected = shuffled.select(1);
+        assertSame(shuffled.entries().get(1), selected.currentEntry());
+        assertEquals(shuffled.entries(), selected.entries());
+        assertSame(selected.currentEntry(), selected.move(1, 2).currentEntry());
+        assertEquals(shuffled.entries().subList(0, 2), shuffled.remove(2).entries());
+        var single = new PlaylistQueue(A, "Playing");
+        assertSame(single, single.shuffle());
     }
 }

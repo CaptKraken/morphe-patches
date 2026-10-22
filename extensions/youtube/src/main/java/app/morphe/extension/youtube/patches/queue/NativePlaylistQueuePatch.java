@@ -111,9 +111,7 @@ public final class NativePlaylistQueuePatch {
         void patch_updateSnapshot(byte[] panel);
         int patch_getSelectedIndex();
         int patch_getRepeatMode();
-        boolean patch_canShuffle();
-        boolean patch_isShuffled();
-        void patch_restoreQueueModes(int repeatMode, boolean shuffled);
+        void patch_restoreQueueRepeat(int repeatMode);
         boolean patch_clearQueue();
     }
 
@@ -199,7 +197,7 @@ public final class NativePlaylistQueuePatch {
     // Keep this intent separate from an attached, usable native queue.
     private static QueueStart pendingQueueStart;
     private record PendingUndo(String token, PlaylistQueue before, PlaylistQueue after,
-                               WeakReference<NativePlayback> playback, boolean shuffled) {}
+                               WeakReference<NativePlayback> playback) {}
     private static PendingUndo pendingUndo;
     // Bound retained snapshots even if a native snackbar is dismissed without activation.
     private static final int UNDO_RETENTION_MILLISECONDS = 10_000;
@@ -609,8 +607,19 @@ public final class NativePlaylistQueuePatch {
             header.patch_enableRepeat();
             NativePlayback playback = playbackFor(controller);
             header.patch_setShuffleAvailable(playback != null
-                    && playback.patch_isLocalQueue() && playback.patch_canShuffle());
+                    && playback.patch_isLocalQueue() && queue.entries().size() > 1);
         }
+    }
+
+    /** Intercept only this queue's native header; account playlist actions fall through. */
+    public static boolean onQueueShuffle(RepeatHeader header) {
+        PlaylistController controller = ownedNavigator(header.patch_getNavigator());
+        if (controller == null || header.patch_getPanel() != controller.patch_getPanel()) return false;
+        // Consume an owned click during a transition rather than enabling the hidden shuffler.
+        if (publishing || pendingSelection != null || dragSession != null) return true;
+        syncNativeSelection(VideoInformation.getVideoId());
+        publish(controller, queue.shuffle(), true);
+        return true;
     }
 
     private static void refreshRepeatHeaders() {
@@ -764,13 +773,12 @@ public final class NativePlaylistQueuePatch {
                     return null;
                 }
                 PlaylistQueue before = queue.withRepeatMode(playback.patch_getRepeatMode());
-                boolean shuffled = playback.patch_isShuffled();
                 if (!playback.patch_clearQueue()) {
                     Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
                     return null;
                 }
                 releasePanel();
-                return removalFeedback(endpoint, before, null, playback, shuffled,
+                return removalFeedback(endpoint, before, null, playback,
                         str("morphe_native_playlist_queue_cleared"));
             }
             int index = controller.patch_findQueueRow(owner);
@@ -782,7 +790,7 @@ public final class NativePlaylistQueuePatch {
             PlaylistQueue before = queue;
             if (!publish(controller, queue.remove(index), true)) return null;
             // Replace the local Hide with native feedback; never send an account edit.
-            return removalFeedback(endpoint, before, queue, nativePlaybackRef.get(), false,
+            return removalFeedback(endpoint, before, queue, nativePlaybackRef.get(),
                     str("video_removed_from_tv_queue"));
         } catch (Exception exception) {
             Logger.printException(() -> "Could not run native playlist queue menu action", exception);
@@ -792,9 +800,9 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static MessageLite removalFeedback(MessageLite endpoint, PlaylistQueue before, PlaylistQueue after,
-                                               NativePlayback playback, boolean shuffled, String message) {
+                                               NativePlayback playback, String message) {
         PendingUndo undo = new PendingUndo(UUID.randomUUID().toString(), before, after,
-                new WeakReference<>(playback), shuffled);
+                new WeakReference<>(playback));
         pendingUndo = undo;
         Utils.runOnMainThreadDelayed(() -> {
             if (pendingUndo == undo) pendingUndo = null;
@@ -835,7 +843,7 @@ public final class NativePlaylistQueuePatch {
         if (!publish(controller, restored, true)) return;
         if (undo.after() == null) {
             originalModel = baseline;
-            playback.patch_restoreQueueModes(restored.repeatMode(), undo.shuffled());
+            playback.patch_restoreQueueRepeat(restored.repeatMode());
             queue = queue.withRepeatMode(playback.patch_getRepeatMode());
         }
     }
@@ -1178,7 +1186,17 @@ public final class NativePlaylistQueuePatch {
                 if (reportFailure) Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
                 return false;
             }
-            boolean changedItems = queue == null || !queue.entries().equals(candidate.entries());
+            boolean changedItems = queue == null || queue.entries().size() != candidate.entries().size();
+            if (!changedItems) {
+                // Equal video/title values can still be different occurrences of a
+                // duplicated video. A shuffle must also move the native selection.
+                for (int index = 0; index < candidate.entries().size(); index++) {
+                    if (queue.entries().get(index) != candidate.entries().get(index)) {
+                        changedItems = true;
+                        break;
+                    }
+                }
+            }
             if (!playback.patch_isLocalQueue() || changedItems) {
                 if (!playback.patch_attachQueue(panel)) {
                     controller.patch_restorePanel(acceptedModel, previousModel);

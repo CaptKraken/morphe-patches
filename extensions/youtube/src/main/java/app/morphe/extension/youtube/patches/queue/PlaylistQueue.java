@@ -8,6 +8,7 @@
 package app.morphe.extension.youtube.patches.queue;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -106,6 +107,17 @@ public final class PlaylistQueue {
         else if (from < selection && to >= selection) selection--;
         else if (from > selection && to <= selection) selection++;
         return new PlaylistQueue(updated, selection, repeatMode);
+    }
+
+    /** Shuffle is a command: the displayed order also becomes the playback order. */
+    public PlaylistQueue shuffle() {
+        if (entries.size() < 2) return this;
+        var updated = new ArrayList<>(entries);
+        Entry playing = updated.remove(selectedIndex);
+        // Use the same framework shuffler as YouTube's mutable playback queue.
+        Collections.shuffle(updated);
+        updated.add(0, playing);
+        return new PlaylistQueue(updated, 0, repeatMode);
     }
 
     public static boolean isVideoId(String videoId) {
