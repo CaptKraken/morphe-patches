@@ -15,6 +15,8 @@ Import the MPP directly into a Morphe Manager version that supports **Patcher 2.
 
 The generated confirmation after saving a queue to an existing playlist uses **5 seconds**, retaining Undo and native accessibility timing. The patch remains experimental. Queues are temporary and do not persist after restarting the app. Undo after clearing a queue is an intentional addition.
 
+[Screenshots](SCREENSHOTS.md)
+
 ## Validation
 
 Under Patcher 2.0: 14 patch tests passed with 5 unrelated Jam APK-dependent skips; all 87 YouTube extension tests passed. Combined real-APK SDK DEX/hierarchy/resource and native checks passed on all three supported versions, with 24 related patches selected. Ask intentionally skips 20.51.39 under its own version gate. Standalone and queue-unselected checks also passed on 21.20.405. All 105070 resource strings passed validation.
