@@ -39,6 +39,8 @@ import app.morphe.extension.youtube.innertube.IconOuterClass.YTIconType;
 import app.morphe.extension.youtube.innertube.NextResponseOuterClass.SingleColumnWatchNextResults;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.patches.VideoInformation;
+import app.morphe.extension.youtube.patches.LoadVideoPatch;
+import app.morphe.extension.youtube.patches.OpenVideosFullscreenHookPatch;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
@@ -177,6 +179,9 @@ public final class NativePlaylistQueuePatch {
     private static WeakReference<PlaylistController> shortsControllerRef = new WeakReference<>(null);
     private record RowSelection(PlaylistQueue.Entry entry) {}
     private static RowSelection pendingSelection;
+    // A menu click can open the first video before a watch controller exists.
+    // Keep this intent separate from an attached, usable native queue.
+    private static QueueStart pendingQueueStart;
     private record PendingUndo(String token, PlaylistQueue before, PlaylistQueue after,
                                WeakReference<NativePlayback> playback, boolean shuffled) {}
     private static PendingUndo pendingUndo;
@@ -310,6 +315,7 @@ public final class NativePlaylistQueuePatch {
         if (queue == null) {
             // The native acceptance hook runs immediately after the model store,
             // before its subscriptions and rendering finish. Never reenter it.
+            if (pendingQueueStart != null) Utils.runOnMainThread(NativePlaylistQueuePatch::tryStartQueue);
             return;
         }
 
@@ -368,6 +374,7 @@ public final class NativePlaylistQueuePatch {
             // before its video-ID callback. Reconcile after the native event finishes.
             Utils.runOnMainThread(() -> {
                 if (queue == null) {
+                    tryStartQueue();
                     return;
                 }
                 PlaylistController controller = returningController();
@@ -476,6 +483,7 @@ public final class NativePlaylistQueuePatch {
     public static void onNativeQueueResponse(NativePlayback playback) {
         Utils.runOnMainThread(() -> {
             if (queue == null) {
+                tryStartQueue();
                 return;
             }
             if (!VideoInformation.getPlaylistId().isEmpty()) return;
@@ -863,6 +871,7 @@ public final class NativePlaylistQueuePatch {
             // Returning to its video later must not revive an earlier Undo action.
             if (pendingUndo != null && pendingUndo.after() == null
                     && !pendingUndo.before().currentEntry().videoId().equals(videoId)) pendingUndo = null;
+            tryStartQueue();
             if (queue == null) return;
             // This is a presentation snapshot of native selection, not a second navigator.
             syncNativeSelection(videoId);
@@ -905,12 +914,13 @@ public final class NativePlaylistQueuePatch {
         if (!isPatchIncluded() || dragSession != null || !PlaylistQueue.isVideoId(videoId)) return index;
         PlayerType playerType = PlayerType.getCurrent();
         String playingVideoId = VideoInformation.getVideoId();
-        if ((playerType.isNoneOrHidden() || playerType == PlayerType.INLINE_MINIMAL
+        boolean canStart = canStartQueue();
+        if (!canStart && (playerType.isNoneOrHidden() || playerType == PlayerType.INLINE_MINIMAL
                 || !PlaylistQueue.isVideoId(playingVideoId) || videoId.equals(playingVideoId))) return index;
         // The latest player response can belong to a prefetched video. Only the
         // accepted controller for the playing video can hide this as a playlist.
         PlaylistController controller = controllerRef.get();
-        if (controller != null && playingVideoId.equals(controller.patch_getVideoId())
+        if (!canStart && controller != null && playingVideoId.equals(controller.patch_getVideoId())
                 && hasPlaylist(controller)) return index;
 
         int iconId = ResourceUtils.getIdentifier(ResourceType.DRAWABLE,
@@ -921,6 +931,12 @@ public final class NativePlaylistQueuePatch {
                 view -> addToQueue(videoId), index);
         index = nextIndex > index ? nextIndex : index;
         return index;
+    }
+
+    private static boolean canStartQueue() {
+        PlayerType type = PlayerType.getCurrent();
+        return queue == null && !ShortsPlayerState.isOpen()
+                && (type == PlayerType.NONE || type == PlayerType.INLINE_MINIMAL);
     }
 
     private static PlaylistController readyController() {
@@ -943,6 +959,22 @@ public final class NativePlaylistQueuePatch {
         String channelName = videoId.equals(FlyoutUtils.getFlyoutVideoId())
                 ? FlyoutUtils.getFlyoutChannelName() : "";
         try {
+            if (canStartQueue()) {
+                String title = ChannelIdRequest.getVideoTitleIfAvailable(videoId);
+                rememberChannel(videoId, title.isEmpty() ? videoId : title, channelName);
+                QueueStart start = new QueueStart(new PlaylistQueue(videoId, title), VideoInformation.getVideoId());
+                pendingQueueStart = start;
+                // The shared helper opens YouTube's own watch intent. With false it
+                // does not call a native player bridge or require an existing player.
+                LoadVideoPatch.openVideoIntent("https://www.youtube.com/watch?v=" + videoId, false);
+                FlyoutUtils.dismissFlyout();
+                Utils.runOnMainThreadDelayed(() -> {
+                    if (pendingQueueStart != start) return;
+                    pendingQueueStart = null;
+                    OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
+                }, NAVIGATION_TIMEOUT_MILLISECONDS);
+                return;
+            }
             PlaylistController controller = readyController();
             if (controller == null || dragSession != null) {
                 Utils.showToastShort(str("morphe_native_playlist_queue_not_ready"));
@@ -965,6 +997,41 @@ public final class NativePlaylistQueuePatch {
         } catch (Exception exception) {
             Logger.printException(() -> "Could not add video to native playlist queue", exception);
             Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+        }
+    }
+
+    /** Commit a first-item queue only after native playback accepts the requested video. */
+    private static void tryStartQueue() {
+        QueueStart start = pendingQueueStart;
+        if (start == null || queue != null || publishing) return;
+        String videoId = VideoInformation.getVideoId();
+        String requestedId = start.candidate().currentEntry().videoId();
+        PlayerType type = PlayerType.getCurrent();
+        if (ShortsPlayerState.isOpen() || type == PlayerType.HIDDEN
+                || (!type.isNoneOrHidden() && type != PlayerType.INLINE_MINIMAL
+                && start.isSupersededBy(videoId))) {
+            pendingQueueStart = null;
+            OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
+            return;
+        }
+        PlaylistController controller = controllerRef.get();
+        // Controller callbacks can precede the active video ID or player type.
+        // Recheck when controller, video ID, player type or playback service
+        // becomes ready; prefetch alone cannot attach.
+        if (controller == null || !requestedId.equals(videoId)
+                || !requestedId.equals(controller.patch_getVideoId())) return;
+        if (hasPlaylist(controller)) {
+            pendingQueueStart = null;
+            OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
+            return;
+        }
+        if (readyController() != controller) return;
+        Object baseline = controller.patch_getModel();
+        if (publish(controller, start.candidate(), false)) {
+            originalModel = baseline;
+            pendingQueueStart = null;
+            Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
+            completeMetadata();
         }
     }
 
@@ -996,6 +1063,22 @@ public final class NativePlaylistQueuePatch {
                 || queue.entries().stream().noneMatch(item -> item.videoId().equals(videoId))) return;
         PlaylistController controller = readyController();
         if (controller != null && controller.patch_getModel() == publishedModel) publish(controller, queue, false);
+    }
+
+    /** Native watch dispatch reads this flag before constructing the playback descriptor. */
+    public static Map<?, ?> prepareQueueStartContext(MessageLite endpoint, Map<?, ?> context) {
+        QueueStart start = pendingQueueStart;
+        if (start == null || queue != null) return context;
+        try {
+            Map<?, ?> minimized = start.minimizedContext(endpoint, context);
+            if (minimized != context) {
+                OpenVideosFullscreenHookPatch.keepVideoMinimized(start.candidate().currentEntry().videoId());
+            }
+            return minimized;
+        } catch (InvalidProtocolBufferException exception) {
+            Logger.printException(() -> "Could not start native queue in the miniplayer", exception);
+            return context;
+        }
     }
 
     private static boolean publish(PlaylistController controller, PlaylistQueue candidate, boolean reportFailure) {
@@ -1056,6 +1139,8 @@ public final class NativePlaylistQueuePatch {
 
     private static void releasePanel() {
         pendingUndo = null;
+        pendingQueueStart = null;
+        OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
         PlaylistController controller = controllerRef.get();
         Object expectedModel = publishedModel;
         Object restoreModel = originalModel;

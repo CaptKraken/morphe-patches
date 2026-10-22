@@ -238,8 +238,8 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
                 ?.contains("NativePlaylistQueuePatch;->prepareQueueStartContext(") == true
         }?.toList() ?: emptyList()
     }
-    check(queueStartHooks.isEmpty()) {
-        "Queue minimized-start hook must be absent before minimized queue creation"
+    check(queueStartHooks.size == if (selected) 1 else 0) {
+        "Queue minimized-start hook must exist only when selected"
     }
     // Other patches use a cached insertion index in the watch resolver. A new
     // entry hook must not move their filters before native descriptor construction.
@@ -249,6 +249,18 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
                     ((it as? ReferenceInstruction)?.reference as? StringReference)?.string == "start_watch_minimized"
                 } == true
     }.implementation!!.instructions.toList()
+    val queueContextIndex = watch.indexOfFirst {
+        (it as? ReferenceInstruction)?.reference?.toString()?.contains("->prepareQueueStartContext(") == true
+    }
+    val cardObserverIndex = watch.indexOfFirst {
+        (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+            "Lapp/morphe/extension/youtube/patches/FeedCardLayoutPatch;->onWatchCommand(") == true
+    }
+    if (selected && cardObserverIndex >= 0) {
+        check(queueContextIndex in 0 until cardObserverIndex) {
+            "Queue context must be transformed before the existing feed-card watch observer"
+        }
+    }
     watch.forEachIndexed { index, instruction ->
         val call = (instruction as? ReferenceInstruction)?.reference as? MethodReference
         if (call?.name != "onVideoIntentLoaded" || call.definingClass !in setOf(

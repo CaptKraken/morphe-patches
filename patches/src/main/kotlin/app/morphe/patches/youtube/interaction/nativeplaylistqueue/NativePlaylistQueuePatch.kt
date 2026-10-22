@@ -17,6 +17,8 @@ import app.morphe.patches.youtube.misc.extension.sharedExtensionPatch
 import app.morphe.patches.youtube.misc.playertype.playerTypeHookPatch
 import app.morphe.patches.youtube.misc.settings.settingsPatch
 import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
+import app.morphe.patches.youtube.shared.hookVideoIntentContext
+import app.morphe.patches.youtube.shared.openVideoIntentPatch
 import app.morphe.patches.youtube.video.information.videoInformationPatch
 import app.morphe.patches.youtube.video.videoid.hookBackgroundPlayVideoId
 import app.morphe.patches.youtube.video.videoid.hookVideoId
@@ -36,7 +38,8 @@ val nativePlaylistQueuePatch = bytecodePatch(
             "Reuses native row Save, Download and Share. Saves the whole queue to a playlist. " +
             "Supports repeat and shuffle. Updates player and notification controls. Clears the queue " +
             "without interrupting playback. Supports Undo for queue edits. Supports the fullscreen " +
-            "playlist panel. Experimental. YouTube 21.20.405 only.",
+            "playlist panel. Starts a queue in the miniplayer without an existing player. " +
+            "Experimental. YouTube 21.20.405 only.",
     default = true
 ) {
     dependsOn(
@@ -46,7 +49,8 @@ val nativePlaylistQueuePatch = bytecodePatch(
         videoInformationPatch,
         videoIdPatch,
         playerTypeHookPatch,
-        fixProtoLibraryPatch
+        fixProtoLibraryPatch,
+        openVideoIntentPatch
     )
 
     compatibleWith(Compatibility(
@@ -62,6 +66,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
         if (packageMetadata.versionName != "21.20.405") {
             throw PatchException("Native playlist queue currently supports YouTube 21.20.405 only")
         }
+        hookVideoIntentContext(EXTENSION_CLASS, "prepareQueueStartContext")
         installPlaylistPanel(this)
         installRatingCapture(this)
         installPlaylistRemoval(this)
