@@ -8,6 +8,7 @@
 package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 
 import app.morphe.patcher.Fingerprint
+import app.morphe.patcher.StringComparisonType
 import app.morphe.patcher.checkCast
 import app.morphe.patcher.InstructionLocation.MatchAfterImmediately
 import app.morphe.patcher.InstructionLocation.MatchAfterWithin
@@ -71,7 +72,9 @@ internal fun queueSaveEditSuccessFingerprint(callbackType: String) = Fingerprint
 
 /** Stable diagnostics from the native playback queue, distinct from the panel adapter. */
 internal object NativeQueueDescriptorFingerprint : Fingerprint(
-    filters = listOf(string("getNavigationDescriptor for %sreturned NULL"))
+    parameters = listOf("L"),
+    // 21.16 concatenates this diagnostic; 21.20 formats it in one string.
+    filters = listOf(string("getNavigationDescriptor for ", StringComparisonType.STARTS_WITH))
 )
 
 internal object NativeQueueSelectionFingerprint : Fingerprint(
@@ -95,6 +98,17 @@ internal fun nativeQueueLoaderFingerprint(service: String, descriptor: String) =
     definingClass = service,
     parameters = listOf(descriptor, "L"),
     filters = listOf(string("Initializing a PlaybackSequencer in loaderNavigator, but it does not exist"))
+)
+
+/** Read the active sequencer through its service holder, independently of loader inlining. */
+internal fun nativeQueueSequencerFingerprint(service: String, sequencer: String) = Fingerprint(
+    definingClass = service,
+    filters = listOf(
+        fieldAccess(definingClass = service, opcode = Opcode.IGET_OBJECT),
+        fieldAccess(type = "Ljava/lang/Object;", opcode = Opcode.IGET_OBJECT,
+            location = MatchAfterImmediately()),
+        checkCast(sequencer, location = MatchAfterWithin(6))
+    )
 )
 
 internal object PlaylistModelDescriptionFingerprint : Fingerprint(

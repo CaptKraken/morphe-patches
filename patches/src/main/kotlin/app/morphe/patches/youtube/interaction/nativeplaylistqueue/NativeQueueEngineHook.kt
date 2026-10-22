@@ -431,20 +431,26 @@ internal fun installNativeQueueEngine(
         :account_insert
         nop
     """)
-    val loader = nativeQueueLoaderFingerprint(serviceType, descriptorType).matchSingle().originalMethod
-    val sequencerOwner = loader.implementation!!.instructions.firstNotNullOf { it.getReference<FieldReference>() }
-    val serviceLoad = classDefBy(serviceType).methods.single { it.parameterTypes == loader.parameterTypes &&
-            it.returnType == "V" && it.toString() != loader.toString() }
-    val sequencerType = serviceLoad.implementation!!.instructions.filter { it.opcode == Opcode.CHECK_CAST }
-        .mapNotNull { it.getReference<TypeReference>()?.type }.distinct().single { type ->
-            classDefByOrNull(type)?.fields?.any { it.type == navigatorType } == true
-        }
+    val loaderOwner = nativeQueueLoaderFingerprint(serviceType, descriptorType).matchSingle().originalClassDef
+    // 21.16 combines loader paths that 21.20 splits into separate methods. Resolve
+    // the sequencer by its navigator field, then require one consistent holder path.
+    val sequencerType = loaderOwner.methods.flatMap { method ->
+        method.implementation?.instructions?.filter { it.opcode == Opcode.CHECK_CAST }
+            ?.mapNotNull { it.getReference<TypeReference>()?.type } ?: emptyList()
+    }.distinct().single { type ->
+        classDefByOrNull(type)?.fields?.any { it.type == navigatorType } == true
+    }
     val sequencerField = classDefBy(sequencerType).fields.single { it.type == navigatorType }
-    val sequencer = Fingerprint(definingClass = serviceType, parameters = loader.parameterTypes.map { it.toString() },
-        custom = { method, _ -> method.toString() == serviceLoad.toString() },
-        filters = listOf(app.morphe.patcher.fieldAccess(definingClass = sequencerOwner.type, type = "Ljava/lang/Object;"),
-            app.morphe.patcher.checkCast(sequencerType, app.morphe.patcher.InstructionLocation.MatchAfterWithin(6))))
-        .matchSingle().instructionMatches.first().instruction.getReference<FieldReference>()!!
+    val holderPaths = nativeQueueSequencerFingerprint(serviceType, sequencerType).matchAll().map { match ->
+        val owner = match.instructionMatches[0].instruction.getReference<FieldReference>()!!
+        val value = match.instructionMatches[1].instruction.getReference<FieldReference>()!!
+        check(owner.type == value.definingClass) {
+            "Native playlist queue: active sequencer must belong to its service holder"
+        }
+        owner to value
+    }.distinct().toList()
+    check(holderPaths.size == 1) { "Native playlist queue: expected one active sequencer holder path" }
+    val (sequencerOwner, sequencer) = holderPaths.single()
     bridge(serviceType, "patch_getQueuePlayback", emptyList(), playbackInterface, 1, """
         iget-object v0, p0, $sequencerOwner
         iget-object v0, v0, $sequencer
