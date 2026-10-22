@@ -36,7 +36,8 @@ val nativePlaylistQueuePatch = bytecodePatch(
     description = "Adds a temporary video queue using YouTube's playlist interface and playback controls. " +
             "Supports Play next/last, reordering, shuffle, repeat, fullscreen playlist controls, " +
             "saving the queue to a playlist, and Undo for removal or clearing. " +
-            "Morphe's Local queue takes priority when enabled. Experimental. YouTube 21.16.256 and 21.20.405.",
+            "Morphe's Local queue takes priority when enabled. Experimental. " +
+            "YouTube 20.51.39, 21.16.256 and 21.20.405.",
     default = true
 ) {
     dependsOn(
@@ -57,13 +58,13 @@ val nativePlaylistQueuePatch = bytecodePatch(
         signatures = COMPATIBILITY_YOUTUBE.signatures,
         appIconColor = COMPATIBILITY_YOUTUBE.appIconColor,
         targets = COMPATIBILITY_YOUTUBE.targets.filter {
-            it.version in setOf("21.20.405", "21.16.256")
+            it.version in setOf("21.20.405", "21.16.256", "20.51.39")
         }
     ))
 
     execute {
-        if (packageMetadata.versionName !in setOf("21.20.405", "21.16.256")) {
-            throw PatchException("Native playlist queue currently supports YouTube 21.16.256 and 21.20.405")
+        if (packageMetadata.versionName !in setOf("21.20.405", "21.16.256", "20.51.39")) {
+            throw PatchException("Native playlist queue currently supports YouTube 20.51.39, 21.16.256 and 21.20.405")
         }
         hookVideoIntentContext(EXTENSION_CLASS, "prepareQueueStartContext")
         installPlaylistPanel(this)

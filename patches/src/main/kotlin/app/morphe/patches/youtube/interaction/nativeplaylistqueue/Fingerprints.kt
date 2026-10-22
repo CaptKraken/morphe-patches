@@ -447,11 +447,12 @@ internal fun playlistNavigatorProviderFingerprint(controllerType: String, naviga
     parameters = emptyList(),
     filters = listOf(
         fieldAccess(definingClass = controllerType, opcode = Opcode.IGET_OBJECT),
-        fieldAccess(opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        // The controls allocation can sit between the factory and provider reads.
+        fieldAccess(opcode = Opcode.IGET_OBJECT, location = MatchAfterWithin(1)),
         methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = emptyList(),
             returnType = "Ljava/lang/Object;", location = MatchAfterWithin(1)),
         opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
-        // The native factory allocates controls before invocation and aliases its result before casting.
+        // The factory can allocate controls before invocation and alias the result before casting.
         checkCast(navigatorType, location = MatchAfterWithin(1))
     )
 )

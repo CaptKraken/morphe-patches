@@ -24,7 +24,7 @@ internal fun installPlaylistNavigation(context: BytecodePatchContext, controller
     val enumType = NavigationIntentEnumFingerprint.matchSingle().originalClassDef.type
     val wrapperType = playlistNavigationRequestFingerprint(enumType).matchSingle().originalClassDef.type
     val dispatchers = playlistNavigationDispatchFingerprint(wrapperType).matchAll().toList()
-    check(dispatchers.size == 3) { "Native playlist queue: expected the three 21.20.405 navigation dispatchers" }
+    check(dispatchers.size == 3) { "Native playlist queue: expected three navigation dispatchers" }
     fun interfaces(types: Collection<String>): Set<String> {
         val result = mutableSetOf<String>()
         fun visit(type: String) {
@@ -46,7 +46,10 @@ internal fun installPlaylistNavigation(context: BytecodePatchContext, controller
     val factoryField = provider.instructionMatches[0].instruction.getReference<FieldReference>()!!
     val providerField = provider.instructionMatches[1].instruction.getReference<FieldReference>()!!
     val getProvider = provider.instructionMatches[2].instruction.getReference<MethodReference>()!!
-    check(factoryField.type == providerField.definingClass && providerField.type == getProvider.definingClass) {
+    // Some native factories erase their provider fields to Object; the matched
+    // interface invocation and navigator cast still establish the produced type.
+    check(factoryField.type == providerField.definingClass &&
+            providerField.type in setOf(getProvider.definingClass, "Ljava/lang/Object;")) {
         "Native playlist queue: navigator provider must belong to the active playlist controller"
     }
     val controlsConstructor = provider.originalMethod.implementation!!.instructions
