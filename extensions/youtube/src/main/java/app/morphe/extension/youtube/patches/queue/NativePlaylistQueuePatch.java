@@ -789,11 +789,10 @@ public final class NativePlaylistQueuePatch {
             // remove the current item or race an in-flight row navigation.
             if (index == queue.selectedIndex() || pendingSelection != null || dragSession != null
                     || queue.entries().get(index).videoId().equals(VideoInformation.getVideoId())) return null;
-            PlaylistQueue before = queue;
             if (!publish(controller, queue.remove(index), true)) return null;
-            // Replace the local Hide with native feedback; never send an account edit.
-            return removalFeedback(endpoint, before, queue, nativePlaybackRef.get(),
-                    str("video_removed_from_tv_queue"));
+            // A single-row removal is silent. Consume the local Hide rather than
+            // dispatching an account edit or generating an Undo snackbar.
+            return null;
         } catch (Exception exception) {
             Logger.printException(() -> "Could not run native playlist queue menu action", exception);
             Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
