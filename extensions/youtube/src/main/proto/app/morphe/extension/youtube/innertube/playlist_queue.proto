@@ -15,6 +15,7 @@ message Panel {
     optional int32 selected_index = 3;
     optional string playlist_id = 5;
     optional int32 video_count = 6;
+    optional Menu menu = 26;
     // Native counters add selected_index - local_selected_index to the row position.
     // A local queue contains the complete playlist, without a paginated prefix.
     optional int32 local_selected_index = 27;
@@ -157,11 +158,29 @@ message Thumbnail {
 message NavigationEndpoint {
     optional WatchEndpoint watch_endpoint = 48687757;
     optional HideEnclosingAction hide_enclosing_action = 77297742;
+    optional CreatePlaylistDialogEndpoint create_playlist_dialog_endpoint = 85650004;
     optional AddToPlaylistEndpoint add_to_playlist_endpoint = 69487224;
     optional OfflineVideoEndpoint offline_video_endpoint = 73080600;
     optional ElementsCommand elements_command = 204158123;
     optional ShareEntityServiceEndpoint share_entity_service_endpoint = 387863284;
     optional GetDownloadActionCommand get_download_action_command = 382320942;
+    optional PlaylistEditEndpoint playlist_edit_endpoint = 60666189;
+    // Extension-owned local selection, never a YouTube request field. Keeping it
+    // in the command preserves it across native protobuf copies/serialization.
+    repeated string queue_save_video_ids = 500000000;
+    optional string queue_save_playlist_title = 500000001;
+    optional AddToToastAction add_to_toast_action = 76623563;
+}
+
+message PlaylistEditEndpoint {
+    optional string playlist_id = 1;
+    repeated PlaylistEditAction actions = 2;
+}
+
+message PlaylistEditAction {
+    optional string set_video_id = 3;
+    optional string added_video_id = 2;
+    optional int32 action = 6;
 }
 
 message AddToPlaylistEndpoint {
@@ -208,6 +227,14 @@ message GetDownloadActionCommand {
     optional string params = 5;
 }
 
+// YouTube handles sign-in, name/privacy entry, creation and result feedback.
+// Supplying IDs (rather than a playlist ID) saves the local order as a new playlist.
+message CreatePlaylistDialogEndpoint {
+    repeated string video_ids = 1;
+    optional string source_playlist_id = 2;
+    optional string video_selection_entity_key = 8;
+}
+
 message WatchEndpoint {
     optional string video_id = 1;
 }
@@ -237,4 +264,58 @@ message SwipeButton {
     optional NavigationEndpoint navigation_endpoint = 9;
     optional Accessibility accessibility_data = 16;
     optional NavigationEndpoint command = 19;
+}
+
+// playlist/get_add_to_playlist response subsets, verified against 21.20.405.
+// Preserve all unknown renderer/command fields when rebinding the owned selection.
+message QueueSaveResponse {
+    repeated QueueSaveResponseItem contents = 2;
+}
+message QueueSaveResponseItem {
+    optional QueueSavePickerRenderer add_to_playlist_renderer = 88978004;
+}
+message QueueSavePickerRenderer {
+    repeated QueueSaveDestinationItem playlists = 1;
+    repeated QueueSaveHeaderItem headers = 2;
+}
+message QueueSaveDestinationItem {
+    optional QueueSaveDestination playlist_add_to_option_renderer = 74079946;
+}
+message QueueSaveDestination {
+    optional Text title = 2;
+    // Native UNKNOWN=0 is an add-and-close destination, with no membership checkbox.
+    optional int32 selection_state = 5;
+    optional NavigationEndpoint add_endpoint = 7;
+    optional NavigationEndpoint remove_endpoint = 8;
+}
+message QueueSaveHeaderItem {
+    optional QueueSaveHeader playlist_add_to_header_renderer = 82258301;
+}
+// Native menu title header: field 2 is the button renderer; field 3 is text.
+message QueueSaveHeader {
+    optional SwipeAction button = 2;
+}
+
+// Native browse/edit_playlist success response and exact added-entry results.
+message QueueSaveEditResponse {
+    optional int32 status = 2;
+    repeated NavigationEndpoint actions = 7;
+    repeated QueueSaveEditResult results = 12;
+}
+message QueueSaveEditResult {
+    optional QueueSaveAddedEntry added_entry = 138418859;
+}
+message QueueSaveAddedEntry {
+    optional string video_id = 1;
+    optional string set_video_id = 2;
+}
+message AddToToastAction {
+    optional QueueToastItem item = 1;
+}
+message QueueToastItem {
+    optional QueueToastRenderer toast_renderer = 96140188;
+}
+message QueueToastRenderer {
+    optional Text response_text = 1;
+    optional SwipeAction action_button = 2;
 }

@@ -50,9 +50,11 @@ import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.Instruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OffsetInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
+import com.android.tools.smali.dexlib2.iface.reference.StringReference
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.runBlocking
@@ -92,6 +94,7 @@ fun main(arguments: Array<String>) {
         override fun verifyDexDirectory(dexDir: File) {
             sdkVerifier.verifyDexDirectory(dexDir)
             verifyNativePanelAssignment(dexDir, mode != "unselected")
+            verifyNativeRowMenuPaths(dexDir, mode != "unselected")
         }
     }
     Patcher(PatcherConfig(input, workspace, verifier = verifier)).use { patcher ->
@@ -110,6 +113,265 @@ fun main(arguments: Array<String>) {
 
 /** Verify the emitted UI bridge reaches the native setter and size subject, not playback. */
 /** Check the emitted native video bridge and queue-only menu dispatch paths. */
+private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
+    val dexFiles = directory.listFiles()!!.filter { it.extension == "dex" }.map { file ->
+        file.inputStream().buffered().use { DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it) }
+    }
+    val classes = dexFiles.flatMap { it.classes }
+    val queueRow = "${EXTENSION_CLASS.removeSuffix(";")}\$QueueRow;"
+    val videoIdInterface = "Lapp/morphe/extension/youtube/patches/utils/FlyoutUtils\$FlyoutMenuVideoIdInterface;"
+    val extensionOwner = EXTENSION_CLASS.removePrefix("L").removeSuffix(";")
+    val rowTypes = classes.filter { queueRow in it.interfaces }
+    val menuOpenCalls = classes.flatMap { owner -> owner.methods.mapNotNull { method ->
+        method.implementation?.instructions?.toList()?.let { instructions ->
+            instructions.indexOfFirst { instruction ->
+                (instruction as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+                    "L$extensionOwner;->onRowMenuOpened(Ljava/util/Map;)V") == true
+            }.takeIf { it >= 0 }?.let { Triple(owner, method, instructions) }
+        }
+    } }
+    val menuDispatches = classes.flatMap { owner -> owner.methods.mapNotNull { method ->
+        method.implementation?.instructions?.toList()?.let { instructions ->
+            instructions.indexOfFirst { instruction ->
+                (instruction as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+                    "L$extensionOwner;->onQueueMenuCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)") == true
+            }.takeIf { index -> index >= 0 && instructions.getOrNull(index + 2)?.opcode == Opcode.IF_NEZ &&
+                    instructions.getOrNull(index + 3)?.opcode == Opcode.GOTO_16 }
+                ?.let { Triple(owner, method, instructions) }
+        }
+    } }
+    val saveEndpointInterface = "Lapp/morphe/extension/youtube/patches/queue/QueueSaveActions\$NativeEndpoint;"
+    val saveEndpoints = classes.filter { saveEndpointInterface in it.interfaces }
+    val saveDispatches = classes.flatMap { it.methods }.mapNotNull { method ->
+        val instructions = method.implementation?.instructions?.toList() ?: return@mapNotNull null
+        val index = instructions.indexOfFirst {
+            (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+                "L$extensionOwner;->onQueueSaveCommand(") == true
+        }
+        if (index < 0) null else Triple(method, instructions, index)
+    }
+    val taggedSheetGuards = classes.flatMap { it.methods }.mapNotNull { method ->
+        if (method.returnType != "V" || method.parameterTypes.size != 12) return@mapNotNull null
+        val instructions = method.implementation?.instructions?.toList() ?: return@mapNotNull null
+        val index = instructions.indexOfFirst {
+            (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+                "L$extensionOwner;->isQueueSaveSelection(") == true
+        }
+        if (index < 0) null else instructions to index
+    }
+    val scopedRowFactories = classes.flatMap { it.methods }.filter {
+        it.name in setOf("patch_buildQueueSaveRows", "patch_decodeQueueSaveRows")
+    }
+    check(saveEndpoints.isEmpty() && saveDispatches.isEmpty() && taggedSheetGuards.isEmpty() &&
+            scopedRowFactories.isEmpty()) {
+        "Queue batch Save hooks must not modify the player's native Save paths"
+    }
+    println("Experimental batch Save hooks, endpoint bridge and shared row factories absent")
+    val batchEndpointInterface = "Lapp/morphe/extension/youtube/patches/queue/QueueSaveActions\$Endpoint;"
+    val batchPickerInterface = "Lapp/morphe/extension/youtube/patches/queue/QueueSaveActions\$Picker;"
+    val batchEndpoints = classes.filter { batchEndpointInterface in it.interfaces }
+    val batchPickers = classes.filter { batchPickerInterface in it.interfaces }
+    val argumentTransfers = classes.flatMap { it.methods }.mapNotNull { method ->
+        val instructions = method.implementation?.instructions?.toList() ?: return@mapNotNull null
+        val index = instructions.indexOfFirst {
+            (it as? ReferenceInstruction)?.reference?.toString()?.contains("->onQueueSaveArguments(") == true
+        }
+        if (index < 0) null else Triple(method, instructions, index)
+    }
+    val batchRequests = classes.flatMap { it.methods }.mapNotNull { method ->
+        val instructions = method.implementation?.instructions?.toList() ?: return@mapNotNull null
+        val index = instructions.indexOfFirst {
+            (it as? ReferenceInstruction)?.reference?.toString()?.contains("QueueSaveActions;->onPickerRequest(") == true
+        }
+        if (index < 0) null else Triple(method, instructions, index)
+    }
+    val responseHooks = classes.flatMap { it.methods }.filter { method ->
+        method.implementation?.instructions?.any {
+            (it as? ReferenceInstruction)?.reference?.toString()?.contains("QueueSaveActions;->onPickerResponse(") == true
+        } == true
+    }
+    val queueStartHooks = classes.flatMap { it.methods }.flatMap { method ->
+        method.implementation?.instructions?.filter {
+            (it as? ReferenceInstruction)?.reference?.toString()
+                ?.contains("NativePlaylistQueuePatch;->prepareQueueStartContext(") == true
+        }?.toList() ?: emptyList()
+    }
+    check(queueStartHooks.isEmpty()) {
+        "Queue minimized-start hook must be absent before minimized queue creation"
+    }
+    // Other patches use a cached insertion index in the watch resolver. A new
+    // entry hook must not move their filters before native descriptor construction.
+    val watch = classes.flatMap { it.methods }.single { method ->
+        !method.definingClass.startsWith("Lapp/morphe/extension/") && method.parameterTypes.size == 2 && method.parameterTypes[1] == "Ljava/util/Map;" &&
+                method.implementation?.instructions?.any {
+                    ((it as? ReferenceInstruction)?.reference as? StringReference)?.string == "start_watch_minimized"
+                } == true
+    }.implementation!!.instructions.toList()
+    watch.forEachIndexed { index, instruction ->
+        val call = (instruction as? ReferenceInstruction)?.reference as? MethodReference
+        if (call?.name != "onVideoIntentLoaded" || call.definingClass !in setOf(
+                "Lapp/morphe/extension/youtube/patches/OpenChannelOfLiveAvatarPatch;",
+                "Lapp/morphe/extension/youtube/patches/components/CommentsFilter;")) return@forEachIndexed
+        val getter = watch[index - 2] as FiveRegisterInstruction
+        val receiver = getter.registerC
+        val lastWrite = (0 until index - 2).last {
+            (watch[it] as? OneRegisterInstruction)?.registerA == receiver
+        }
+        check(watch[lastWrite].opcode == Opcode.MOVE_RESULT_OBJECT) {
+            "Video intent filter ran before the native playback descriptor was constructed"
+        }
+        val construction = (watch[lastWrite - 1] as ReferenceInstruction).reference as MethodReference
+        val videoGetter = (watch[index - 2] as ReferenceInstruction).reference as MethodReference
+        check(construction.returnType == videoGetter.definingClass)
+    }
+    val feedbackInterface = "Lapp/morphe/extension/youtube/patches/queue/QueueSaveFeedback\$Callback;"
+    val feedbackCallbacks = classes.filter { feedbackInterface in it.interfaces }
+    val feedbackHooks = classes.flatMap { it.methods }.mapNotNull { method ->
+        val calls = method.implementation?.instructions?.filter {
+            (it as? ReferenceInstruction)?.reference?.toString()?.let { reference ->
+                reference.contains("QueueSaveActions;->onEditCreated(") ||
+                        reference.contains("QueueSaveActions;->onEditResult(")
+            } == true
+        }?.toList() ?: emptyList()
+        if (calls.isEmpty()) null else method to calls
+    }
+    if (selected) {
+        val callback = feedbackCallbacks.single()
+        check(callback.fields.count { it.name == "patch_queueSaveSelection" } == 1)
+        check(feedbackHooks.size == 2 && feedbackHooks.sumOf { it.second.size } == 2)
+        check(feedbackHooks.any { it.first.definingClass == callback.type })
+        println("Queue-only save callback ownership and native success feedback bridges present")
+    } else {
+        check(feedbackCallbacks.isEmpty() && feedbackHooks.isEmpty()) {
+            "Queue save confirmation hooks leaked into an unselected build"
+        }
+    }
+    if (selected) {
+        check(batchEndpoints.isEmpty()) { "Transient endpoint instance markers must not own a batch selection" }
+        val picker = batchPickers.single()
+        val (factory, factoryInstructions, transferIndex) = argumentTransfers.single()
+        val transfer = factoryInstructions[transferIndex] as FiveRegisterInstruction
+        val serialization = factoryInstructions[transferIndex + 1] as ReferenceInstruction
+        check(factory.parameterTypes.size == 1 &&
+                serialization.reference.toString().endsWith("->toByteArray()[B") &&
+                (serialization as FiveRegisterInstruction).registerC == transfer.registerC) {
+            "Owned selection must enter native saved arguments before endpoint serialization overwrites its register"
+        }
+        check(batchRequests.isEmpty()) { "Queue Save must retain the stock single-video picker request" }
+        val getter = picker.methods.single { it.name == "patch_getQueueSaveVideoIds" }.implementation!!.instructions
+        check(getter.any { (it as? ReferenceInstruction)?.reference?.toString()?.contains("->getQueueSaveVideoIds(") == true })
+        check(responseHooks.size == 1 && responseHooks.single().definingClass != picker.type)
+        check(picker.methods.count { it.name == "patch_parseQueueSaveResponse" } == 1)
+        println("Queue-owned batch Save: serialized selection, saved arguments and destination commands wired; picker request untouched")
+    } else {
+        check(batchEndpoints.isEmpty() && batchPickers.isEmpty() && argumentTransfers.isEmpty() &&
+                batchRequests.isEmpty() && responseHooks.isEmpty()) {
+            "Native batch Save bridge leaked into a patch-unselected build"
+        }
+    }
+    if (!selected) {
+        check(rowTypes.isEmpty() && menuOpenCalls.isEmpty() && menuDispatches.isEmpty() &&
+                saveEndpoints.isEmpty() && saveDispatches.isEmpty() && taggedSheetGuards.isEmpty() &&
+                scopedRowFactories.isEmpty()) {
+            "Native playlist row menu bridge leaked into an unselected build"
+        }
+        println("Native playlist row menu bridge absent when unselected")
+        return
+    }
+
+    val videoType = rowTypes.singleOrNull()
+        ?: error("Expected one queue row type in emitted DEX, found ${rowTypes.size}")
+    check(videoIdInterface in videoType.interfaces) {
+        "Native queue row does not implement the shared FlyoutUtils video-ID interface"
+    }
+    val videoIdGetter = videoType.methods.single { it.name == "patch_getVideoId" }
+    val getterInstructions = videoIdGetter.implementation!!.instructions.toList()
+    val getterField = getterInstructions.single { it.opcode == Opcode.IGET_OBJECT }
+        .let { (it as ReferenceInstruction).reference as FieldReference }
+    check(getterField.definingClass == videoType.type && getterField.type == "Ljava/lang/String;" &&
+            getterInstructions.last().opcode == Opcode.RETURN_OBJECT) {
+        "Queue row's shared video-ID getter does not return its native String field"
+    }
+    check(classes.flatMap { it.methods }.any { method ->
+        method.name != "patch_getVideoId" && method.implementation?.instructions?.any { instruction ->
+            instruction.opcode == Opcode.IGET_OBJECT &&
+                    (instruction as? ReferenceInstruction)?.reference == getterField
+        } == true
+    }) { "Binder-derived video-ID field is not read by native code in emitted DEX" }
+
+    val extensionClass = classes.single { it.type == EXTENSION_CLASS }
+    val rowMenuHelper = extensionClass.methods.single { it.name == "onRowMenuOpened" }
+    val rowMenuInstructions = rowMenuHelper.implementation!!.instructions.toList()
+    val instanceOfTypes = rowMenuInstructions.filter { it.opcode == Opcode.INSTANCE_OF }
+        .mapNotNull { (it as? ReferenceInstruction)?.reference?.toString() }.toSet()
+    check(queueRow in instanceOfTypes && videoIdInterface in instanceOfTypes) {
+        "Row menu helper does not guard both queue ownership and the native row's shared video-ID interface"
+    }
+    check(rowMenuInstructions.any { instruction ->
+        instruction.opcode == Opcode.INVOKE_STATIC &&
+                (instruction as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+                    "Lapp/morphe/extension/youtube/patches/utils/FlyoutUtils;->extractFlyoutIdFromMap(Ljava/util/Map;)V"
+                ) == true
+    }) { "Shared row menu video context extractor is not reached by the emitted helper" }
+
+    val menuOpen = menuOpenCalls.singleOrNull()
+        ?: error("Expected one row menu context extraction call, found ${menuOpenCalls.size}")
+    val (menuOwner, menuMethod, openInstructions) = menuOpen
+    val openCallIndex = openInstructions.indexOfFirst { instruction ->
+        (instruction as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+            "L$extensionOwner;->onRowMenuOpened(Ljava/util/Map;)V") == true
+    }
+    val openCall = openInstructions[openCallIndex] as FiveRegisterInstruction
+    val mapResult = openInstructions.getOrNull(openCallIndex - 1) as? com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
+    val mapFactory = openInstructions.getOrNull(openCallIndex - 2) as? ReferenceInstruction
+    val factoryReference = mapFactory?.reference as? MethodReference
+    check(mapResult != null && openCallIndex >= 2 &&
+            openInstructions[openCallIndex - 1].opcode == Opcode.MOVE_RESULT_OBJECT &&
+            mapResult.registerA == openCall.registerC && factoryReference != null &&
+            factoryReference.returnType.startsWith("L") &&
+            factoryReference.parameterTypes.map { it.toString() } == List(4) { "Ljava/lang/Object;" }) {
+        "Row menu context extraction is not immediately after its native four-object map factory"
+    }
+    println("Native row menu context bridge: ${menuOwner.type}->${menuMethod.name}, shared interface and native String getter verified")
+
+    val dispatch = menuDispatches.singleOrNull()
+        ?: error("Expected one consumed native menu removal path, found ${menuDispatches.size}")
+    val dispatchInstructions = dispatch.third
+    val removeIndex = dispatchInstructions.indexOfFirst { instruction ->
+        (instruction as? ReferenceInstruction)?.reference?.toString()?.startsWith(
+            "L$extensionOwner;->onQueueMenuCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)") == true
+    }
+    check(removeIndex >= 0 && dispatchInstructions[removeIndex + 1].opcode == Opcode.MOVE_RESULT_OBJECT &&
+            dispatchInstructions[removeIndex + 2].opcode == Opcode.IF_NEZ &&
+            dispatchInstructions[removeIndex + 3].opcode == Opcode.GOTO_16) {
+        "Native removal result does not branch between the original callback and dismissal"
+    }
+    val branchAddresses = HashMap<Int, Int>()
+    var address = 0
+    dispatchInstructions.forEachIndexed { index, instruction ->
+        branchAddresses[address] = index
+        address += instruction.codeUnits
+    }
+    fun branchTarget(index: Int): Int {
+        val branch = dispatchInstructions[index] as OffsetInstruction
+        val instructionAddress = branchAddresses.entries.single { it.value == index }.key
+        return branchAddresses[instructionAddress + branch.codeOffset]
+            ?: error("Native row menu branch target is not an instruction boundary")
+    }
+    val callbackIndex = branchTarget(removeIndex + 2)
+    val dismissalIndex = branchTarget(removeIndex + 3)
+    check(dispatchInstructions[callbackIndex].opcode == Opcode.CHECK_CAST &&
+            dispatchInstructions.getOrNull(callbackIndex + 1)?.opcode == Opcode.INVOKE_INTERFACE &&
+            dispatchInstructions[dismissalIndex].opcode == Opcode.INVOKE_VIRTUAL &&
+            (dispatchInstructions[dismissalIndex] as ReferenceInstruction).reference
+                .let { reference -> reference is MethodReference && reference.returnType == "V" &&
+                        reference.parameterTypes.isEmpty() } &&
+            dispatchInstructions.getOrNull(dismissalIndex + 1)?.opcode == Opcode.RETURN_VOID) {
+        "Native removal branch does not preserve the original callback and terminal dismissal paths"
+    }
+    println("Native row menu dispatch preserves original callback and dismissal branches")
+}
+
 /** SDK structural checks do not catch a base protobuf value stored in a concrete panel field. */
 private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
     val dexFiles = directory.listFiles()!!.filter { it.extension == "dex" }.map { file ->

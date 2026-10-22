@@ -105,6 +105,7 @@ internal fun installPlaylistMenuDispatch(context: BytecodePatchContext, videoTyp
     }
 
     val endpointType = callbackSignature.first()
+    installQueueSavePicker(this, endpointType)
     val registers = dispatch.second
     mutableDispatchMethod.addInstructionsAtControlFlowLabel(dispatch.first, """
         invoke-static {v${registers.registerD}, v${registers.registerE}}, $EXTENSION_CLASS->onQueueMenuCommand(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;

@@ -8,17 +8,21 @@
 package app.morphe.extension.youtube.patches.queue;
 
 import android.net.Uri;
+import android.os.Bundle;
 import android.util.Base64;
 
 import androidx.annotation.Nullable;
 
 import static app.morphe.extension.shared.StringRef.str;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -42,6 +46,7 @@ import app.morphe.extension.youtube.shared.ShortsPlayerState;
 
 @SuppressWarnings("unused")
 public final class NativePlaylistQueuePatch {
+    private static final String SAVE_VIDEO_IDS_ARGUMENT = "app.morphe.native_playlist_queue.save_video_ids";
     private static final ByteTrieSearch CARD_COMPONENTS = new ByteTrieSearch(
             ByteTrieSearch.convertStringsToBytes("video_lockup_with_attachment.eml"));
     private static final Map<String, VideoMetadata> metadataCache =
@@ -517,6 +522,17 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
+    /** Save arguments belong to this queue-launched native fragment, including after rotation. */
+    public static void onQueueSaveArguments(MessageLite endpoint, Bundle arguments)
+            throws InvalidProtocolBufferException {
+        ArrayList<String> videoIds = QueueSaveActions.copyVideoIds(endpoint);
+        if (videoIds != null) arguments.putStringArrayList(SAVE_VIDEO_IDS_ARGUMENT, videoIds);
+    }
+
+    public static List<String> getQueueSaveVideoIds(Bundle arguments) {
+        return arguments == null ? null : arguments.getStringArrayList(SAVE_VIDEO_IDS_ARGUMENT);
+    }
+
     /** Override only commands from an owned row or the exact published queue header. */
     public static MessageLite onQueueMenuCommand(MessageLite endpoint, Map<?, ?> context) {
         if (endpoint == null || context == null) return endpoint;
@@ -525,6 +541,19 @@ public final class NativePlaylistQueuePatch {
         if (!header && (!(owner instanceof QueueRow row) || !row.patch_isQueueOwned())) return endpoint;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
+            if (header && command.hasAddToPlaylistEndpoint()) {
+                PlaylistController controller = readyController();
+                if (queue == null || controller == null || controller.patch_getModel() != publishedModel
+                        || owner != controller.patch_getPanel()
+                        || !command.getAddToPlaylistEndpoint().getVideoId().equals(queue.entries().get(0).videoId())) {
+                    return null;
+                }
+                List<String> videoIds = new ArrayList<>();
+                for (PlaylistQueue.Entry entry : queue.entries()) videoIds.add(entry.videoId());
+                // The immutable selection is already serialized in this owned menu command.
+                if (!command.getQueueSaveVideoIdsList().equals(videoIds)) return null;
+                return endpoint;
+            }
             if (!command.hasHideEnclosingAction() || command.hasWatchEndpoint()) return endpoint;
             PlaylistController controller = readyController();
             if (queue == null || controller == null || controller.patch_getModel() != publishedModel) return null;
@@ -830,6 +859,20 @@ public final class NativePlaylistQueuePatch {
         return PlaylistQueueRenderer.SwipeAction.newBuilder().setButtonRenderer(button).build();
     }
 
+    private static PlaylistQueueRenderer.Menu playlistMenu(PlaylistQueue source) {
+        List<String> videoIds = new ArrayList<>();
+        for (PlaylistQueue.Entry entry : source.entries()) videoIds.add(entry.videoId());
+        return PlaylistQueueRenderer.Menu.newBuilder().setMenuRenderer(
+                PlaylistQueueRenderer.MenuRenderer.newBuilder()
+                        // Only an activated, currently owned header may attach a batch selection.
+                        .addItems(serviceMenuItem(str("playlist_save"), YTIconType.BOOKMARK_BORDER,
+                                QueueSaveActions.openPicker(videoIds)))
+                        .setAccessibility(PlaylistQueueRenderer.Accessibility.newBuilder().setAccessibilityData(
+                                PlaylistQueueRenderer.AccessibilityLabel.newBuilder()
+                                        .setLabel(str("accessibility_overflow_menu")))))
+                .build();
+    }
+
     private static PlaylistQueueRenderer.Menu rowMenu(PlaylistQueue source, int index) {
         PlaylistQueue.Entry entry = source.entries().get(index);
         String videoId = entry.videoId();
@@ -894,7 +937,8 @@ public final class NativePlaylistQueuePatch {
         var panel = PlaylistQueueRenderer.Panel.newBuilder()
                 .setTitle(str("morphe_native_playlist_queue_title"))
                 .setSelectedIndex(source.selectedIndex()).setPlaylistId("").setVideoCount(source.entries().size())
-                .setLocalSelectedIndex(source.selectedIndex());
+                .setLocalSelectedIndex(source.selectedIndex())
+                .setMenu(playlistMenu(source));
         var swipeToRemove = removalAction();
         for (int index = 0; index < source.entries().size(); index++) {
             PlaylistQueue.Entry entry = source.entries().get(index);

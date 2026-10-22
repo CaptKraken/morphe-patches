@@ -16,6 +16,7 @@ import app.morphe.patcher.resourceLiteral
 import app.morphe.patcher.fieldAccess
 import app.morphe.patcher.methodCall
 import app.morphe.patcher.opcode
+import app.morphe.patcher.literal
 import app.morphe.patcher.string
 import app.morphe.util.getReference
 import com.android.tools.smali.dexlib2.AccessFlags
@@ -23,6 +24,50 @@ import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
+
+/** The native batch request, not the modern panel's single-video parameter. */
+internal object QueueSaveRequestFingerprint : Fingerprint(
+    name = "<init>",
+    filters = listOf(string("playlist/get_add_to_playlist"))
+)
+
+internal fun queueSavePickerFingerprint(requestType: String) = Fingerprint(
+    parameters = listOf("Landroid/os/Bundle;"),
+    returnType = "V",
+    filters = listOf(string("navigation_endpoint"), methodCall(definingClass = requestType, name = "<init>"))
+)
+
+internal fun queueSavePickerFactoryFingerprint(pickerType: String, endpointType: String) = Fingerprint(
+    parameters = listOf(endpointType),
+    returnType = "V",
+    filters = listOf(methodCall(definingClass = pickerType, name = "<init>"), string("navigation_endpoint"))
+)
+
+/** Response callback owned by the picker request; the renderer discriminator is stable. */
+internal fun queueSaveResponseFingerprint(callbackType: String) = Fingerprint(
+    definingClass = callbackType,
+    parameters = listOf("Ljava/lang/Object;"),
+    returnType = "V",
+    filters = listOf(opcode(Opcode.CHECK_CAST), literal(88978004L))
+)
+
+/** Native edit callback error diagnostics identify the same request's success listener. */
+internal object QueueSaveEditErrorFingerprint : Fingerprint(
+    filters = listOf(string("Error editing the playlist"))
+)
+
+internal fun queueSaveEditCreationFingerprint(callbackType: String, endpointType: String) = Fingerprint(
+    parameters = listOf(endpointType, "Ljava/lang/Object;"),
+    returnType = "V",
+    filters = listOf(methodCall(definingClass = callbackType, name = "<init>"))
+)
+
+internal fun queueSaveEditSuccessFingerprint(callbackType: String) = Fingerprint(
+    definingClass = callbackType,
+    parameters = listOf("L"),
+    returnType = "V",
+    filters = listOf(methodCall("Ljava/util/List;->iterator()Ljava/util/Iterator;"))
+)
 
 /** Stable diagnostics from the native playback queue, distinct from the panel adapter. */
 internal object NativeQueueDescriptorFingerprint : Fingerprint(
