@@ -646,7 +646,7 @@ Info: May not work on live streams"</string>
     <string name="morphe_queue_type_entry_1">Default</string>
     <string name="morphe_queue_type_entry_2">Native queue</string>
     <string name="morphe_queue_type_entry_3">Morphe queue</string>
-    <string name="morphe_queue_type_entry_4">Premium-style queue</string>
+    <string name="morphe_queue_type_entry_4">Morphe client side queue</string>
     <string name="morphe_queue_override_flyout_menu_title">Override feed flyout queue button</string>
     <string name="morphe_queue_override_flyout_menu_summary">Opens the Morphe queue instead of the YouTube queue</string>
     <string name="morphe_queue_add_flyout_menu_title">Add feed flyout queue menu item</string>
