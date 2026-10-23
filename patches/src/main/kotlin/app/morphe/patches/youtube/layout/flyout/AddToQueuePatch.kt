@@ -12,6 +12,8 @@ import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLa
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.shared.misc.settings.preference.ListPreference
+import app.morphe.patches.shared.misc.settings.preference.SwitchPreference
+import app.morphe.patches.shared.misc.settings.preference.noTitleUnsortedPreferenceCategory
 import app.morphe.patches.youtube.interaction.nativeplaylistqueue.nativePlaylistQueuePatch
 import app.morphe.patches.youtube.layout.hide.general.ContextualMenuItemBuilderOnClickFingerprint
 import app.morphe.patches.youtube.layout.playlistautoplay.navigationIntentHook
@@ -57,16 +59,20 @@ val addToQueuePatch = bytecodePatch(
 
     execute {
         PreferenceScreen.FEED.addPreferences(
-            // The native queue requires 21.16+.
-            if (is_21_15_or_greater) {
-                ListPreference("morphe_queue_type")
-            } else {
-                ListPreference(
-                    key = "morphe_queue_type",
-                    entriesKey = "morphe_queue_type_legacy_entries",
-                    entryValuesKey = "morphe_queue_type_legacy_entry_values"
-                )
-            }
+            noTitleUnsortedPreferenceCategory(
+                // The native queue requires 21.16+.
+                if (is_21_15_or_greater) {
+                    ListPreference("morphe_queue_type")
+                } else {
+                    ListPreference(
+                        key = "morphe_queue_type",
+                        entriesKey = "morphe_queue_type_legacy_entries",
+                        entryValuesKey = "morphe_queue_type_legacy_entry_values"
+                    )
+                },
+                SwitchPreference("morphe_queue_override_flyout_menu", summary = true),
+                SwitchPreference("morphe_queue_add_flyout_menu", summary = true)
+            )
         )
 
         // Flyout patch adds instructions to this method, so the prior match indexes are stale.

@@ -242,7 +242,7 @@ class QueueRuntimeBoundaryTest {
             "AddToQueuePatch" to """
                 package app.morphe.extension.youtube.patches;
                 public class AddToQueuePatch {
-                    public enum QueueType { DEFAULT, NATIVE, MORPHE }
+                    public enum QueueType { DEFAULT, NATIVE, MORPHE, LOCAL }
                 }
             """,
             "LocalQueuePatch" to """
@@ -511,7 +511,7 @@ class QueueRuntimeBoundaryTest {
                         require(LoadVideoPatch.opens == 0, "An active player after close must cancel the old Undo");
                         controller = new Controller(new Playback()); installOwned(controller);
                         undo = closePlayer(controller);
-                        Settings.QUEUE_TYPE.value = QueueType.MORPHE;
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
                         call("releaseNativeQueue"); NativePlaylistQueuePatch.onQueueUndoCommand(undo);
                         require(LoadVideoPatch.opens == 0, "Other queue type cancels closed queue Undo");
                     }
@@ -627,6 +627,8 @@ class QueueRuntimeBoundaryTest {
                         require(!(boolean) call("isNativeQueueDisabled"), "Native queue type must enable native queue");
                         Settings.QUEUE_TYPE.value = QueueType.MORPHE;
                         require((boolean) call("isNativeQueueDisabled"), "Morphe queue type must disable native queue");
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
+                        require((boolean) call("isNativeQueueDisabled"), "Premium-style queue type must disable native queue");
                         Settings.QUEUE_TYPE.value = QueueType.DEFAULT;
                         require((boolean) call("isNativeQueueDisabled"), "Default queue type must disable native queue");
                     }
@@ -637,7 +639,7 @@ class QueueRuntimeBoundaryTest {
                         // Settings notification can precede the setting cache write.
                         listener().onSharedPreferenceChanged(null, Settings.QUEUE_TYPE.key);
                         require(field("queue").get(null) == before && clears == 0, "Do not detach inside preference notification");
-                        Settings.QUEUE_TYPE.value = QueueType.MORPHE;
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
                         Utils.drain();
                         require(clears == 1 && field("queue").get(null) == null, "Detach local backend once before releasing ownership");
                         require(((WeakReference<?>) field("nativePlaybackRef").get(null)).get() == null, "Release backend reference");
@@ -654,7 +656,7 @@ class QueueRuntimeBoundaryTest {
                         require(field("queue").get(null) == null, "Switching back to native queue must not resurrect old queue");
                     }
                     public static void failedDetach() throws Exception {
-                        Settings.QUEUE_TYPE.value = QueueType.MORPHE;
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
                         var rejected = backend(true, false); var before = install(rejected);
                         call("releaseNativeQueue");
                         require(clears == 1 && field("queue").get(null) == before, "Failed detach must retain ownership for retry");
@@ -665,12 +667,12 @@ class QueueRuntimeBoundaryTest {
                         require(Logger.errors == 1 && QueueFullscreenActions.refreshes == 0, "Report failure without false UI release");
                     }
                     public static void foreignBackend() throws Exception {
-                        Settings.QUEUE_TYPE.value = QueueType.MORPHE;
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
                         install(backend(false, true)); call("releaseNativeQueue");
                         require(clears == 0 && field("queue").get(null) == null, "Never clear an unrelated backend");
                     }
                     public static void pendingStart() throws Exception {
-                        Settings.QUEUE_TYPE.value = QueueType.MORPHE;
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
                         field("pendingQueueStart").set(null, new QueueStart(new PlaylistQueue("abcdefghijk", "Pending"), ""));
                         call("tryStartQueue");
                         require(field("pendingQueueStart").get(null) == null, "Cancel first-video start while another queue type is selected");

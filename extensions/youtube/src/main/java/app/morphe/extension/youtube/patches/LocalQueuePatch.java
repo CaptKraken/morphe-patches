@@ -83,7 +83,7 @@ public final class LocalQueuePatch {
     public static boolean isEnabled() {
         // Playback hooks are installed by Add to queue. A retained setting must not
         // enable this queue when that patch is not included.
-        return AddToQueuePatch.isPatchIncluded() && Settings.QUEUE_TYPE.get() == QueueType.MORPHE;
+        return AddToQueuePatch.isPatchIncluded() && Settings.QUEUE_TYPE.get() == QueueType.LOCAL;
     }
 
     public static void setListeners(Runnable onChange, Consumer<String> onMetadata) {
