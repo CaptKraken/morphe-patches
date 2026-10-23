@@ -38,7 +38,6 @@ public final class AddToQueuePatch {
 
     private static final Drawable queueButtonDrawable = Utils.getContext()
             .getDrawable(PlaylistPatch.QueueManager.OPEN_QUEUE.drawableId);
-    private static final String queueButtonName = str("morphe_queue_flyout_title");
 
     private static final int SECONDARY_CONTAINER_ID =
             ResourceUtils.getIdentifier(ResourceType.ID, "list_item_secondary_container");
@@ -48,28 +47,14 @@ public final class AddToQueuePatch {
         DEFAULT,
         /** YouTube's own playlist interface, provided by the Native playlist queue patch. */
         NATIVE,
-        /** The Morphe queue, stored as a playlist on the YouTube account. */
-        MORPHE,
-        /** The Premium-style queue, stored on the device. */
-        LOCAL
+        /** The Morphe queue, stored on the device. */
+        MORPHE
     }
 
-    public static final class MorpheQueueAvailability implements Setting.Availability {
+    public static final class NotMorpheQueueAvailability implements Setting.Availability {
         @Override
         public boolean isAvailable() {
-            return Settings.QUEUE_TYPE.get() == QueueType.MORPHE;
-        }
-
-        @Override
-        public List<Setting<?>> getParentSettings() {
-            return List.of(Settings.QUEUE_TYPE);
-        }
-    }
-
-    public static final class NotLocalQueueAvailability implements Setting.Availability {
-        @Override
-        public boolean isAvailable() {
-            return Settings.QUEUE_TYPE.get() != QueueType.LOCAL;
+            return Settings.QUEUE_TYPE.get() != QueueType.MORPHE;
         }
 
         @Override
@@ -82,47 +67,16 @@ public final class AddToQueuePatch {
         return false; // Modified during patching.
     }
 
-    /**
-     * @return If the Morphe queue or the Premium-style queue is selected.
-     */
-    public static boolean isCustomQueueEnabled() {
-        if (!isPatchIncluded()) {
-            return false;
-        }
-
-        QueueType type = Settings.QUEUE_TYPE.get();
-        return type == QueueType.MORPHE || type == QueueType.LOCAL;
-    }
-
     public static int addFlyoutButton(Object flyoutPanel, int index, String videoId) {
-        if (!isCustomQueueEnabled()) {
+        if (!LocalQueuePatch.isEnabled()) {
             return index;
         }
 
-        if (LocalQueuePatch.isEnabled()) {
-            return addLocalQueueButtons(flyoutPanel, index, videoId);
-        }
-
-        if (!Settings.QUEUE_ADD_FLYOUT_MENU.get() ||
-                !FlyoutUtils.getFlyoutPlaylistId().isEmpty() ||
-                videoId.isEmpty()) {
-            return index;
-        }
-
-        return FlyoutUtils.addFlyoutButton(
-                flyoutPanel,
-                queueButtonDrawable,
-                queueButtonName,
-                v -> flyoutButtonClickLogic(
-                        queueButtonOriginalNames.get(0),
-                        videoId
-                ),
-                index
-        );
+        return addLocalQueueButtons(flyoutPanel, index, videoId);
     }
 
     public static void onListBound(ViewGroup itemList) {
-        if (!isFlyoutOverrideEnabled()) {
+        if (!LocalQueuePatch.isEnabled()) {
             return;
         }
 
@@ -145,28 +99,18 @@ public final class AddToQueuePatch {
                 badge.setVisibility(android.view.View.GONE);
             }
 
-            if (LocalQueuePatch.isEnabled()) {
-                Logger.printDebug(() -> "Queue row " + buttonName + " video id: '" + videoId + "'");
-                item.setOnClickListener(v -> {
-                    if (videoId.isEmpty()) {
-                        Utils.showToastShort(str(FlyoutUtils.getFlyoutPlaylistId().isEmpty()
-                                ? "morphe_local_queue_unavailable"
-                                : "morphe_local_queue_playlist_unsupported"));
-                        FlyoutUtils.dismissFlyout();
-                    } else {
-                        flyoutButtonClickLogic(buttonName, videoId);
-                    }
-                });
-            }
+            Logger.printDebug(() -> "Queue row " + buttonName + " video id: '" + videoId + "'");
+            item.setOnClickListener(v -> {
+                if (videoId.isEmpty()) {
+                    Utils.showToastShort(str(FlyoutUtils.getFlyoutPlaylistId().isEmpty()
+                            ? "morphe_local_queue_unavailable"
+                            : "morphe_local_queue_playlist_unsupported"));
+                    FlyoutUtils.dismissFlyout();
+                } else {
+                    flyoutButtonClickLogic(buttonName, videoId);
+                }
+            });
         }
-    }
-
-    private static boolean isFlyoutOverrideEnabled() {
-        if (!isCustomQueueEnabled()) {
-            return false;
-        }
-
-        return LocalQueuePatch.isEnabled() || Settings.QUEUE_OVERRIDE_FLYOUT_MENU.get();
     }
 
     private static boolean hasFlyoutButton(String buttonName) {
@@ -228,13 +172,13 @@ public final class AddToQueuePatch {
      * Injection point.
      */
     public static Runnable replaceButtonRunnable(Runnable original) {
-        if (!isFlyoutOverrideEnabled()) {
+        if (!LocalQueuePatch.isEnabled()) {
             return original;
         }
 
         if (FlyoutUtils.getFlyoutVideoId().isEmpty()) {
             Logger.printDebug(() -> "Cannot replace on item click, flyoutVideoId is empty");
-            if (LocalQueuePatch.isEnabled() && queueButtonOriginalNames.contains(FlyoutUtils.getCurrentButtonName())) {
+            if (queueButtonOriginalNames.contains(FlyoutUtils.getCurrentButtonName())) {
                 return () -> {
                     Utils.showToastShort(str("morphe_local_queue_playlist_unsupported"));
                     FlyoutUtils.dismissFlyout();
@@ -252,7 +196,7 @@ public final class AddToQueuePatch {
      */
     public static boolean replaceOnItemClick(Object object) {
         try {
-            if (!isFlyoutOverrideEnabled()) {
+            if (!LocalQueuePatch.isEnabled()) {
                 return false;
             }
 
@@ -307,22 +251,8 @@ public final class AddToQueuePatch {
     public static boolean flyoutButtonClickLogic(String buttonName, String videoId) {
         try {
             if (queueButtonOriginalNames.contains(buttonName)) {
-                if (LocalQueuePatch.isEnabled()) {
-                    LocalQueuePatch.add(videoId, queueButtonOriginalNames.get(0).equals(buttonName));
-                    FlyoutUtils.dismissFlyout();
-                    return true;
-                }
-
-                Logger.printDebug(() -> "Opening custom queue flyout with videoId: " + videoId);
-
-                Activity activity = Utils.getActivity();
-                if (activity != null && !activity.isFinishing() && !activity.isDestroyed()) {
-                    PlaylistPatch.prepareDialogBuilder(activity, videoId);
-                } else {
-                    Logger.printException(() -> "Could not open queue flyout, activity is not available");
-                }
-
-                FlyoutUtils.dismissFlyout(); // Must dismiss after showing dialog.
+                LocalQueuePatch.add(videoId, queueButtonOriginalNames.get(0).equals(buttonName));
+                FlyoutUtils.dismissFlyout();
                 return true;
             }
         } catch (Exception ex) {
