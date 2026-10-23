@@ -405,10 +405,15 @@ public final class NativePlaylistQueuePatch {
             }
             PlayerType currentType = PlayerType.getCurrent();
             if (pendingUndo != null && pendingUndo.closedPlayback() != null) {
-                // Closing destroys the old player. A new watch session or Shorts,
-                // rather than that expected teardown, invalidates its Undo.
+                // Until native close completes, queued notifications can still describe
+                // the old mini player or its dismissal animation. Once feedback is shown,
+                // an active player means another session and must invalidate this Undo.
+                boolean closing = pendingUndo.closedPlayback().feedbackOwner != null
+                        && (currentType == PlayerType.WATCH_WHILE_MINIMIZED
+                        || currentType == PlayerType.WATCH_WHILE_SLIDING_MINIMIZED_DISMISSED
+                        || currentType == PlayerType.WATCH_WHILE_SLIDING_FULLSCREEN_DISMISSED);
                 if (ShortsPlayerState.isOpen() || currentType == PlayerType.HIDDEN
-                        || (!currentType.isNoneOrHidden() && currentType != PlayerType.INLINE_MINIMAL)) {
+                        || (!currentType.isNoneOrHidden() && currentType != PlayerType.INLINE_MINIMAL && !closing)) {
                     pendingUndo = null;
                 }
             } else if (ShortsPlayerState.isOpen() || currentType.isNoneOrHidden()

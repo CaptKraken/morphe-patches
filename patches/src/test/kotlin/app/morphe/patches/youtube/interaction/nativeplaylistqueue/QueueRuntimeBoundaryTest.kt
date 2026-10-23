@@ -100,7 +100,8 @@ class QueueRuntimeBoundaryTest {
             "PlayerType" to """
                 package app.morphe.extension.youtube.shared;
                 public enum PlayerType {
-                    NONE, HIDDEN, INLINE_MINIMAL, WATCH_WHILE_MINIMIZED;
+                    NONE, HIDDEN, INLINE_MINIMAL, WATCH_WHILE_MINIMIZED,
+                    WATCH_WHILE_SLIDING_MINIMIZED_DISMISSED, WATCH_WHILE_SLIDING_FULLSCREEN_DISMISSED;
                     public static PlayerType current = NONE;
                     public static PlayerType getCurrent() { return current; }
                     public boolean isNoneOrHidden() { return this == NONE || this == HIDDEN; }
@@ -371,9 +372,21 @@ class QueueRuntimeBoundaryTest {
                         NativePlaylistQueuePatch.onQueuePlayerClosing();
                         require(controller.feedbacks == 0, "Confirmation must wait until native close runs");
                         controller.attached = false;
+                        // Pending native notifications can still describe the mini player,
+                        // followed by its dismissal animation, before the final NONE event.
+                        for (var type : new app.morphe.extension.youtube.shared.PlayerType[] {
+                                app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MINIMIZED,
+                                app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_SLIDING_MINIMIZED_DISMISSED,
+                                app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_SLIDING_FULLSCREEN_DISMISSED }) {
+                            app.morphe.extension.youtube.shared.PlayerType.current = type;
+                            call("onPlaybackContextChanged"); Utils.drain();
+                            require(field("pendingUndo").get(null) != null && controller.feedbacks == 0,
+                                "Dismissal must retain Undo and wait for the completed native close");
+                        }
                         app.morphe.extension.youtube.shared.PlayerType.current =
                             app.morphe.extension.youtube.shared.PlayerType.NONE;
                         // Exercise actual lifecycle invalidation as the old watch screen disappears.
+                        call("onPlaybackContextChanged"); Utils.drain();
                         call("onPlaybackContextChanged"); Utils.drain();
                         require(controller.feedbacks == 1, "Close must show exactly one native confirmation");
                         var action = app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.NavigationEndpoint
@@ -439,6 +452,13 @@ class QueueRuntimeBoundaryTest {
                         NativePlaylistQueuePatch.prepareQueueStartContext(watch, Map.of());
                         NativePlaylistQueuePatch.onQueueUndoCommand(undo);
                         require(LoadVideoPatch.opens == 0, "A new watch, even the same video, cancels old close Undo");
+                        controller = new Controller(new Playback()); installOwned(controller);
+                        undo = closePlayer(controller);
+                        app.morphe.extension.youtube.shared.PlayerType.current =
+                            app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MINIMIZED;
+                        call("onPlaybackContextChanged"); Utils.drain();
+                        NativePlaylistQueuePatch.onQueueUndoCommand(undo);
+                        require(LoadVideoPatch.opens == 0, "An active player after close must cancel the old Undo");
                         controller = new Controller(new Playback()); installOwned(controller);
                         undo = closePlayer(controller);
                         AddToQueuePatch.included = true; Settings.LOCAL_QUEUE.value = true;
