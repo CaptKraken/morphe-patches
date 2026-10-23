@@ -22,6 +22,7 @@ import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.ResourceType;
 import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.shared.Utils;
+import app.morphe.extension.shared.settings.Setting;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.LocalQueueSheet;
 import app.morphe.extension.youtube.patches.utils.PlaylistPatch;
@@ -42,12 +43,59 @@ public final class AddToQueuePatch {
     private static final int SECONDARY_CONTAINER_ID =
             ResourceUtils.getIdentifier(ResourceType.ID, "list_item_secondary_container");
 
+    public enum QueueType {
+        /** No queue features are added. */
+        DEFAULT,
+        /** YouTube's own playlist interface, provided by the Native playlist queue patch. */
+        NATIVE,
+        /** The Morphe queue, stored as a playlist on the YouTube account. */
+        MORPHE,
+        /** The Premium-style queue, stored on the device. */
+        LOCAL
+    }
+
+    public static final class MorpheQueueAvailability implements Setting.Availability {
+        @Override
+        public boolean isAvailable() {
+            return Settings.QUEUE_TYPE.get() == QueueType.MORPHE;
+        }
+
+        @Override
+        public List<Setting<?>> getParentSettings() {
+            return List.of(Settings.QUEUE_TYPE);
+        }
+    }
+
+    public static final class NotLocalQueueAvailability implements Setting.Availability {
+        @Override
+        public boolean isAvailable() {
+            return Settings.QUEUE_TYPE.get() != QueueType.LOCAL;
+        }
+
+        @Override
+        public List<Setting<?>> getParentSettings() {
+            return List.of(Settings.QUEUE_TYPE);
+        }
+    }
+
     public static boolean isPatchIncluded() {
         return false; // Modified during patching.
     }
 
-    public static int addFlyoutButton(Object flyoutPanel, int index, String videoId) {
+    /**
+     * @return If the Morphe queue or the Premium-style queue is selected.
+     */
+    public static boolean isCustomQueueEnabled() {
         if (!isPatchIncluded()) {
+            return false;
+        }
+
+        QueueType type = Settings.QUEUE_TYPE.get();
+        return type == QueueType.MORPHE || type == QueueType.LOCAL;
+    }
+
+    public static int addFlyoutButton(Object flyoutPanel, int index, String videoId) {
+        if (!isCustomQueueEnabled()) {
             return index;
         }
 
@@ -74,7 +122,7 @@ public final class AddToQueuePatch {
     }
 
     public static void onListBound(ViewGroup itemList) {
-        if (!isPatchIncluded() || !isFlyoutOverrideEnabled()) {
+        if (!isFlyoutOverrideEnabled()) {
             return;
         }
 
@@ -114,6 +162,10 @@ public final class AddToQueuePatch {
     }
 
     private static boolean isFlyoutOverrideEnabled() {
+        if (!isCustomQueueEnabled()) {
+            return false;
+        }
+
         return LocalQueuePatch.isEnabled() || Settings.QUEUE_OVERRIDE_FLYOUT_MENU.get();
     }
 

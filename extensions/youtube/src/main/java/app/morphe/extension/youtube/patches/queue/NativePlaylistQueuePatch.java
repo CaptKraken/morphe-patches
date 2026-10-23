@@ -41,9 +41,8 @@ import app.morphe.extension.youtube.innertube.IconOuterClass.Icon;
 import app.morphe.extension.youtube.innertube.IconOuterClass.YTIconType;
 import app.morphe.extension.youtube.innertube.NextResponseOuterClass.SingleColumnWatchNextResults;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
-import app.morphe.extension.youtube.patches.AddToQueuePatch;
+import app.morphe.extension.youtube.patches.AddToQueuePatch.QueueType;
 import app.morphe.extension.youtube.patches.LoadVideoPatch;
-import app.morphe.extension.youtube.patches.LocalQueuePatch;
 import app.morphe.extension.youtube.patches.OpenVideosFullscreenHookPatch;
 import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
@@ -190,13 +189,13 @@ public final class NativePlaylistQueuePatch {
     // SharedPreferences holds listeners weakly. Retain ours for the installed patch's lifetime.
     private static final SharedPreferences.OnSharedPreferenceChangeListener QUEUE_SETTING_LISTENER =
             (preferences, key) -> {
-                if (Settings.LOCAL_QUEUE.key.equals(key)) {
+                if (Settings.QUEUE_TYPE.key.equals(key)) {
                     // Let the setting cache update before checking the chosen provider.
                     Utils.runOnMainThread(() -> {
                         try {
-                            if (morpheQueueTakesPriority()) yieldToMorpheQueue();
+                            if (isNativeQueueDisabled()) releaseNativeQueue();
                         } catch (Exception ex) {
-                            Logger.printException(() -> "Local queue setting change failure", ex);
+                            Logger.printException(() -> "Queue type setting change failure", ex);
                         }
                     });
                 }
@@ -328,8 +327,8 @@ public final class NativePlaylistQueuePatch {
         // A queued callback may arrive after our synchronous update has returned. Never
         // treat our own accepted model as a new native baseline or publish it again.
         if (publishing) return;
-        if (morpheQueueTakesPriority()) {
-            yieldToMorpheQueue();
+        if (isNativeQueueDisabled()) {
+            releaseNativeQueue();
             if (queue == null) controllerRef = new WeakReference<>(controller);
             return;
         }
@@ -439,8 +438,8 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static void updatePlaybackContext() {
-        if (morpheQueueTakesPriority()) {
-            yieldToMorpheQueue();
+        if (isNativeQueueDisabled()) {
+            releaseNativeQueue();
             return;
         }
 
@@ -605,8 +604,8 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static void attachNativeQueueResponse(NativePlayback playback) {
-        if (morpheQueueTakesPriority()) {
-            yieldToMorpheQueue();
+        if (isNativeQueueDisabled()) {
+            releaseNativeQueue();
             return;
         }
 
@@ -638,8 +637,8 @@ public final class NativePlaylistQueuePatch {
     public static void onNativeQueueSelection() {
         Utils.runOnMainThread(() -> {
             try {
-                if (morpheQueueTakesPriority()) {
-                    yieldToMorpheQueue();
+                if (isNativeQueueDisabled()) {
+                    releaseNativeQueue();
                     return;
                 }
 
@@ -854,7 +853,7 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static boolean ownsNativePlayback(ServiceNavigator service) {
-        if (morpheQueueTakesPriority() || queue == null || service == null
+        if (isNativeQueueDisabled() || queue == null || service == null
                 || ShortsPlayerState.isOpen()) return false;
         NativePlayback playback = service.patch_getQueuePlayback();
         return playback != null && playback.patch_isLocalQueue() && playback == nativePlaybackRef.get();
@@ -1026,7 +1025,7 @@ public final class NativePlaylistQueuePatch {
     private static void showClosedQueueFeedback() {
         PendingUndo undo = pendingUndo;
         if (undo == null || undo.closedPlayback() == null || queue != null) return;
-        if (morpheQueueTakesPriority() || ShortsPlayerState.isOpen()) {
+        if (isNativeQueueDisabled() || ShortsPlayerState.isOpen()) {
             pendingUndo = null;
             return;
         }
@@ -1201,8 +1200,8 @@ public final class NativePlaylistQueuePatch {
 
     private static void updateVideo(String videoId) {
         if (!videoId.equals(VideoInformation.getVideoId())) return;
-        if (morpheQueueTakesPriority()) {
-            yieldToMorpheQueue();
+        if (isNativeQueueDisabled()) {
+            releaseNativeQueue();
             return;
         }
 
@@ -1257,7 +1256,7 @@ public final class NativePlaylistQueuePatch {
 
     public static int addFlyoutButton(Object flyoutPanel, int index, String videoId) {
         try {
-            if (morpheQueueTakesPriority() || dragSession != null || !PlaylistQueue.isVideoId(videoId)) return index;
+            if (isNativeQueueDisabled() || dragSession != null || !PlaylistQueue.isVideoId(videoId)) return index;
             PlayerType playerType = PlayerType.getCurrent();
             String playingVideoId = VideoInformation.getVideoId();
             boolean canStart = canStartQueue();
@@ -1291,13 +1290,12 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
-    private static boolean morpheQueueTakesPriority() {
-        // A retained preference must not disable this patch when the old patch is unselected.
-        return AddToQueuePatch.isPatchIncluded() && LocalQueuePatch.isEnabled();
+    private static boolean isNativeQueueDisabled() {
+        return Settings.QUEUE_TYPE.get() != QueueType.NATIVE;
     }
 
-    /** Release only our session; never modify Morphe's saved queue or its settings. */
-    private static void yieldToMorpheQueue() {
+    /** Release only our session; never modify the Morphe queue or its settings. */
+    private static void releaseNativeQueue() {
         clearPendingQueueStart();
         pendingUndo = null;
         OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
@@ -1306,26 +1304,26 @@ public final class NativePlaylistQueuePatch {
         try {
             // Use the same native transaction as Clear: no load, seek, pause or stop.
             if (playback != null && playback.patch_isLocalQueue() && !playback.patch_clearQueue()) {
-                Logger.printException(() -> "Could not release native queue for Morphe Local queue");
+                Logger.printException(() -> "Could not release native queue");
                 return;
             }
 
             releasePanel();
         } catch (Exception exception) {
-            Logger.printException(() -> "Could not release native queue for Morphe Local queue", exception);
+            Logger.printException(() -> "releaseNativeQueue failure", exception);
         }
     }
 
     private static boolean canStartQueue() {
         PlayerType type = PlayerType.getCurrent();
-        return !morpheQueueTakesPriority() && queue == null && !ShortsPlayerState.isOpen()
+        return !isNativeQueueDisabled() && queue == null && !ShortsPlayerState.isOpen()
                 && (type == PlayerType.NONE || type == PlayerType.INLINE_MINIMAL);
     }
 
     @Nullable
     private static PlaylistController readyController() {
         PlaylistController controller = controllerRef.get();
-        if (morpheQueueTakesPriority() || isQueueSuspended() || controller == null
+        if (isNativeQueueDisabled() || isQueueSuspended() || controller == null
                 || !controller.patch_isAttached() || hasPlaylist(controller)
                 || PlayerType.getCurrent().isNoneOrHidden()
                 || PlayerType.getCurrent() == PlayerType.INLINE_MINIMAL
@@ -1342,8 +1340,8 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static void addToQueue(String videoId, boolean playLast) {
-        if (morpheQueueTakesPriority()) {
-            yieldToMorpheQueue();
+        if (isNativeQueueDisabled()) {
+            releaseNativeQueue();
             return;
         }
 
@@ -1417,8 +1415,8 @@ public final class NativePlaylistQueuePatch {
 
     /** Commit a first-item queue only after native playback accepts the requested video. */
     private static void tryStartQueue() {
-        if (morpheQueueTakesPriority()) {
-            yieldToMorpheQueue();
+        if (isNativeQueueDisabled()) {
+            releaseNativeQueue();
             return;
         }
 
@@ -1506,7 +1504,7 @@ public final class NativePlaylistQueuePatch {
                 pendingUndo = null;
             }
 
-            if (morpheQueueTakesPriority() || start == null || queue != null) return context;
+            if (isNativeQueueDisabled() || start == null || queue != null) return context;
             Map<?, ?> minimized = start.minimizedContext(endpoint, context);
             if (minimized != context) {
                 OpenVideosFullscreenHookPatch.keepVideoMinimized(start.candidate().currentEntry().videoId());
@@ -1629,7 +1627,7 @@ public final class NativePlaylistQueuePatch {
 
         // Model/backend ownership survives a hidden watch screen. YouTube's native
         // quick-actions controller, rather than this binding, decides visibility.
-        return !morpheQueueTakesPriority() && queue != null && publishedModel != null && controller != null
+        return !isNativeQueueDisabled() && queue != null && publishedModel != null && controller != null
                 && controller.patch_getModel() == publishedModel
                 && playback != null && playback.patch_isLocalQueue();
     }

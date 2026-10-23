@@ -72,8 +72,9 @@ fun main(arguments: Array<String>) {
     val mode = arguments.getOrElse(1) { "standalone" }
     require(mode in setOf("standalone", "combined", "unselected"))
     val sdk = System.getenv("ANDROID_HOME") ?: error("ANDROID_HOME is required for SDK verification")
+    // Add to queue includes the native queue, so it is only selected in combined mode.
     val relatedPatches = setOf(
-        addToQueuePatch, saveToWatchLaterButtonPatch, downloadsPatch, openSystemShareSheetPatch(), loopVideoPatch,
+        saveToWatchLaterButtonPatch, downloadsPatch, openSystemShareSheetPatch(), loopVideoPatch,
         reloadVideoButtonPatch,
         disablePlaylistAutoplayPatch, hidePlayerOverlayButtonsPatch, hideVideoActionButtonsPatch,
         restoreOriginalTitlesPatch, deArrowPatch, openChannelOfLiveAvatarPatch, returnYouTubeDislikePatch,
@@ -84,7 +85,7 @@ fun main(arguments: Array<String>) {
     )
     val selected = when (mode) {
         "standalone" -> setOf(nativePlaylistQueuePatch)
-        "combined" -> relatedPatches + nativePlaylistQueuePatch
+        "combined" -> relatedPatches + addToQueuePatch
         else -> relatedPatches
     }
     fun requiresQueue(patch: Patch<*>, visited: MutableSet<Patch<*>> = mutableSetOf()): Boolean =

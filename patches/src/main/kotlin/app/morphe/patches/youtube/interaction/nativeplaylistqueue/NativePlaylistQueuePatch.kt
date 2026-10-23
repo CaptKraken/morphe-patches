@@ -16,7 +16,6 @@ import app.morphe.patches.youtube.misc.playertype.playerTypeHookPatch
 import app.morphe.patches.youtube.misc.playservice.is_21_15_or_greater
 import app.morphe.patches.youtube.misc.playservice.versionCheckPatch
 import app.morphe.patches.youtube.misc.settings.settingsPatch
-import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
 import app.morphe.patches.youtube.shared.hookVideoIntentContext
 import app.morphe.patches.youtube.shared.openVideoIntentPatch
 import app.morphe.patches.youtube.video.information.videoInformationPatch
@@ -24,7 +23,6 @@ import app.morphe.patches.youtube.video.videoid.hookBackgroundPlayVideoId
 import app.morphe.patches.youtube.video.videoid.hookVideoId
 import app.morphe.patches.youtube.video.videoid.videoIdPatch
 import app.morphe.util.setExtensionIsPatchIncluded
-import java.util.logging.Logger
 
 private const val EXTENSION_PACKAGE = "Lapp/morphe/extension/youtube/patches/queue"
 internal const val EXTENSION_CLASS = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch;"
@@ -50,15 +48,12 @@ internal const val SAVE_CALLBACK_INTERFACE = "$EXTENSION_PACKAGE/QueueSaveFeedba
 internal const val SAVE_SELECTION_CLASS = "$EXTENSION_PACKAGE/QueueSaveFeedback\$Selection;"
 internal const val UNDO_COMMAND_INTERFACE = "$EXTENSION_PACKAGE/QueueUndoActions\$Command;"
 
-@Suppress("unused")
+/**
+ * Adds a temporary video queue using YouTube's playlist interface and playback controls.
+ * Used by Add to queue when the queue type is set to the native queue.
+ */
 val nativePlaylistQueuePatch = bytecodePatch(
-    name = "Native playlist queue",
-    description = "Adds a temporary video queue using YouTube's playlist interface and playback controls. " +
-            "Supports Play next/last, reordering, shuffle, repeat, fullscreen playlist controls, " +
-            "saving the queue to a playlist, and Undo when clearing the queue or closing the player. " +
-            "Morphe's Local queue takes priority when enabled. Experimental. " +
-            "This patch works with YouTube 21.16.256 and newer.",
-    default = true
+    description = "Adds a temporary video queue using YouTube's playlist interface and playback controls."
 ) {
     dependsOn(
         sharedExtensionPatch,
@@ -72,14 +67,11 @@ val nativePlaylistQueuePatch = bytecodePatch(
         versionCheckPatch
     )
 
-    compatibleWith(COMPATIBILITY_YOUTUBE)
-
     execute {
         // 20.x builds the native playlist queue differently.
+        // Add to queue then does not offer the native queue type.
         if (!is_21_15_or_greater) {
-            return@execute Logger.getLogger(this::class.java.name).warning(
-                "'Native playlist queue' requires YouTube 21.16+"
-            )
+            return@execute
         }
 
         hookVideoIntentContext(EXTENSION_CLASS, "prepareQueueStartContext")

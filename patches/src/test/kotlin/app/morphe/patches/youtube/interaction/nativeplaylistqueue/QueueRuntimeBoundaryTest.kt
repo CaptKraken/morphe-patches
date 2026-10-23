@@ -18,10 +18,7 @@ import kotlin.test.assertEquals
 /** Tests compiled queue ownership and feedback timing across external Android boundaries. */
 class QueueRuntimeBoundaryTest {
     @Test
-    fun `excluded Morphe queue does not suppress native queue`() = withFixture("excludedPatch")
-
-    @Test
-    fun `disabled Local queue does not suppress native queue`() = withFixture("disabledSetting")
+    fun `native queue is active only for the native queue type`() = withFixture("queueTypeSelection")
 
     @Test
     fun `handoff waits for setting cache and rejects late responses without restoring old session`() =
@@ -34,7 +31,7 @@ class QueueRuntimeBoundaryTest {
     fun `handoff never clears a foreign backend`() = withFixture("foreignBackend")
 
     @Test
-    fun `Morphe priority cancels a pending first video start`() = withFixture("pendingStart")
+    fun `other queue types cancel a pending first video start`() = withFixture("pendingStart")
 
     @Test
     fun `local Undo follows normal confirmation timing and replacement`() = withFixture("normalUndoTiming")
@@ -225,35 +222,33 @@ class QueueRuntimeBoundaryTest {
                     public static void printException(LogMessage message, Throwable e) { printException(message); }
                 }
             """,
-            "BooleanSetting" to """
+            "EnumSetting" to """
                 package app.morphe.extension.shared.settings;
-                public class BooleanSetting {
-                    public String key = "morphe_local_queue";
-                    public boolean value;
-                    public Boolean get() { return value; }
+                public class EnumSetting<T extends Enum<T>> {
+                    public String key = "morphe_queue_type";
+                    public T value;
+                    public EnumSetting(T value) { this.value = value; }
+                    public T get() { return value; }
                 }
             """,
             "Settings" to """
                 package app.morphe.extension.youtube.settings;
+                import app.morphe.extension.youtube.patches.AddToQueuePatch.QueueType;
                 public class Settings {
-                    public static final app.morphe.extension.shared.settings.BooleanSetting LOCAL_QUEUE =
-                        new app.morphe.extension.shared.settings.BooleanSetting();
+                    public static final app.morphe.extension.shared.settings.EnumSetting<QueueType> QUEUE_TYPE =
+                        new app.morphe.extension.shared.settings.EnumSetting<>(QueueType.NATIVE);
                 }
             """,
             "AddToQueuePatch" to """
                 package app.morphe.extension.youtube.patches;
                 public class AddToQueuePatch {
-                    public static boolean included;
-                    public static boolean isPatchIncluded() { return included; }
+                    public enum QueueType { DEFAULT, NATIVE, MORPHE, LOCAL }
                 }
             """,
             "LocalQueuePatch" to """
                 package app.morphe.extension.youtube.patches;
                 public class LocalQueuePatch {
                     public static final java.util.List<String> savedItems = java.util.List.of("saved-video");
-                    public static boolean isEnabled() {
-                        return app.morphe.extension.youtube.settings.Settings.LOCAL_QUEUE.get();
-                    }
                 }
             """,
             "OpenVideosFullscreenHookPatch" to """
@@ -277,6 +272,7 @@ class QueueRuntimeBoundaryTest {
                 import android.content.SharedPreferences;
                 import app.morphe.extension.shared.*;
                 import app.morphe.extension.youtube.patches.*;
+                import app.morphe.extension.youtube.patches.AddToQueuePatch.QueueType;
                 import app.morphe.extension.youtube.settings.Settings;
                 import java.lang.ref.WeakReference;
                 import java.lang.reflect.*;
@@ -487,7 +483,7 @@ class QueueRuntimeBoundaryTest {
                             "A failed restore must release protection at the navigation deadline");
                         beginClosedRestore();
                         int replacementBlock = LoadVideoPatch.blockInlinePlaybackUntilPlayerOpens();
-                        call("yieldToMorpheQueue");
+                        call("releaseNativeQueue");
                         require(LoadVideoPatch.activeBlock == replacementBlock,
                             "Cancelling queue restore must not release a newer Reload operation's block");
                         var start = owner.getDeclaredMethod("startQueue", QueueStart.class); start.setAccessible(true);
@@ -515,9 +511,9 @@ class QueueRuntimeBoundaryTest {
                         require(LoadVideoPatch.opens == 0, "An active player after close must cancel the old Undo");
                         controller = new Controller(new Playback()); installOwned(controller);
                         undo = closePlayer(controller);
-                        AddToQueuePatch.included = true; Settings.LOCAL_QUEUE.value = true;
-                        call("yieldToMorpheQueue"); NativePlaylistQueuePatch.onQueueUndoCommand(undo);
-                        require(LoadVideoPatch.opens == 0, "Morphe priority cancels closed queue Undo");
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
+                        call("releaseNativeQueue"); NativePlaylistQueuePatch.onQueueUndoCommand(undo);
+                        require(LoadVideoPatch.opens == 0, "Other queue type cancels closed queue Undo");
                     }
                     public static void closedPlayerGuards() throws Exception {
                         var controller = new Controller(new Playback()); var before = installOwned(controller);
@@ -626,22 +622,24 @@ class QueueRuntimeBoundaryTest {
                         Utils.advanceBy(1);
                         require(field("pendingUndo").get(null) == null, "Accessible Undo must expire at twenty seconds");
                     }
-                    public static void excludedPatch() throws Exception {
-                        Settings.LOCAL_QUEUE.value = true; AddToQueuePatch.included = false;
-                        require(!(boolean) call("morpheQueueTakesPriority"), "Excluded old patch must not block native queue");
-                    }
-                    public static void disabledSetting() throws Exception {
-                        AddToQueuePatch.included = true; Settings.LOCAL_QUEUE.value = false;
-                        require(!(boolean) call("morpheQueueTakesPriority"), "Disabled Local queue must not block native queue");
+                    public static void queueTypeSelection() throws Exception {
+                        Settings.QUEUE_TYPE.value = QueueType.NATIVE;
+                        require(!(boolean) call("isNativeQueueDisabled"), "Native queue type must enable native queue");
+                        Settings.QUEUE_TYPE.value = QueueType.MORPHE;
+                        require((boolean) call("isNativeQueueDisabled"), "Morphe queue type must disable native queue");
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
+                        require((boolean) call("isNativeQueueDisabled"), "Premium-style queue type must disable native queue");
+                        Settings.QUEUE_TYPE.value = QueueType.DEFAULT;
+                        require((boolean) call("isNativeQueueDisabled"), "Default queue type must disable native queue");
                     }
                     public static void acceptedHandoff() throws Exception {
-                        AddToQueuePatch.included = true; Settings.LOCAL_QUEUE.value = false;
+                        Settings.QUEUE_TYPE.value = QueueType.NATIVE;
                         var live = backend(true, true);
                         PlaylistQueue before = install(live);
                         // Settings notification can precede the setting cache write.
-                        listener().onSharedPreferenceChanged(null, Settings.LOCAL_QUEUE.key);
+                        listener().onSharedPreferenceChanged(null, Settings.QUEUE_TYPE.key);
                         require(field("queue").get(null) == before && clears == 0, "Do not detach inside preference notification");
-                        Settings.LOCAL_QUEUE.value = true;
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
                         Utils.drain();
                         require(clears == 1 && field("queue").get(null) == null, "Detach local backend once before releasing ownership");
                         require(((WeakReference<?>) field("nativePlaybackRef").get(null)).get() == null, "Release backend reference");
@@ -653,14 +651,14 @@ class QueueRuntimeBoundaryTest {
                         require(LocalQueuePatch.savedItems.equals(List.of("saved-video")), "Preserve Morphe items");
                         NativePlaylistQueuePatch.onNativeQueueResponse(live); Utils.drain();
                         require(clears == 1 && field("queue").get(null) == null, "Late response must not attach native queue");
-                        Settings.LOCAL_QUEUE.value = false;
-                        listener().onSharedPreferenceChanged(null, Settings.LOCAL_QUEUE.key); Utils.drain();
-                        require(field("queue").get(null) == null, "Turning Local queue off must not resurrect old queue");
+                        Settings.QUEUE_TYPE.value = QueueType.NATIVE;
+                        listener().onSharedPreferenceChanged(null, Settings.QUEUE_TYPE.key); Utils.drain();
+                        require(field("queue").get(null) == null, "Switching back to native queue must not resurrect old queue");
                     }
                     public static void failedDetach() throws Exception {
-                        AddToQueuePatch.included = true; Settings.LOCAL_QUEUE.value = true;
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
                         var rejected = backend(true, false); var before = install(rejected);
-                        call("yieldToMorpheQueue");
+                        call("releaseNativeQueue");
                         require(clears == 1 && field("queue").get(null) == before, "Failed detach must retain ownership for retry");
                         require(((WeakReference<?>) field("nativePlaybackRef").get(null)).get() == rejected,
                             "Failed detach must retain backend reference");
@@ -669,15 +667,15 @@ class QueueRuntimeBoundaryTest {
                         require(Logger.errors == 1 && QueueFullscreenActions.refreshes == 0, "Report failure without false UI release");
                     }
                     public static void foreignBackend() throws Exception {
-                        AddToQueuePatch.included = true; Settings.LOCAL_QUEUE.value = true;
-                        install(backend(false, true)); call("yieldToMorpheQueue");
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
+                        install(backend(false, true)); call("releaseNativeQueue");
                         require(clears == 0 && field("queue").get(null) == null, "Never clear an unrelated backend");
                     }
                     public static void pendingStart() throws Exception {
-                        AddToQueuePatch.included = true; Settings.LOCAL_QUEUE.value = true;
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
                         field("pendingQueueStart").set(null, new QueueStart(new PlaylistQueue("abcdefghijk", "Pending"), ""));
                         call("tryStartQueue");
-                        require(field("pendingQueueStart").get(null) == null, "Cancel first-video start while Morphe has priority");
+                        require(field("pendingQueueStart").get(null) == null, "Cancel first-video start while another queue type is selected");
                     }
                 }
             """.trimIndent())
