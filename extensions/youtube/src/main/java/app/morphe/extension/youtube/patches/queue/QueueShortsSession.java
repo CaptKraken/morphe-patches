@@ -29,7 +29,9 @@ final class QueueShortsSession {
             suspended = true;
             return Action.SUSPEND;
         }
+
         if (!suspended) return Action.NONE;
+
         // A regular background session can resume before its watch view/controller.
         // The caller must confirm both the service's current ID and active ID;
         // UI visibility alone cannot establish that playback has ended.
@@ -37,15 +39,18 @@ final class QueueShortsSession {
             suspended = false;
             return Action.RESUME;
         }
+
         if (!regularPlayerVisible && activeVideoId.isEmpty() && regularVideoId.isEmpty()) {
             suspended = false;
             return Action.RELEASE;
         }
+
         // Detaching Shorts does not itself restore the regular video ID or its
         // controller. Wait for their agreement; a late Short must not end the queue.
         if (!regularPlayerVisible || activeVideoId.isEmpty() || regularVideoId.isEmpty()
                 || !activeVideoId.equals(regularVideoId)) return Action.WAIT;
         suspended = false;
+
         // A newly opened regular video is inserted by the queue's controller path.
         // Only an account playlist takes ownership away from the retained queue.
         return accountPlaylist ? Action.RELEASE : Action.RESUME;

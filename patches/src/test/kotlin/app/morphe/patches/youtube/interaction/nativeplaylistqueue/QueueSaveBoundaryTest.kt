@@ -34,6 +34,9 @@ class QueueSaveBoundaryTest {
                 }
             """.trimIndent())
         }
+        val nullable = File(output, "Nullable.java").apply {
+            writeText("package androidx.annotation; public @interface Nullable {}")
+        }
         val strings = File(output, "StringRef.java").apply {
             writeText("""
                 package app.morphe.extension.shared;
@@ -87,7 +90,7 @@ class QueueSaveBoundaryTest {
                 "--release", "17", "-classpath", protobuf.path, "-d", output.path,
                 File(root, "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveActions.java").path,
                 File(generated, "IconOuterClass.java").path,
-                File(generated, "queue/PlaylistQueueRenderer.java").path, logger.path, strings.path, duration.path,
+                File(generated, "queue/PlaylistQueueRenderer.java").path, logger.path, nullable.path, strings.path, duration.path,
                 File(root, "extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueSaveFeedback.java").path, fixture.path))
             URLClassLoader(arrayOf(output.toURI().toURL()), GeneratedMessageLite::class.java.classLoader).use { loader ->
                 loader.loadClass("app.morphe.extension.youtube.patches.queue.SaveFixture")

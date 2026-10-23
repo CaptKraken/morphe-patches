@@ -7,7 +7,6 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
-import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
 
 import java.util.HashSet;
@@ -52,8 +51,8 @@ public final class QueueSaveFeedback {
             if (toast.getQueueSaveConfirmation()) return CONFIRMATION_DURATION_MILLISECONDS;
             String undoToken = toast.getActionButton().getButtonRenderer().getServiceEndpoint().getQueueUndoToken();
             return undoToken.isEmpty() ? 0 : NativePlaylistQueuePatch.queueUndoDuration(undoToken);
-        } catch (InvalidProtocolBufferException exception) {
-            Logger.printException(() -> "Could not read queue save confirmation duration", exception);
+        } catch (Exception ex) {
+            Logger.printException(() -> "confirmationDuration failure", ex);
             return 0;
         }
     }
@@ -73,23 +72,28 @@ public final class QueueSaveFeedback {
                 validUndo = false;
                 break;
             }
+
             var entry = result.getAddedEntry();
             if (entry.getSetVideoId().isEmpty() || !requestedIds.contains(entry.getVideoId())) {
                 validUndo = false;
                 break;
             }
+
             entryIds.add(entry.getSetVideoId());
         }
+
         if (validUndo && !entryIds.isEmpty()) {
             var undo = PlaylistEditEndpoint.newBuilder().setPlaylistId(selection.playlistId());
             for (String id : entryIds) {
                 // ACTION_REMOVE_VIDEO uses the exact playlist entry, not video ID.
                 undo.addActions(PlaylistEditAction.newBuilder().setAction(2).setSetVideoId(id));
             }
+
             toast.setActionButton(SwipeAction.newBuilder().setButtonRenderer(SwipeButton.newBuilder()
                     .setText(Text.newBuilder().setSimpleText(undoLabel))
                     .setServiceEndpoint(NavigationEndpoint.newBuilder().setPlaylistEditEndpoint(undo))));
         }
+
         return response.toBuilder().addActions(NavigationEndpoint.newBuilder().setAddToToastAction(
                 AddToToastAction.newBuilder().setItem(QueueToastItem.newBuilder().setToastRenderer(toast)))).build();
     }

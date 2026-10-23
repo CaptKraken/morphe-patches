@@ -40,20 +40,25 @@ public class OpenVideosFullscreenHookPatch {
         fullscreenInterfaceRef = new WeakReference<>(fullscreenInterface);
     }
 
+    private static final int MINIMIZED_START_TIMEOUT_MILLISECONDS = 10_000;
+
     private record MinimizedStart(String videoId) {}
+
     @Nullable
     private static MinimizedStart videoToKeepMinimized;
-    private static final int MINIMIZED_START_TIMEOUT_MILLISECONDS = 10_000;
 
     /** Explicit queue starts preserve browsing even with automatic fullscreen enabled. */
     public static void keepVideoMinimized(@Nullable String videoId) {
         MinimizedStart start = videoId == null ? null : new MinimizedStart(videoId);
         videoToKeepMinimized = start;
+
         // The fullscreen patch can be absent, so its playback callback may never
         // consume this request. Bound its lifetime without expiring a newer start.
-        if (start != null) Utils.runOnMainThreadDelayed(() -> {
-            if (videoToKeepMinimized == start) videoToKeepMinimized = null;
-        }, MINIMIZED_START_TIMEOUT_MILLISECONDS);
+        if (start != null) {
+            Utils.runOnMainThreadDelayed(() -> {
+                if (videoToKeepMinimized == start) videoToKeepMinimized = null;
+            }, MINIMIZED_START_TIMEOUT_MILLISECONDS);
+        }
     }
 
     private static boolean keepCurrentVideoMinimized() {

@@ -7,6 +7,8 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import androidx.annotation.Nullable;
+
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.util.Locale;
@@ -32,6 +34,7 @@ final class PlaylistMetadataRequest {
 
     private PlaylistMetadataRequest() {}
 
+    @Nullable
     static VideoMetadata fetch(String videoId, String title, Locale locale) {
         Utils.verifyOffMainThread();
         HttpURLConnection connection = null;
@@ -46,10 +49,12 @@ final class PlaylistMetadataRequest {
             try (var output = connection.getOutputStream()) {
                 output.write(body);
             }
+
             if (connection.getResponseCode() == Requester.HTTP_STATUS_CODE_SUCCESS) {
                 VideoMetadata result = VideoMetadata.fromSearch(Requester.parseJSONObject(connection), videoId);
                 return Locale.getDefault().equals(locale) ? result : null;
             }
+
             Logger.printInfo(() -> "Native playlist card lookup was unavailable");
         } catch (IOException exception) {
             Logger.printInfo(() -> "Could not complete native playlist card metadata", exception);
@@ -58,6 +63,7 @@ final class PlaylistMetadataRequest {
         } finally {
             if (connection != null) connection.disconnect();
         }
+
         return null;
     }
 }

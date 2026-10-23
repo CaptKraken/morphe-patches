@@ -8,23 +8,34 @@
 package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 
 import app.morphe.patcher.Fingerprint
+import app.morphe.patcher.InstructionLocation.MatchAfterAnywhere
 import app.morphe.patcher.InstructionLocation.MatchAfterImmediately
 import app.morphe.patcher.InstructionLocation.MatchAfterWithin
 import app.morphe.patcher.StringComparisonType
+import app.morphe.patcher.anyInstruction
 import app.morphe.patcher.checkCast
 import app.morphe.patcher.fieldAccess
+import app.morphe.patcher.instanceOf
 import app.morphe.patcher.literal
 import app.morphe.patcher.methodCall
 import app.morphe.patcher.opcode
 import app.morphe.patcher.resource.ResourceType
 import app.morphe.patcher.resourceLiteral
 import app.morphe.patcher.string
-import app.morphe.patcher.util.getReference
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
-import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
+
+/** A generated protobuf message creates its default instance in its static initializer. */
+internal fun protoDefaultInstanceFingerprint(messageType: String) = Fingerprint(
+    definingClass = messageType,
+    name = "<clinit>",
+    filters = listOf(
+        fieldAccess(definingClass = messageType, type = messageType, opcode = Opcode.SPUT_OBJECT)
+    )
+)
 
 /** The native batch request, not the modern panel's single-video parameter. */
 internal object QueueSaveRequestFingerprint : Fingerprint(
@@ -32,24 +43,44 @@ internal object QueueSaveRequestFingerprint : Fingerprint(
     filters = listOf(string("playlist/get_add_to_playlist"))
 )
 
+/** The picker fragment reads its serialized endpoint from its arguments. */
 internal fun queueSavePickerFingerprint(requestType: String) = Fingerprint(
     parameters = listOf("Landroid/os/Bundle;"),
     returnType = "V",
-    filters = listOf(string("navigation_endpoint"), methodCall(definingClass = requestType, name = "<init>"))
+    filters = listOf(
+        fieldAccess(type = "Landroid/os/Bundle;", opcode = Opcode.IGET_OBJECT),
+        string("navigation_endpoint", location = MatchAfterImmediately()),
+        methodCall(definingClass = requestType, name = "<init>")
+    )
 )
 
+/** Opens the picker with the endpoint serialized into its arguments. */
 internal fun queueSavePickerFactoryFingerprint(pickerType: String, endpointType: String) = Fingerprint(
     parameters = listOf(endpointType),
     returnType = "V",
-    filters = listOf(methodCall(definingClass = pickerType, name = "<init>"), string("navigation_endpoint"))
+    filters = listOf(
+        methodCall(definingClass = pickerType, name = "<init>"),
+        methodCall(name = "toByteArray", parameters = emptyList(), returnType = "[B"),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+        string("navigation_endpoint", location = MatchAfterImmediately()),
+        methodCall(
+            "Landroid/os/Bundle;->putByteArray(Ljava/lang/String;[B)V",
+            location = MatchAfterImmediately()
+        )
+    )
 )
 
 /** Response callback owned by the picker request; the renderer discriminator is stable. */
-internal fun queueSaveResponseFingerprint(callbackType: String) = Fingerprint(
-    definingClass = callbackType,
+internal object QueueSaveResponseFingerprint : Fingerprint(
     parameters = listOf("Ljava/lang/Object;"),
     returnType = "V",
     filters = listOf(opcode(Opcode.CHECK_CAST), literal(88978004L))
+)
+
+internal fun queueSaveResponsePickerFingerprint(pickerType: String) = Fingerprint(
+    classFingerprint = QueueSaveResponseFingerprint,
+    name = "<init>",
+    filters = listOf(fieldAccess(definingClass = "this", type = pickerType, opcode = Opcode.IPUT_OBJECT))
 )
 
 /** Native edit callback error diagnostics identify the same request's success listener. */
@@ -70,45 +101,284 @@ internal fun queueSaveEditSuccessFingerprint(callbackType: String) = Fingerprint
     filters = listOf(methodCall("Ljava/util/List;->iterator()Ljava/util/Iterator;"))
 )
 
-/** Stable diagnostics from the native playback queue, distinct from the panel adapter. */
+/**
+ * The native playback queue's navigation descriptor lookup. It wraps the delegated
+ * queue call in the queue's own change transaction.
+ */
 internal object NativeQueueDescriptorFingerprint : Fingerprint(
+    returnType = "L",
     parameters = listOf("L"),
-    // 21.16 concatenates this diagnostic; 21.20 formats it in one string.
-    filters = listOf(string("getNavigationDescriptor for ", StringComparisonType.STARTS_WITH))
-)
-
-internal object NativeQueueSelectionFingerprint : Fingerprint(
-    filters = listOf(string("Navigation committed to a video that is not expected by the navigable queue"))
-)
-
-internal fun nativeQueueWrapperFingerprint(navigator: String, repeat: String, shuffle: String) = Fingerprint(
-    name = "<init>",
-    custom = { method, _ -> method.parameterTypes.take(3) == listOf(navigator, repeat, shuffle) }
-)
-
-/** The native mutable queue builds its shuffle links with the framework shuffler. */
-internal fun nativeQueueShuffleSetterFingerprint(queue: String) = Fingerprint(
-    definingClass = queue,
-    parameters = listOf("Z"),
-    returnType = "V",
-    filters = listOf(methodCall("Ljava/util/Collections;->shuffle(Ljava/util/List;)V"))
-)
-
-internal fun nativeQueueLoaderFingerprint(service: String, descriptor: String) = Fingerprint(
-    definingClass = service,
-    parameters = listOf(descriptor, "L"),
-    filters = listOf(string("Initializing a PlaybackSequencer in loaderNavigator, but it does not exist"))
-)
-
-/** Read the active sequencer through its service holder, independently of loader inlining. */
-internal fun nativeQueueSequencerFingerprint(service: String, sequencer: String) = Fingerprint(
-    definingClass = service,
     filters = listOf(
-        fieldAccess(definingClass = service, opcode = Opcode.IGET_OBJECT),
-        fieldAccess(type = "Ljava/lang/Object;", opcode = Opcode.IGET_OBJECT,
-            location = MatchAfterImmediately()),
-        checkCast(sequencer, location = MatchAfterWithin(6))
+        // Begin the change transaction.
+        methodCall(
+            definingClass = "this",
+            opcode = Opcode.INVOKE_DIRECT,
+            parameters = emptyList(),
+            returnType = "Ljava/lang/Object;"
+        ),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+        // Queue storage.
+        fieldAccess(definingClass = "this", opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, location = MatchAfterImmediately()),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+        // End the change transaction.
+        methodCall(
+            definingClass = "this",
+            opcode = Opcode.INVOKE_DIRECT,
+            returnType = "V",
+            location = MatchAfterWithin(1)
+        ),
+        // 21.16 concatenates this diagnostic; 21.20+ formats it in one string.
+        string("getNavigationDescriptor for ", StringComparisonType.STARTS_WITH)
     )
+)
+
+/** Ends a queue change: releases the change guard, then refreshes the queue state. */
+internal fun nativeQueueChangeEndFingerprint(end: MethodReference) = Fingerprint(
+    definingClass = end.definingClass,
+    name = end.name,
+    parameters = end.parameterTypes.map { it.toString() },
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(definingClass = "this", opcode = Opcode.IGET_OBJECT),
+        methodCall(
+            opcode = Opcode.INVOKE_VIRTUAL,
+            parameters = listOf("Ljava/lang/Object;"),
+            returnType = "V",
+            location = MatchAfterImmediately()
+        ),
+        methodCall(definingClass = "this", parameters = listOf("Z"), returnType = "V")
+    )
+)
+
+/** Refreshes the queue state and notifies its listeners. */
+internal fun nativeQueueRefreshFingerprint(refresh: MethodReference) = Fingerprint(
+    definingClass = refresh.definingClass,
+    name = refresh.name,
+    parameters = refresh.parameterTypes.map { it.toString() },
+    returnType = refresh.returnType
+)
+
+/** Accepts a watch response into the queue, inside a change transaction. */
+internal fun nativeQueueAcceptFingerprint(queueType: String, responseType: String, begin: MethodReference) =
+    Fingerprint(
+        definingClass = queueType,
+        returnType = "V",
+        parameters = listOf(responseType),
+        filters = listOf(
+            methodCall(reference = begin),
+            opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+            fieldAccess(
+                definingClass = "this",
+                type = responseType,
+                opcode = Opcode.IPUT_OBJECT,
+                location = MatchAfterImmediately()
+            )
+        )
+    )
+
+/** Disposes the queue and drops its weak registration. */
+internal fun nativeQueueDisposeFingerprint(queueType: String) = Fingerprint(
+    definingClass = queueType,
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(methodCall("Ljava/lang/ref/WeakReference;->get()Ljava/lang/Object;"))
+)
+
+/** The navigator wrapper remembers whether its initial navigator is the native queue. */
+internal fun nativeQueueWrapperConstructorFingerprint(queueType: String) = Fingerprint(
+    name = "<init>",
+    filters = listOf(
+        instanceOf(queueType),
+        fieldAccess(
+            definingClass = "this",
+            type = "Z",
+            opcode = Opcode.IPUT_BOOLEAN,
+            location = MatchAfterImmediately()
+        )
+    )
+)
+
+/**
+ * The wrapper receives a watch response. With a playlist panel it switches
+ * to a native queue built from the response's watch command.
+ */
+internal fun nativeQueueReceiveFingerprint(queueFlag: FieldReference) = Fingerprint(
+    definingClass = queueFlag.definingClass,
+    returnType = "V",
+    parameters = listOf("L"),
+    filters = listOf(
+        fieldAccess(reference = queueFlag, opcode = Opcode.IGET_BOOLEAN),
+        // Response playlist panel.
+        fieldAccess(opcode = Opcode.IGET_OBJECT),
+        opcode(Opcode.IF_EQZ, location = MatchAfterImmediately()),
+        // Active navigator and queue container.
+        fieldAccess(definingClass = "this", opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        fieldAccess(definingClass = "this", opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        // Descriptor builder with the response's watch command.
+        opcode(Opcode.NEW_INSTANCE, location = MatchAfterImmediately()),
+        methodCall(name = "<init>", location = MatchAfterImmediately()),
+        fieldAccess(opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        fieldAccess(opcode = Opcode.IPUT_OBJECT, location = MatchAfterImmediately()),
+        methodCall(opcode = Opcode.INVOKE_VIRTUAL, location = MatchAfterImmediately()),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+        // Queue container creates the native queue.
+        methodCall(opcode = Opcode.INVOKE_VIRTUAL, location = MatchAfterImmediately()),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+        // Switch navigators.
+        methodCall(definingClass = "this", opcode = Opcode.INVOKE_DIRECT, location = MatchAfterImmediately()),
+        opcode(Opcode.CONST_4, location = MatchAfterImmediately()),
+        fieldAccess(reference = queueFlag, opcode = Opcode.IPUT_BOOLEAN, location = MatchAfterImmediately()),
+        // Stored response, delivered to the active navigator.
+        fieldAccess(definingClass = "this", opcode = Opcode.IPUT_OBJECT, location = MatchAfterImmediately()),
+        fieldAccess(definingClass = "this", opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, location = MatchAfterImmediately())
+    )
+)
+
+/** The wrapper delegates the repeat mode to the active navigator. */
+internal fun nativeQueueRepeatSetterFingerprint(wrapperType: String) = Fingerprint(
+    definingClass = wrapperType,
+    returnType = "V",
+    parameters = listOf("I"),
+    filters = listOf(
+        fieldAccess(definingClass = "this", opcode = Opcode.IGET_OBJECT),
+        methodCall(
+            opcode = Opcode.INVOKE_INTERFACE,
+            parameters = listOf("I"),
+            returnType = "V",
+            location = MatchAfterImmediately()
+        )
+    )
+)
+
+internal fun nativeQueueRepeatGetterFingerprint(wrapperType: String) = Fingerprint(
+    definingClass = wrapperType,
+    returnType = "I",
+    parameters = emptyList(),
+    filters = listOf(
+        fieldAccess(definingClass = "this", opcode = Opcode.IGET_OBJECT),
+        methodCall(
+            opcode = Opcode.INVOKE_INTERFACE,
+            parameters = emptyList(),
+            returnType = "I",
+            location = MatchAfterImmediately()
+        )
+    )
+)
+
+/** Server autoplay replaces the active navigator with an autoplay navigator. */
+internal fun nativeQueueAutoplayFingerprint(navigator: FieldReference, switchNavigator: MethodReference) =
+    Fingerprint(
+        definingClass = navigator.definingClass,
+        returnType = "V",
+        parameters = listOf("L"),
+        filters = listOf(
+            fieldAccess(reference = navigator, opcode = Opcode.IGET_OBJECT),
+            opcode(Opcode.INSTANCE_OF, location = MatchAfterImmediately()),
+            methodCall(reference = switchNavigator)
+        )
+    )
+
+internal fun nativeQueueAutoplayConstructorFingerprint(autoplayType: String) = Fingerprint(
+    definingClass = autoplayType,
+    name = "<init>",
+    parameters = List(3) { "Lj\$/util/Optional;" }
+)
+
+/** The wrapper disposes its active navigator. */
+internal fun nativeQueueWrapperDisposeFingerprint(navigator: FieldReference, disposeName: String) = Fingerprint(
+    definingClass = navigator.definingClass,
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(
+        fieldAccess(reference = navigator, opcode = Opcode.IGET_OBJECT),
+        methodCall(
+            definingClass = navigator.type,
+            name = disposeName,
+            parameters = emptyList(),
+            returnType = "V",
+            location = MatchAfterImmediately()
+        )
+    )
+)
+
+/** The watch response is a parcelable envelope around the server response. */
+internal fun nativeQueueResponseConstructorFingerprint(responseType: String) = Fingerprint(
+    definingClass = responseType,
+    name = "<init>",
+    parameters = listOf("L")
+)
+
+internal fun nativeQueueResponseSourceFingerprint(responseType: String, sourceType: String) = Fingerprint(
+    definingClass = responseType,
+    name = "<init>",
+    filters = listOf(fieldAccess(definingClass = "this", type = sourceType, opcode = Opcode.IPUT_OBJECT))
+)
+
+/**
+ * The mutable queue builds its shuffle order with the framework shuffler,
+ * storing successor and predecessor index arrays.
+ */
+internal object NativeQueueShuffleFingerprint : Fingerprint(
+    returnType = "V",
+    parameters = listOf("Z"),
+    filters = listOf(
+        methodCall(opcode = Opcode.INVOKE_VIRTUAL, parameters = listOf("I"), returnType = "I"),
+        opcode(Opcode.MOVE_RESULT, location = MatchAfterImmediately()),
+        // Selected position.
+        methodCall(
+            opcode = Opcode.INVOKE_VIRTUAL,
+            parameters = emptyList(),
+            returnType = "I",
+            location = MatchAfterImmediately()
+        ),
+        methodCall("Ljava/util/Collections;->shuffle(Ljava/util/List;)V"),
+        opcode(Opcode.NEW_ARRAY, location = MatchAfterImmediately()),
+        fieldAccess(definingClass = "this", type = "[I", opcode = Opcode.IPUT_OBJECT, location = MatchAfterImmediately()),
+        opcode(Opcode.NEW_ARRAY, location = MatchAfterImmediately()),
+        fieldAccess(definingClass = "this", type = "[I", opcode = Opcode.IPUT_OBJECT, location = MatchAfterImmediately())
+    )
+)
+
+/** The mutable queue only inserts descriptors without a playlist ID. */
+internal fun nativeQueueLocalLoadFingerprint(mutableType: String, descriptorType: String, requestType: String) =
+    Fingerprint(
+        definingClass = mutableType,
+        returnType = requestType,
+        parameters = listOf(descriptorType, "L"),
+        filters = listOf(
+            methodCall(definingClass = descriptorType, parameters = emptyList(), returnType = "Ljava/lang/String;"),
+            opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+            methodCall("Ljava/lang/String;->isEmpty()Z", location = MatchAfterImmediately())
+        )
+    )
+
+/** The playback service loads a descriptor into its active sequencer. */
+internal fun nativeQueueLoaderFingerprint(serviceType: String) = Fingerprint(
+    definingClass = serviceType,
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(type = "Ljava/lang/Object;", opcode = Opcode.IGET_OBJECT),
+        opcode(Opcode.IF_EQZ, location = MatchAfterWithin(1)),
+        opcode(Opcode.CHECK_CAST, location = MatchAfterWithin(1)),
+        string("Initializing a PlaybackSequencer in loaderNavigator, but it does not exist")
+    )
+)
+
+internal fun nativeQueueSequencerOwnerFingerprint(serviceType: String, holderType: String) = Fingerprint(
+    definingClass = serviceType,
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(definingClass = "this", type = holderType, opcode = Opcode.IGET_OBJECT),
+        string("Initializing a PlaybackSequencer in loaderNavigator, but it does not exist")
+    )
+)
+
+internal fun nativeQueueSequencerNavigatorFingerprint(sequencerType: String, navigatorType: String) = Fingerprint(
+    definingClass = sequencerType,
+    name = "<init>",
+    filters = listOf(fieldAccess(definingClass = "this", type = navigatorType, opcode = Opcode.IPUT_OBJECT))
 )
 
 internal object PlaylistModelDescriptionFingerprint : Fingerprint(
@@ -121,6 +391,23 @@ internal object PlaylistModelDescriptionFingerprint : Fingerprint(
 internal object PlaylistControllerConstructorFingerprint : Fingerprint(
     name = "<init>",
     filters = listOf(string("engagement-panel-playlist"))
+)
+
+/** Binds the fullscreen quick actions container view to its controller. */
+internal object QuickActionsContainerFingerprint : Fingerprint(
+    returnType = "V",
+    parameters = listOf("Landroid/view/View;"),
+    filters = listOf(
+        resourceLiteral(ResourceType.ID, "quick_actions_element_container"),
+        checkCast("Landroid/view/ViewGroup;", location = MatchAfterWithin(10)),
+        // Stored on the controller. Before 21.42 the controller is read from an Object field
+        // and cast. Quick actions margin can insert one more instruction after the view cast.
+        fieldAccess(
+            type = "Landroid/view/ViewGroup;",
+            opcode = Opcode.IPUT_OBJECT,
+            location = MatchAfterWithin(4)
+        )
+    )
 )
 
 internal fun quickActionsModelCallbackFingerprint(controller: String) = Fingerprint(
@@ -157,23 +444,58 @@ internal fun quickActionsSizeFingerprint(controller: String) = Fingerprint(
 
 internal fun acceptedPlaylistModelFingerprint(
     controllerType: String,
-    modelField: FieldReference,
+    modelType: String,
     responseVideoField: FieldReference
 ) = Fingerprint(
     definingClass = controllerType,
     returnType = "V",
-    parameters = listOf(modelField.type),
+    parameters = listOf(modelType),
     filters = listOf(
         fieldAccess(reference = responseVideoField, opcode = Opcode.IGET_OBJECT),
-        methodCall("Landroid/text/TextUtils;->isEmpty(Ljava/lang/CharSequence;)Z",
-            location = MatchAfterImmediately()),
+        methodCall(
+            "Landroid/text/TextUtils;->isEmpty(Ljava/lang/CharSequence;)Z",
+            location = MatchAfterImmediately()
+        ),
         // The response's optional video ID is checked against the active video's ID.
-        fieldAccess(definingClass = controllerType, type = "Ljava/lang/String;",
-            opcode = Opcode.IGET_OBJECT, location = MatchAfterWithin(2)),
+        fieldAccess(
+            definingClass = controllerType,
+            type = "Ljava/lang/String;",
+            opcode = Opcode.IGET_OBJECT,
+            location = MatchAfterWithin(2)
+        ),
         methodCall("Ljava/lang/String;->length()I", location = MatchAfterWithin(1)),
         methodCall("Ljava/lang/String;->equals(Ljava/lang/Object;)Z", location = MatchAfterWithin(2)),
-        fieldAccess(reference = modelField, opcode = Opcode.IPUT_OBJECT)
+        // The accepted model.
+        fieldAccess(definingClass = "this", type = modelType, opcode = Opcode.IPUT_OBJECT)
     )
+)
+
+/** AutoValue builder of the playlist model; its missing-property check names queueMode. */
+internal fun playlistModelBuildFingerprint(modelType: String) = Fingerprint(
+    returnType = modelType,
+    parameters = emptyList(),
+    filters = listOf(string(" queueMode"))
+)
+
+/** The model's static builder factory, which sets the default queue mode and tracking. */
+internal fun playlistModelFactoryFingerprint(modelType: String, builderType: String) = Fingerprint(
+    definingClass = modelType,
+    returnType = builderType,
+    parameters = emptyList()
+)
+
+/** The AutoValue constructor stores each of its parameters in a field. */
+internal fun playlistModelConstructorFingerprint(modelType: String) = Fingerprint(
+    definingClass = modelType,
+    name = "<init>",
+    parameters = listOf("Ljava/lang/String;", "Ljava/lang/String;", "L", "L", "L", "I", "L"),
+    filters = List(7) { index ->
+        fieldAccess(
+            definingClass = "this",
+            opcodes = listOf(Opcode.IPUT_OBJECT, Opcode.IPUT),
+            location = if (index == 0) MatchAfterAnywhere() else MatchAfterImmediately()
+        )
+    }
 )
 
 /** The active video transition can complete without any playlist model being accepted. */
@@ -184,17 +506,14 @@ internal fun playlistVideoTransitionFingerprint(activeVideoField: FieldReference
     filters = listOf(fieldAccess(reference = activeVideoField, opcode = Opcode.IPUT_OBJECT))
 )
 
-/** Finds the native model renderer for restoration; no visibility branch is overridden. */
-internal fun playlistPanelRenderFingerprint(modelField: FieldReference, panelField: FieldReference) = Fingerprint(
+/** Renders the accepted model. The literal is the native panel's logging ID. */
+internal fun playlistPanelRenderFingerprint(modelField: FieldReference) = Fingerprint(
     definingClass = modelField.definingClass,
     returnType = "V",
     parameters = emptyList(),
     filters = listOf(
         fieldAccess(reference = modelField, opcode = Opcode.IGET_OBJECT),
-        fieldAccess(reference = panelField, opcode = Opcode.IGET_OBJECT, location = MatchAfterWithin(4)),
-        methodCall(opcode = Opcode.INVOKE_VIRTUAL, parameters = emptyList(), returnType = "Z",
-            location = MatchAfterWithin(6)),
-        opcode(Opcode.MOVE_RESULT, location = MatchAfterImmediately())
+        literal(0x19b4b)
     )
 )
 
@@ -221,38 +540,76 @@ internal fun playlistContentsFingerprint(panelType: String, factory: MethodRefer
     )
 )
 
-internal fun playlistClickEndpointFingerprint(endpoint: FieldReference, decorate: MethodReference) = Fingerprint(
-    definingClass = endpoint.definingClass,
+/**
+ * Native playlist row click listener. A veto predicate runs first,
+ * then logging decorates the bound endpoint before dispatching it.
+ */
+internal object PlaylistRowClickFingerprint : Fingerprint(
+    interfaces = listOf("Landroid/view/View\$OnClickListener;"),
     name = "onClick",
-    parameters = listOf("Landroid/view/View;"),
     returnType = "V",
+    parameters = listOf("Landroid/view/View;"),
     filters = listOf(
-        fieldAccess(reference = endpoint, opcode = Opcode.IGET_OBJECT),
-        methodCall(reference = decorate, location = MatchAfterImmediately())
+        methodCall(
+            opcode = Opcode.INVOKE_INTERFACE,
+            parameters = listOf("Landroid/view/View;"),
+            returnType = "Z"
+        ),
+        opcode(Opcode.MOVE_RESULT, location = MatchAfterImmediately()),
+        opcode(Opcode.IF_NEZ, location = MatchAfterImmediately()),
+        // Interaction logger.
+        fieldAccess(opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        // Bound endpoint.
+        fieldAccess(opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+        // Logging decoration of the endpoint.
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, location = MatchAfterImmediately()),
+        string("com.google.android.libraries.youtube.logging.interaction_logger")
     )
 )
 
-internal fun playlistEndpointBindingFingerprint(endpoint: FieldReference) = Fingerprint(
+/** The rich row binder reads the video's navigation endpoint after it reads the row listener. */
+internal fun playlistRowEndpointFingerprint(listenerType: String, videoType: String, endpointType: String) =
+    Fingerprint(
+        classFingerprint = PlaylistRichRowConstructorFingerprint,
+        filters = listOf(
+            fieldAccess(type = listenerType, opcode = Opcode.IGET_OBJECT),
+            fieldAccess(
+                definingClass = videoType,
+                type = "I",
+                opcode = Opcode.IGET,
+                location = MatchAfterImmediately()
+            ),
+            fieldAccess(
+                definingClass = videoType,
+                type = endpointType,
+                opcode = Opcode.IGET_OBJECT,
+                location = MatchAfterWithin(4)
+            )
+        )
+    )
+
+/** Binds the row listener to a video's endpoint, logger, context and callback. */
+internal fun playlistEndpointBindFingerprint(endpoint: FieldReference) = Fingerprint(
     definingClass = endpoint.definingClass,
     returnType = "V",
-    filters = listOf(fieldAccess(reference = endpoint, opcode = Opcode.IPUT_OBJECT)),
-    custom = { method, _ -> method.name != "onClick" }
+    parameters = listOf("L", endpoint.type, "Ljava/util/Map;", "L"),
+    filters = listOf(fieldAccess(reference = endpoint, opcode = Opcode.IPUT_OBJECT))
 )
 
-internal fun playlistNativeClickFingerprint(listenerType: String) = Fingerprint(
-    definingClass = listenerType,
-    name = "onClick",
-    parameters = listOf("Landroid/view/View;"),
+/** Clears the row listener's endpoint when its view is recycled. */
+internal fun playlistEndpointUnbindFingerprint(endpoint: FieldReference) = Fingerprint(
+    definingClass = endpoint.definingClass,
     returnType = "V",
-    filters = listOf(string("com.google.android.libraries.youtube.logging.interaction_logger"))
+    parameters = emptyList(),
+    filters = listOf(fieldAccess(reference = endpoint, opcode = Opcode.IPUT_OBJECT))
 )
 
 /** The standard button click context retains the native enclosing row identity. */
 internal object NativeButtonContextFingerprint : Fingerprint(
+    interfaces = listOf("Landroid/view/View\$OnClickListener;"),
     returnType = "Ljava/util/Map;",
     parameters = listOf("L", "Z"),
-    filters = listOf(string("anchor_view")),
-    custom = { _, classDef -> "Landroid/view/View\$OnClickListener;" in classDef.interfaces }
+    filters = listOf(string("anchor_view"))
 )
 
 internal object NativeButtonDispatchFingerprint : Fingerprint(
@@ -264,67 +621,65 @@ internal object NativeButtonDispatchFingerprint : Fingerprint(
         parameters = listOf("L", "Ljava/util/Map;")))
 )
 
-/** Native overflow handler creates its endpoint map before handing the row to the menu factory. */
+/**
+ * Native row overflow handler. It creates the endpoint context map before showing the menu.
+ * The second parameter is the menu's endpoint callback.
+ */
 internal fun playlistRowMenuOpenFingerprint(videoType: String) = Fingerprint(
-    filters = listOf(string("com.google.android.libraries.youtube.innertube.endpoint.tag")),
-    custom = { method, _ ->
-        val instructions = method.implementation?.instructions
-        instructions != null && videoType in method.parameterTypes &&
-                instructions.mapNotNull { it.getReference<MethodReference>() }
-                    .any { reference ->
-                        reference.returnType.startsWith("L") && reference.parameterTypes.size == 4 &&
-                                reference.parameterTypes.all { it == "Ljava/lang/Object;" }
-                    } &&
-                instructions.mapNotNull { it.getReference<MethodReference>() }
-                    .any { "Ljava/util/Map;" in it.parameterTypes && it.returnType == "V" }
-    }
+    returnType = "V",
+    parameters = listOf(videoType, "L", "L"),
+    filters = listOf(
+        string("com.google.android.libraries.youtube.logging.interaction_logger"),
+        string("com.google.android.libraries.youtube.innertube.endpoint.tag", location = MatchAfterImmediately()),
+        methodCall(
+            opcode = Opcode.INVOKE_STATIC,
+            parameters = List(4) { "Ljava/lang/Object;" },
+            location = MatchAfterImmediately()
+        ),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately())
+    )
 )
 
-/** Native sheet dispatch calls its endpoint callback immediately before its terminal dismissal. */
-internal fun playlistRowMenuDispatchFingerprint(
-    sheetType: String,
-    callbackType: String,
-    callbackParameters: List<String>
-) = Fingerprint(
-    definingClass = sheetType,
+/** The native menu sheet dispatches its endpoint callback immediately before dismissing itself. */
+internal fun playlistMenuDispatchFingerprint(callbackType: String) = Fingerprint(
+    interfaces = listOf("Landroid/widget/AdapterView\$OnItemClickListener;"),
     returnType = "V",
-    custom = { method, _ ->
-        val implementation = method.implementation
-        val instructions = implementation?.instructions?.toList()
-        if (implementation == null || instructions == null ||
-            AccessFlags.STATIC.isSet(method.accessFlags)) {
-            false
-        } else {
-            val callbackIndex = instructions.indexOfFirst { instruction ->
-                instruction.getReference<MethodReference>()?.let { reference ->
-                    reference.definingClass == callbackType && reference.returnType == "V" &&
-                            reference.parameterTypes.map { it.toString() } == callbackParameters
-                } == true
-            }
-            if (callbackIndex < 0 || callbackIndex + 2 >= instructions.size) {
-                false
-            } else {
-                val dismissal = instructions[callbackIndex + 1]
-                val dismissalReference = dismissal.getReference<MethodReference>()
-                val dismissalRegisters = dismissal as? FiveRegisterInstruction
-                val parameterWords = method.parameterTypes.sumOf { type ->
-                    if (type == "J" || type == "D") 2 else 1
-                }
-                val thisRegister = implementation.registerCount - parameterWords - 1
-                dismissal.opcode == Opcode.INVOKE_VIRTUAL && dismissalReference != null &&
-                        dismissalReference.returnType == "V" && dismissalReference.parameterTypes.isEmpty() &&
-                        dismissalRegisters?.registerCount == 1 &&
-                        dismissalRegisters.registerC == thisRegister &&
-                        instructions[callbackIndex + 2].opcode == Opcode.RETURN_VOID
-            }
-        }
-    }
+    parameters = listOf("L"),
+    filters = listOf(
+        methodCall("Ljava/lang/CharSequence;->length()I"),
+        methodCall(
+            definingClass = callbackType,
+            parameters = listOf("L", "Ljava/util/Map;"),
+            returnType = "V"
+        ),
+        methodCall(
+            opcode = Opcode.INVOKE_VIRTUAL,
+            parameters = emptyList(),
+            returnType = "V",
+            location = MatchAfterImmediately()
+        ),
+        opcode(Opcode.RETURN_VOID, location = MatchAfterImmediately())
+    )
 )
 
 /** Rich playlist rows, as opposed to the compact/offline binders. */
 internal object PlaylistRichRowConstructorFingerprint : Fingerprint(
     name = "<init>",
     filters = listOf(resourceLiteral(ResourceType.ID, "playlist_panel_video_item"))
+)
+
+/** The rich row's swipe layout getter. */
+internal object PlaylistRowSwipeLayoutFingerprint : Fingerprint(
+    classFingerprint = PlaylistRichRowConstructorFingerprint,
+    returnType = "Lcom/google/android/libraries/youtube/common/ui/swipelayout/SwipeLayout;",
+    parameters = emptyList(),
+    filters = listOf(
+        fieldAccess(
+            definingClass = "this",
+            type = "Lcom/google/android/libraries/youtube/common/ui/swipelayout/SwipeLayout;",
+            opcode = Opcode.IGET_OBJECT
+        )
+    )
 )
 
 /** Native selection updates replace the swipe foreground's background. */
@@ -367,7 +722,8 @@ internal fun playlistDragStartFingerprint(holderType: String) = Fingerprint(
     returnType = "V",
     parameters = listOf("L", "L", "I"),
     filters = listOf(
-        opcode(Opcode.IF_EQ),
+        // Holder identity guard. 21.42+ inverts the branch.
+        anyInstruction(opcode(Opcode.IF_EQ), opcode(Opcode.IF_NE)),
         fieldAccess(type = "Landroid/view/View;", opcode = Opcode.IGET_OBJECT,
             location = MatchAfterWithin(1)),
         methodCall("Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V",
@@ -380,7 +736,7 @@ internal fun playlistDragEndFingerprint(holderType: String) = Fingerprint(
     returnType = "V",
     parameters = listOf("L", "L", "I", "I"),
     filters = listOf(
-        opcode(Opcode.IF_EQ),
+        anyInstruction(opcode(Opcode.IF_EQ), opcode(Opcode.IF_NE)),
         methodCall(definingClass = holderType, opcode = Opcode.INVOKE_DIRECT,
             parameters = emptyList(), returnType = "V", location = MatchAfterWithin(1))
     )
@@ -396,10 +752,14 @@ internal fun playlistDragUnbindFingerprint(holderType: String) = Fingerprint(
     )
 )
 
-internal object PlaylistEditEventsFingerprint : Fingerprint(
+/** Native edit events read the row's video through the adapter row interface. */
+internal fun playlistEditEventsFingerprint(videoType: String) = Fingerprint(
     classFingerprint = PlaylistItemsConstructorFingerprint,
     parameters = listOf("Ljava/lang/Class;", "Ljava/lang/Object;", "I"),
-    returnType = "[Ljava/lang/Class;"
+    returnType = "[Ljava/lang/Class;",
+    filters = listOf(
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = emptyList(), returnType = videoType)
+    )
 )
 
 internal fun playlistNavigationRequestFingerprint(enumType: String) = Fingerprint(
@@ -417,44 +777,57 @@ internal fun playlistNavigationIntentFingerprint(enumType: String, intent: Strin
     )
 )
 
+/** Static navigation request for one intent. 21.41+ also passes null descriptors to the constructor. */
 internal fun playlistNavigationSingletonFingerprint(wrapperType: String, intent: FieldReference) = Fingerprint(
     definingClass = wrapperType,
     name = "<clinit>",
     filters = listOf(
         fieldAccess(reference = intent, opcode = Opcode.SGET_OBJECT),
-        methodCall(definingClass = wrapperType, name = "<init>", parameters = listOf(intent.type),
-            location = MatchAfterImmediately()),
+        methodCall(definingClass = wrapperType, name = "<init>", location = MatchAfterWithin(1)),
         fieldAccess(type = wrapperType, opcode = Opcode.SPUT_OBJECT, location = MatchAfterImmediately())
     )
 )
 
-/** The same native dispatch family used by Disable playlist autoplay. */
-internal fun playlistNavigationDispatchFingerprint(wrapperType: String) = Fingerprint(
-    returnType = "V",
-    parameters = listOf(wrapperType),
-    custom = { method, classDef ->
-        method.implementation != null && classDef.methods.any { sibling ->
-            sibling.implementation != null && sibling.returnType == "I" &&
-                    sibling.parameterTypes.singleOrNull() == wrapperType
-        }
-    }
-)
-
-/** Resolve the playlist controller's own scoped navigator, not a global last-created instance. */
-internal fun playlistNavigatorProviderFingerprint(controllerType: String, navigatorType: String) = Fingerprint(
+/**
+ * Creates the playlist controls with their navigator, after binding the collapsed header click.
+ * 21.28+ creates one of two implementations, chosen by a server flag.
+ */
+internal fun playlistControlsCreationFingerprint(controllerType: String) = Fingerprint(
     definingClass = controllerType,
     returnType = "V",
     parameters = emptyList(),
     filters = listOf(
-        fieldAccess(definingClass = controllerType, opcode = Opcode.IGET_OBJECT),
-        // The controls allocation can sit between the factory and provider reads.
-        fieldAccess(opcode = Opcode.IGET_OBJECT, location = MatchAfterWithin(1)),
-        methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = emptyList(),
-            returnType = "Ljava/lang/Object;", location = MatchAfterWithin(1)),
+        // The collapsed panel view.
+        fieldAccess(definingClass = "this", type = "Landroid/view/View;", opcode = Opcode.IGET_OBJECT),
+        methodCall(
+            "Landroid/view/View;->setOnClickListener(Landroid/view/View\$OnClickListener;)V",
+            location = MatchAfterWithin(3)
+        ),
+        // The navigator provider.
+        methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = emptyList(), returnType = "Ljava/lang/Object;"),
         opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
-        // The factory can allocate controls before invocation and alias the result before casting.
-        checkCast(navigatorType, location = MatchAfterWithin(1))
+        opcode(Opcode.CHECK_CAST, location = MatchAfterWithin(1)),
+        methodCall(name = "<init>", opcode = Opcode.INVOKE_DIRECT_RANGE),
+        fieldAccess(
+            definingClass = controllerType,
+            opcode = Opcode.IPUT_OBJECT,
+            location = MatchAfterImmediately()
+        )
     )
+)
+
+/** Before 21.28 the playlist controls are a single class. */
+internal fun playlistControlsConstructorFingerprint(navigatorType: String, controlsType: String) = Fingerprint(
+    definingClass = controlsType,
+    name = "<init>",
+    filters = listOf(fieldAccess(type = navigatorType, opcode = Opcode.IPUT_OBJECT))
+)
+
+/** 21.28+ implementations of the playlist controls interface. */
+internal fun playlistControlsImplementationFingerprint(navigatorType: String, controlsInterface: String) = Fingerprint(
+    interfaces = listOf(controlsInterface),
+    name = "<init>",
+    filters = listOf(fieldAccess(type = navigatorType, opcode = Opcode.IPUT_OBJECT))
 )
 
 /** Native player control eligibility, including its alternate history callbacks. */
@@ -478,12 +851,25 @@ internal fun playlistControlAvailabilityFingerprint(navigatorType: String, reque
     )
 )
 
-internal fun playlistControlPressFingerprint(controlsType: String, request: FieldReference) = Fingerprint(
+/** The press callback logs first, then dispatches to its delegate or the navigator. */
+internal fun playlistControlPressFingerprint(controlsType: String, delegate: FieldReference, request: FieldReference) =
+    Fingerprint(
+        definingClass = controlsType,
+        returnType = "V",
+        parameters = emptyList(),
+        filters = listOf(
+            // Optional logging callback.
+            methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = emptyList(), returnType = "V"),
+            fieldAccess(reference = delegate, opcode = Opcode.IGET_OBJECT, location = MatchAfterImmediately()),
+            fieldAccess(reference = request, opcode = Opcode.SGET_OBJECT)
+        )
+    )
+
+/** The player controls keep their navigator. */
+internal fun playlistPlayerControlsConstructorFingerprint(controlsType: String, navigatorType: String) = Fingerprint(
     definingClass = controlsType,
-    returnType = "V",
-    parameters = emptyList(),
-    filters = listOf(fieldAccess(reference = request, opcode = Opcode.SGET_OBJECT)),
-    custom = { method, _ -> AccessFlags.PUBLIC.isSet(method.accessFlags) }
+    name = "<init>",
+    filters = listOf(fieldAccess(definingClass = "this", type = navigatorType, opcode = Opcode.IPUT_OBJECT))
 )
 
 internal object PlaylistHeaderConstructorFingerprint : Fingerprint(
@@ -501,6 +887,42 @@ internal object PlaylistShuffleViewFingerprint : Fingerprint(
         checkCast("Landroid/widget/ImageView;", location = MatchAfterImmediately()),
         fieldAccess(type = "Landroid/widget/ImageView;", opcode = Opcode.IPUT_OBJECT,
             location = MatchAfterImmediately())
+    )
+)
+
+/** The playlist header keeps the playlist's navigator. */
+internal fun playlistHeaderNavigatorFingerprint(navigatorType: String) = Fingerprint(
+    classFingerprint = PlaylistHeaderConstructorFingerprint,
+    name = "<init>",
+    filters = listOf(fieldAccess(definingClass = "this", type = navigatorType, opcode = Opcode.IPUT_OBJECT))
+)
+
+internal object PlaylistHeaderRepeatViewFingerprint : Fingerprint(
+    classFingerprint = PlaylistHeaderConstructorFingerprint,
+    name = "<init>",
+    filters = listOf(
+        checkCast("Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;"),
+        fieldAccess(
+            definingClass = "this",
+            type = "Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;",
+            opcode = Opcode.IPUT_OBJECT,
+            location = MatchAfterImmediately()
+        )
+    )
+)
+
+/** The header binder stores the bound playlist panel. */
+internal fun playlistHeaderPanelFingerprint(binder: Method) = Fingerprint(
+    definingClass = binder.definingClass,
+    name = binder.name,
+    parameters = binder.parameterTypes.map { it.toString() },
+    returnType = binder.returnType,
+    filters = listOf(
+        fieldAccess(
+            definingClass = "this",
+            type = binder.parameterTypes.first().toString(),
+            opcode = Opcode.IPUT_OBJECT
+        )
     )
 )
 
@@ -544,40 +966,55 @@ internal object PlaylistRepeatCapabilitiesFingerprint : Fingerprint(
 
 /** Observe the native notification before it compares old state or notifies either control. */
 internal fun notificationSkipCallbackFingerprint(callbackName: String) = Fingerprint(
+    superclass = "Landroid/media/session/MediaSession\$Callback;",
     name = callbackName,
     returnType = "V",
     parameters = emptyList(),
     filters = listOf(
         fieldAccess(opcode = Opcode.IGET_OBJECT),
-        methodCall(opcode = Opcode.INVOKE_VIRTUAL, parameters = emptyList(), returnType = "V",
-            location = MatchAfterImmediately())
-    ),
-    custom = { _, classDef -> classDef.superclass == "Landroid/media/session/MediaSession\$Callback;" }
+        methodCall(
+            opcode = Opcode.INVOKE_VIRTUAL,
+            parameters = emptyList(),
+            returnType = "V",
+            location = MatchAfterImmediately()
+        )
+    )
 )
 
-internal fun notificationDelegateFingerprint(callback: MethodReference, delegateType: String? = null) = Fingerprint(
+/** The media session callback's delegate forwards a skip to the media owner. */
+internal fun notificationDelegateFingerprint(
+    callback: MethodReference,
+    ownerType: String,
+    ownerMethod: String? = null,
+    delegateType: String? = null
+) = Fingerprint(
     definingClass = delegateType,
+    superclass = callback.definingClass,
     name = callback.name,
     returnType = "V",
     parameters = emptyList(),
     filters = listOf(
         fieldAccess(opcode = Opcode.IGET_OBJECT),
-        methodCall(opcode = Opcode.INVOKE_VIRTUAL, parameters = emptyList(), returnType = "V",
-            location = MatchAfterImmediately()),
+        methodCall(
+            definingClass = ownerType,
+            name = ownerMethod,
+            opcode = Opcode.INVOKE_VIRTUAL,
+            parameters = emptyList(),
+            returnType = "V",
+            location = MatchAfterImmediately()
+        ),
         opcode(Opcode.RETURN_VOID, location = MatchAfterImmediately())
-    ),
-    custom = { _, classDef -> classDef.superclass == callback.definingClass }
+    )
 )
 
 /** Observe after media logging, before the optional foreground callback takes over. */
-internal fun notificationNextDispatchFingerprint(owner: String, next: FieldReference) = Fingerprint(
-    definingClass = owner,
+internal fun notificationNextDispatchFingerprint(next: FieldReference) = Fingerprint(
     returnType = "V",
     parameters = emptyList(),
     filters = listOf(
-        fieldAccess(definingClass = owner, opcode = Opcode.IGET_OBJECT),
+        fieldAccess(definingClass = "this", opcode = Opcode.IGET_OBJECT),
         opcode(Opcode.IF_EQZ, location = MatchAfterImmediately()),
-        fieldAccess(definingClass = owner, opcode = Opcode.IGET_OBJECT, location = MatchAfterWithin(5)),
+        fieldAccess(definingClass = "this", opcode = Opcode.IGET_OBJECT, location = MatchAfterWithin(5)),
         methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = emptyList(),
             returnType = "Ljava/lang/Object;", location = MatchAfterImmediately()),
         opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
@@ -602,19 +1039,19 @@ internal fun playlistServiceNavigatorFingerprint(wrapperType: String) = Fingerpr
     )
 )
 
-/** Native playback descriptor builder accepts an ordinary watch command. */
-internal fun playlistPlaybackDescriptorBuilderFingerprint(descriptorType: String) = Fingerprint(
-    parameters = emptyList(),
-    returnType = descriptorType,
-    filters = listOf(string("Only one of localProto, command, videoIdList can be set"))
-)
-
 /** Only the ordinary watch-page callback is replaced; casting/no-op delegates keep control. */
 internal fun notificationForegroundSkipFingerprint(callbackType: String, request: FieldReference) = Fingerprint(
+    interfaces = listOf(callbackType),
     returnType = "V",
     parameters = emptyList(),
-    filters = listOf(fieldAccess(reference = request, opcode = Opcode.SGET_OBJECT)),
-    custom = { _, classDef -> callbackType in classDef.interfaces }
+    filters = listOf(fieldAccess(reference = request, opcode = Opcode.SGET_OBJECT))
+)
+
+/** The playback service checks whether a navigation request can be dispatched. */
+internal fun playlistServiceCanNavigateFingerprint(serviceType: String, requestType: String) = Fingerprint(
+    definingClass = serviceType,
+    returnType = "Z",
+    parameters = listOf(requestType)
 )
 
 /** Load a new watch target; native JUMP only accepts targets in an existing playlist. */
@@ -634,22 +1071,33 @@ internal object NotificationSkipActionsFingerprint : Fingerprint(
     returnType = "Ljava/lang/String;",
     parameters = emptyList(),
     filters = listOf(
+        // The notification capabilities model.
+        fieldAccess(definingClass = "this", opcode = Opcode.IGET_OBJECT),
         string("com.google.android.libraries.youtube.player.action.controller_notification_prev"),
         string("com.google.android.libraries.youtube.player.action.controller_notification_next")
     )
 )
 
+/** Publishes the Previous and Next capabilities, returning the changed flags. */
+internal fun notificationCapabilitiesSetterFingerprint(modelType: String) = Fingerprint(
+    definingClass = modelType,
+    returnType = "I",
+    parameters = listOf("Z", "Z")
+)
+
 /** Both native adapter variants publish Previous/Next through the same model setter. */
-internal fun notificationCapabilitiesFingerprint(
-    ownerType: String,
-    setter: MethodReference,
-    adapterType: String? = null
-) = Fingerprint(
+internal fun notificationCapabilitiesFingerprint(setter: MethodReference, adapterType: String? = null) =
+    Fingerprint(
+        definingClass = adapterType,
+        parameters = emptyList(),
+        filters = listOf(methodCall(reference = setter))
+    )
+
+/** The adapter keeps the notification's media owner. */
+internal fun notificationAdapterConstructorFingerprint(adapterType: String, ownerType: String) = Fingerprint(
     definingClass = adapterType,
-    parameters = emptyList(),
-    filters = listOf(methodCall(reference = setter)),
-    custom = { method, classDef -> method.returnType in listOf("V", "I") &&
-            classDef.fields.any { it.type == ownerType } }
+    name = "<init>",
+    filters = listOf(fieldAccess(definingClass = "this", type = ownerType, opcode = Opcode.IPUT_OBJECT))
 )
 
 /** The newer adapter dispatches the setter's returned change flags through its native notifier. */
@@ -684,7 +1132,20 @@ internal fun queueSnackbarDurationFingerprint(builderType: String) = Fingerprint
     definingClass = builderType,
     parameters = emptyList(),
     returnType = "L",
-    filters = listOf(string("Property \"duration\" has not been set"))
+    filters = listOf(
+        // Without an action, the default duration is set to zero.
+        methodCall("Landroid/text/TextUtils;->isEmpty(Ljava/lang/CharSequence;)Z"),
+        opcode(Opcode.MOVE_RESULT, location = MatchAfterImmediately()),
+        opcode(Opcode.IF_NEZ, location = MatchAfterImmediately()),
+        opcode(Opcode.CONST_4, location = MatchAfterImmediately()),
+        methodCall(
+            definingClass = "this",
+            parameters = listOf("I"),
+            returnType = "V",
+            location = MatchAfterImmediately()
+        ),
+        string("Property \"duration\" has not been set")
+    )
 )
 
 /** Both snackbar factories live together; the watch-screen factory is its native sibling. */
@@ -696,29 +1157,30 @@ internal object QueueSnackbarFactoryFingerprint : Fingerprint(
 
 /** The mini player's close click, rather than programmatic reloads using the same dismiss API. */
 internal fun queuePlayerCloseClickFingerprint(dismiss: MethodReference) = Fingerprint(
+    interfaces = listOf("Landroid/view/View\$OnClickListener;"),
     name = "onClick",
     parameters = listOf("Landroid/view/View;"),
     returnType = "V",
-    filters = listOf(methodCall(reference = dismiss)),
-    custom = { _, classDef -> "Landroid/view/View\$OnClickListener;" in classDef.interfaces }
+    filters = listOf(methodCall(reference = dismiss))
 )
 
-/** Fling thresholds live in the callback, or in its MotionEvent/velocity helper on older builds. */
+/** A fling past the native threshold dismisses the mini player. */
 internal fun queuePlayerCloseFlingFingerprint(dismiss: MethodReference) = Fingerprint(
-    filters = listOf(methodCall(reference = dismiss)),
-    custom = { method, _ ->
-        method.name == "onFling" && method.returnType == "Z" && method.parameterTypes ==
-                listOf("Landroid/view/MotionEvent;", "Landroid/view/MotionEvent;", "F", "F") ||
-                method.returnType == "V" && method.parameterTypes == listOf("Landroid/view/MotionEvent;", "F", "F")
-    }
-)
-
-/** Require the older helper to be called by the native framework gesture callback. */
-internal fun queuePlayerFlingCallerFingerprint(handler: MethodReference) = Fingerprint(
     name = "onFling",
     parameters = listOf("Landroid/view/MotionEvent;", "Landroid/view/MotionEvent;", "F", "F"),
     returnType = "Z",
-    filters = listOf(methodCall(reference = handler))
+    filters = listOf(methodCall(reference = dismiss))
+)
+
+/** Before 21.32 the fling has two separate dismissal branches. */
+internal fun queuePlayerCloseFlingLegacyFingerprint(dismiss: MethodReference) = Fingerprint(
+    name = "onFling",
+    parameters = listOf("Landroid/view/MotionEvent;", "Landroid/view/MotionEvent;", "F", "F"),
+    returnType = "Z",
+    filters = listOf(
+        methodCall(reference = dismiss),
+        methodCall(reference = dismiss)
+    )
 )
 
 /** A slow drag can close on touch release without going through onFling. */
@@ -728,17 +1190,57 @@ internal fun queuePlayerCloseTouchFingerprint(dismiss: MethodReference) = Finger
     filters = listOf(methodCall(reference = dismiss))
 )
 
-internal fun queueUndoClickFingerprint(listenerType: String, factoryType: String,
-                                      dispatcherType: String, callback: MethodReference) = Fingerprint(
+/** The playlist controller dispatches commands through the activity's command resolver. */
+internal fun playlistControllerDispatcherFingerprint(controllerType: String, dispatcherType: String) = Fingerprint(
+    definingClass = controllerType,
+    returnType = "V",
+    parameters = emptyList(),
+    filters = listOf(
+        fieldAccess(definingClass = "this", type = dispatcherType, opcode = Opcode.IGET_OBJECT),
+        methodCall(definingClass = dispatcherType, returnType = "V")
+    )
+)
+
+/** Snackbar factory for modern buttons, whose click listener is a shared lambda class. */
+internal object QueueSnackbarModernFactoryFingerprint : Fingerprint(
+    classFingerprint = QueueSnackbarFactoryFingerprint,
+    returnType = "L",
+    parameters = listOf("L", "Ljava/util/Map;"),
+    filters = listOf(
+        methodCall(
+            name = "<init>",
+            parameters = List(4) { "Ljava/lang/Object;" } + listOf("I", "[S")
+        ),
+        methodCall(
+            parameters = listOf("Ljava/lang/CharSequence;", "Landroid/view/View\$OnClickListener;"),
+            returnType = "V"
+        ),
+        opcode(Opcode.RETURN_OBJECT, location = MatchAfterImmediately())
+    )
+)
+
+/** The snackbar factory keeps the activity's command dispatcher. */
+internal fun queueSnackbarDispatcherFingerprint(dispatcherType: String) = Fingerprint(
+    classFingerprint = QueueSnackbarFactoryFingerprint,
+    name = "<init>",
+    filters = listOf(fieldAccess(definingClass = "this", type = dispatcherType, opcode = Opcode.IPUT_OBJECT))
+)
+
+/** The modern snackbar button dispatches its service, navigation or command endpoint. */
+internal fun queueUndoClickFingerprint(
+    listenerType: String,
+    dispatcher: FieldReference,
+    callback: MethodReference
+) = Fingerprint(
     definingClass = listenerType,
     name = "onClick",
     returnType = "V",
     parameters = listOf("Landroid/view/View;"),
-    filters = listOf(
-        string("com.google.android.libraries.youtube.innertube.endpoint.tag"),
-        fieldAccess(opcode = Opcode.IGET_OBJECT, definingClass = factoryType, type = dispatcherType),
-        methodCall(opcode = Opcode.INVOKE_INTERFACE, definingClass = callback.definingClass,
-            name = callback.name, parameters = callback.parameterTypes.map { it.toString() },
-            returnType = "V", location = MatchAfterWithin(6))
-    )
+    filters = listOf(string("com.google.android.libraries.youtube.innertube.endpoint.tag")) +
+            List(3) {
+                listOf(
+                    fieldAccess(reference = dispatcher, opcode = Opcode.IGET_OBJECT),
+                    methodCall(reference = callback, location = MatchAfterWithin(6))
+                )
+            }.flatten()
 )

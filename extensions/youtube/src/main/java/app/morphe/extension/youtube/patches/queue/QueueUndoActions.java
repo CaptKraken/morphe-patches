@@ -7,6 +7,8 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import androidx.annotation.Nullable;
+
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
 
@@ -44,11 +46,13 @@ public final class QueueUndoActions {
         var command = NavigationEndpoint.parseFrom(endpoint.toByteArray());
         if (!command.hasQueueUndoToken()) return false;
         if (command.getQueueUndoToken().equals(expectedToken)) undo.run();
+
         // Expired/replaced local capabilities must not reach native service dispatch.
         return true;
     }
 
     /** A menu Clear leaves playback alive; never overwrite a new queue or watch session. */
+    @Nullable
     static PlaylistQueue restore(PlaylistQueue before, PlaylistQueue current, String activeVideoId) {
         return current == null && before.currentEntry().videoId().equals(activeVideoId) ? before : null;
     }

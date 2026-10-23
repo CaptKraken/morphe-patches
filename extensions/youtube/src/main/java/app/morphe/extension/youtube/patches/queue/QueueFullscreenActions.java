@@ -37,15 +37,16 @@ public final class QueueFullscreenActions {
     /** Injection point in the native UI model setter, including its null/reset path. */
     @Nullable
     public static Object onModelLoaded(Controller controller, @Nullable Object model) {
-        controllerRef = new WeakReference<>(controller);
-        originalModel = model;
-        renderedWithQueue = NativePlaylistQueuePatch.ownsFullscreenPlaylist();
-        if (model == null || !renderedWithQueue) return model;
         try {
+            controllerRef = new WeakReference<>(controller);
+            originalModel = model;
+            renderedWithQueue = NativePlaylistQueuePatch.ownsFullscreenPlaylist();
+            if (model == null || !renderedWithQueue) return model;
             var renderer = QueueFullscreenRenderer.Renderer.parseFrom(((MessageLite) model).toByteArray());
             var component = renderer.getNewElement().getType().getComponent();
             if (!component.getModel().hasQuickActions()) return model;
             var actions = component.getModel().getQuickActions();
+
             // An account playlist already supplies its own action; leave it intact.
             if (actions.hasPlaylistButton()) return model;
             var button = QueueFullscreenRenderer.PlaylistButton.newBuilder().setStyle(2).setButton(
@@ -61,8 +62,8 @@ public final class QueueFullscreenActions {
             var element = renderer.getNewElement();
             return controller.patch_parseQuickActions(renderer.toBuilder().setNewElement(element.toBuilder()
                     .setType(element.getType().toBuilder().setComponent(updatedComponent))).build().toByteArray());
-        } catch (Exception exception) {
-            Logger.printException(() -> "Could not bind native fullscreen queue action", exception);
+        } catch (Exception ex) {
+            Logger.printException(() -> "onModelLoaded failure", ex);
             return model;
         }
     }
@@ -75,9 +76,9 @@ public final class QueueFullscreenActions {
                 || renderedWithQueue == NativePlaylistQueuePatch.ownsFullscreenPlaylist()) return;
         try {
             controller.patch_refreshQuickActions(model);
-        } catch (Exception exception) {
+        } catch (Exception ex) {
             // A presentation refresh must never roll back an attached playback queue.
-            Logger.printException(() -> "Could not refresh native fullscreen queue action", exception);
+            Logger.printException(() -> "Could not refresh native fullscreen queue action", ex);
         }
     }
 }

@@ -7,6 +7,8 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import androidx.annotation.Nullable;
+
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 
@@ -23,6 +25,7 @@ import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.LikeEn
 record QueueRatingActions(String videoId, String entityKey, int initialStatus,
                           ByteString likeEndpoint, ByteString unlikeEndpoint,
                           ByteString dislikeEndpoint, ByteString undislikeEndpoint) {
+    @Nullable
     static QueueRatingActions fromElement(NextResponseOuterClass.NewElement element)
             throws InvalidProtocolBufferException {
         var model = element.getType().getComponentType().getModel();
@@ -41,6 +44,7 @@ record QueueRatingActions(String videoId, String entityKey, int initialStatus,
                 dislike = segmented.getDislikeButtonViewModel().getDislikeButtonViewModel();
             }
         }
+
         if (like == null || dislike == null || like.getLikeStatusEntityKey().isEmpty()
                 || !like.getLikeStatusEntityKey().equals(dislike.getDislikeEntityKey())) return null;
         var likeToggle = like.getToggleButtonViewModel().getToggleButtonViewModel();
@@ -65,6 +69,7 @@ record QueueRatingActions(String videoId, String entityKey, int initialStatus,
             ByteString endpoint = endpoint(command);
             if (!endpoint.isEmpty()) return endpoint;
         }
+
         return ByteString.EMPTY;
     }
 

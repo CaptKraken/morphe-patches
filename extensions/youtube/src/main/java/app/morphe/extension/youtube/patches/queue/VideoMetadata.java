@@ -7,6 +7,8 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import androidx.annotation.Nullable;
+
 import com.google.protobuf.InvalidProtocolBufferException;
 
 import org.json.JSONObject;
@@ -27,6 +29,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     private static final String WATCH_URL_PREFIX = "https://www.youtube.com/watch?v=";
     private static final String METADATA_SEPARATOR = " · ";
 
+    @Nullable
     static VideoMetadata fromElement(byte[] bytes) throws InvalidProtocolBufferException {
         var model = QueueCardRenderer.Element.parseFrom(bytes).getType().getComponentType().getModel();
         if (!model.hasVideoWithContextModel()) return null;
@@ -34,6 +37,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
         var video = card.getVideoData();
         String url = video.getDragAndDropUrl();
         if (!url.startsWith(WATCH_URL_PREFIX)) return null;
+
         // A mix/playlist card can link its first video but show the list's title.
         // Indexed entries identify an individual video; unindexed list links do not.
         if (url.contains("&list=") && !url.contains("&index=")) return null;
@@ -50,14 +54,17 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
                 String content = part.getText().getContent();
                 if (!content.isEmpty()) parts.add(content);
             }
+
             if (!parts.isEmpty()) rows.add(String.join(METADATA_SEPARATOR, parts));
         }
+
         VideoMetadata result = new VideoMetadata(videoId, title, "", String.join("\n", rows),
                 video.getThumbnail().getTimestampText(), false);
         return result.withChannelLabel(video.getAvatar().getAccessibilityText(), card.getAccessibilityText());
     }
 
     /** Native search cards provide the full byline, including collaborating channels. */
+    @Nullable
     static VideoMetadata fromSearch(JSONObject response, String videoId) {
         JSONObject contents = response.optJSONObject("contents");
         JSONObject sections = contents == null ? null : contents.optJSONObject("sectionListRenderer");
@@ -86,6 +93,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
                         text(video.optJSONObject("lengthText")), fullByline);
             }
         }
+
         return null;
     }
 
@@ -101,6 +109,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
                 if (run != null) result.append(run.optString("text", ""));
             }
         }
+
         return result.toString();
     }
 
@@ -113,6 +122,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
 
     VideoMetadata withCapture(VideoMetadata captured) {
         if (!fullByline) return captured.withChannelName(channelName);
+
         // Later feed/player captures must not downgrade an authoritative byline.
         return new VideoMetadata(videoId, captured.title().equals(videoId) ? title : captured.title(),
                 channelName, videoInfo, captured.duration().isEmpty() ? duration : captured.duration(), true);
@@ -120,6 +130,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
 
     VideoMetadata withLookup(VideoMetadata fetched) {
         if (fullByline && !fetched.fullByline()) return this;
+
         // Preserve captured titles and their title-patch processing, but prefer
         // the lookup's native long byline over an uploader-only fallback.
         return new VideoMetadata(videoId, title.equals(videoId) ? fetched.title() : title,
@@ -129,6 +140,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
 
     private VideoMetadata withChannelLabel(String avatarLabel, String description) {
         if (avatarLabel.isEmpty() && description.isEmpty()) return this;
+
         // The avatar label names this card's channel. Confirm the longest metadata
         // prefix at its end, or a complete segment of the card's accessibility text.
         // Neither path parses localized words such as "Go to channel" or "views".
@@ -143,6 +155,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
                 boundary = videoInfo.lastIndexOf(separator, boundary - 1);
             }
         }
+
         return withChannelName(name);
     }
 
@@ -151,6 +164,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
         if (videoInfo.isEmpty() || videoInfo.equals(name)) {
             return new VideoMetadata(videoId, title, name, "", duration, false);
         }
+
         // Cards may combine the channel, views and age into one text. Split only an
         // exact known channel prefix; channel names themselves can contain separators.
         for (String separator : List.of(METADATA_SEPARATOR, "\n")) {
@@ -159,6 +173,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
                 return new VideoMetadata(videoId, title, name, videoInfo.substring(prefix.length()), duration, false);
             }
         }
+
         return this;
     }
 }

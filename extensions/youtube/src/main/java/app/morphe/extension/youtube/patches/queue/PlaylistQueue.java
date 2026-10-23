@@ -101,6 +101,7 @@ public final class PlaylistQueue {
         if (from == to) return this;
         var updated = new ArrayList<>(entries);
         updated.add(to, updated.remove(from));
+
         // Entry identity also distinguishes duplicate videos in the same queue.
         int selection = selectedIndex;
         if (from == selection) selection = to;
@@ -114,6 +115,7 @@ public final class PlaylistQueue {
         if (entries.size() < 2) return this;
         var updated = new ArrayList<>(entries);
         Entry playing = updated.remove(selectedIndex);
+
         // Use the same framework shuffler as YouTube's mutable playback queue.
         Collections.shuffle(updated);
         updated.add(0, playing);

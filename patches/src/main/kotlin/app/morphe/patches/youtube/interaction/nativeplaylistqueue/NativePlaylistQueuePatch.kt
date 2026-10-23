@@ -7,14 +7,14 @@
 
 package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 
-import app.morphe.patcher.patch.Compatibility
-import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.shared.misc.fix.proto.fixProtoLibraryPatch
 import app.morphe.patches.shared.misc.proto.hookElement
 import app.morphe.patches.youtube.layout.flyout.flyoutPatch
 import app.morphe.patches.youtube.misc.extension.sharedExtensionPatch
 import app.morphe.patches.youtube.misc.playertype.playerTypeHookPatch
+import app.morphe.patches.youtube.misc.playservice.is_21_15_or_greater
+import app.morphe.patches.youtube.misc.playservice.versionCheckPatch
 import app.morphe.patches.youtube.misc.settings.settingsPatch
 import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
 import app.morphe.patches.youtube.shared.hookVideoIntentContext
@@ -24,11 +24,31 @@ import app.morphe.patches.youtube.video.videoid.hookBackgroundPlayVideoId
 import app.morphe.patches.youtube.video.videoid.hookVideoId
 import app.morphe.patches.youtube.video.videoid.videoIdPatch
 import app.morphe.util.setExtensionIsPatchIncluded
+import java.util.logging.Logger
 
-internal const val EXTENSION_CLASS =
-    "Lapp/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch;"
-internal const val CONTROLLER_INTERFACE =
-    $$"Lapp/morphe/extension/youtube/patches/queue/NativePlaylistQueuePatch$PlaylistController;"
+private const val EXTENSION_PACKAGE = "Lapp/morphe/extension/youtube/patches/queue"
+internal const val EXTENSION_CLASS = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch;"
+internal const val CONTROLLER_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$PlaylistController;"
+internal const val NAVIGATOR_OWNER_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$NavigatorOwner;"
+internal const val PLAYER_CONTROLS_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$PlayerControls;"
+internal const val MEDIA_CONTROLS_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$MediaControls;"
+internal const val NOTIFICATION_CONTROLS_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$NotificationControls;"
+internal const val SERVICE_NAVIGATOR_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$ServiceNavigator;"
+internal const val NATIVE_PLAYBACK_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$NativePlayback;"
+internal const val REPEAT_HEADER_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$RepeatHeader;"
+internal const val ROW_CLICK_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$RowClick;"
+internal const val SWIPE_BACKGROUND_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$SwipeBackground;"
+internal const val QUEUE_PANEL_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$QueuePanel;"
+internal const val QUEUE_ROW_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$QueueRow;"
+internal const val REORDER_ITEMS_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$ReorderItems;"
+internal const val FULLSCREEN_ACTIONS_CLASS = "$EXTENSION_PACKAGE/QueueFullscreenActions;"
+internal const val FULLSCREEN_CONTROLLER_INTERFACE = "$EXTENSION_PACKAGE/QueueFullscreenActions\$Controller;"
+internal const val SAVE_ACTIONS_CLASS = "$EXTENSION_PACKAGE/QueueSaveActions;"
+internal const val SAVE_PICKER_INTERFACE = "$EXTENSION_PACKAGE/QueueSaveActions\$Picker;"
+internal const val SAVE_FEEDBACK_CLASS = "$EXTENSION_PACKAGE/QueueSaveFeedback;"
+internal const val SAVE_CALLBACK_INTERFACE = "$EXTENSION_PACKAGE/QueueSaveFeedback\$Callback;"
+internal const val SAVE_SELECTION_CLASS = "$EXTENSION_PACKAGE/QueueSaveFeedback\$Selection;"
+internal const val UNDO_COMMAND_INTERFACE = "$EXTENSION_PACKAGE/QueueUndoActions\$Command;"
 
 @Suppress("unused")
 val nativePlaylistQueuePatch = bytecodePatch(
@@ -37,7 +57,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
             "Supports Play next/last, reordering, shuffle, repeat, fullscreen playlist controls, " +
             "saving the queue to a playlist, and Undo when clearing the queue or closing the player. " +
             "Morphe's Local queue takes priority when enabled. Experimental. " +
-            "YouTube 20.51.39, 21.16.256 and 21.20.405.",
+            "This patch works with YouTube 21.16.256 and newer.",
     default = true
 ) {
     dependsOn(
@@ -48,29 +68,27 @@ val nativePlaylistQueuePatch = bytecodePatch(
         videoIdPatch,
         playerTypeHookPatch,
         fixProtoLibraryPatch,
-        openVideoIntentPatch
+        openVideoIntentPatch,
+        versionCheckPatch
     )
 
-    compatibleWith(Compatibility(
-        name = requireNotNull(COMPATIBILITY_YOUTUBE.name),
-        packageName = requireNotNull(COMPATIBILITY_YOUTUBE.packageName),
-        apkFileType = COMPATIBILITY_YOUTUBE.apkFileType,
-        signatures = COMPATIBILITY_YOUTUBE.signatures,
-        appIconColor = COMPATIBILITY_YOUTUBE.appIconColor,
-        targets = COMPATIBILITY_YOUTUBE.targets.filter {
-            it.version in setOf("21.20.405", "21.16.256", "20.51.39")
-        }
-    ))
+    compatibleWith(COMPATIBILITY_YOUTUBE)
 
     execute {
-        if (packageMetadata.versionName !in setOf("21.20.405", "21.16.256", "20.51.39")) {
-            throw PatchException("Native playlist queue currently supports YouTube 20.51.39, 21.16.256 and 21.20.405")
+        // 20.x builds the native playlist queue differently.
+        if (!is_21_15_or_greater) {
+            return@execute Logger.getLogger(this::class.java.name).warning(
+                "'Native playlist queue' requires YouTube 21.16+"
+            )
         }
+
         hookVideoIntentContext(EXTENSION_CLASS, "prepareQueueStartContext")
+
         installPlaylistPanel(this)
         installRatingCapture(this)
         installPlaylistRemoval(this)
         installFullscreenPlaylist(this)
+
         hookElement("$EXTENSION_CLASS->onElementLoaded")
         hookVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")
         hookBackgroundPlayVideoId("$EXTENSION_CLASS->onVideoChanged(Ljava/lang/String;)V")

@@ -9,6 +9,8 @@ package app.morphe.extension.youtube.patches.queue;
 
 import static app.morphe.extension.shared.StringRef.str;
 
+import androidx.annotation.Nullable;
+
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
 
@@ -40,6 +42,7 @@ public final class QueueSaveActions {
     }
 
     /** Read our local command field after native protobuf copies, without global selection state. */
+    @Nullable
     public static ArrayList<String> copyVideoIds(MessageLite endpoint) throws InvalidProtocolBufferException {
         var command = NavigationEndpoint.parseFrom(endpoint.toByteArray());
         return command.getQueueSaveVideoIdsCount() == 0 ? null
@@ -48,13 +51,14 @@ public final class QueueSaveActions {
 
     /** Bind the actual mutation commands, rather than assuming the query response is a batch. */
     public static MessageLite onPickerResponse(Picker picker, MessageLite response) {
-        var ids = picker.patch_getQueueSaveVideoIds();
-        if (ids == null) return response;
         try {
+            var ids = picker.patch_getQueueSaveVideoIds();
+            if (ids == null) return response;
             return picker.patch_parseQueueSaveResponse(bindResponse(
                     QueueSaveResponse.parseFrom(response.toByteArray()), ids).toByteArray());
-        } catch (InvalidProtocolBufferException | IllegalStateException exception) {
-            Logger.printException(() -> "Could not bind the queue selection to native playlist save actions", exception);
+        } catch (Exception ex) {
+            Logger.printException(() -> "onPickerResponse failure", ex);
+
             // An empty native response follows the original close/error path. Never
             // silently fall back to saving one video after a failed batch binding.
             return picker.patch_parseQueueSaveResponse(QueueSaveResponse.getDefaultInstance().toByteArray());
@@ -79,6 +83,7 @@ public final class QueueSaveActions {
                     for (var run : option.getTitle().getRunsList()) text.append(run.getText());
                     title = text.toString();
                 }
+
                 var add = bindCommand(option.getAddEndpoint(), ids).toBuilder()
                         .clearQueueSaveVideoIds().addAllQueueSaveVideoIds(ids).setQueueSavePlaylistTitle(title);
                 var updatedOption = option.toBuilder().setAddEndpoint(add);
@@ -88,14 +93,17 @@ public final class QueueSaveActions {
                     // checkbox state and its single-video remove action.
                     updatedOption.setSelectionState(0);
                 }
+
                 updated.setPlaylists(row, destination.toBuilder().setPlaylistAddToOptionRenderer(updatedOption));
             }
+
             for (int row = 0; row < renderer.getHeadersCount(); row++) {
                 var header = renderer.getHeaders(row);
                 if (!header.hasPlaylistAddToHeaderRenderer()) continue;
                 var content = header.getPlaylistAddToHeaderRenderer();
                 if (!content.getButton().hasButtonRenderer()) continue;
                 var button = content.getButton().getButtonRenderer();
+
                 // This native picker header is its New playlist action. Its server
                 // command need not be a direct create endpoint. Use YouTube's own
                 // list-capable dialog instead, without rejecting the whole picker.
@@ -106,8 +114,10 @@ public final class QueueSaveActions {
                 updated.setHeaders(row, header.toBuilder().setPlaylistAddToHeaderRenderer(content.toBuilder()
                         .setButton(content.getButton().toBuilder().setButtonRenderer(updatedButton))));
             }
+
             result.setContents(index, item.toBuilder().setAddToPlaylistRenderer(updated));
         }
+
         return result.build();
     }
 
@@ -118,6 +128,7 @@ public final class QueueSaveActions {
             for (var action : edit.getActionsList()) {
                 if (action.getAction() == 1) additions.add(action);
             }
+
             if (additions.size() == 1 && additions.get(0).getAddedVideoId().equals(ids.get(0))) {
                 var updated = edit.toBuilder().clearActions();
                 for (var action : edit.getActionsList()) {
@@ -127,13 +138,16 @@ public final class QueueSaveActions {
                         updated.addActions(action);
                     }
                 }
+
                 return command.toBuilder().setPlaylistEditEndpoint(updated).build();
             }
+
             var addedIds = new ArrayList<String>();
             for (var action : additions) addedIds.add(action.getAddedVideoId());
             if (addedIds.equals(ids)) return command;
             throw new IllegalStateException("Native queue save did not supply the complete add selection");
         }
+
         throw new IllegalStateException("Unrecognized native queue save destination command");
     }
 
@@ -148,27 +162,26 @@ public final class QueueSaveActions {
             for (var action : edit.getActionsList()) if (action.getAction() != 1) return;
             callback.patch_setQueueSaveSelection(new QueueSaveFeedback.Selection(edit.getPlaylistId(),
                     command.getQueueSavePlaylistTitle(), command.getQueueSaveVideoIdsList()));
-        } catch (InvalidProtocolBufferException exception) {
-            Logger.printException(() -> "Could not retain queue save confirmation context", exception);
+        } catch (Exception ex) {
+            Logger.printException(() -> "onEditCreated failure", ex);
         }
     }
 
     /** Runs only on the native success response, before its original action dispatch. */
     public static MessageLite onEditResult(QueueSaveFeedback.Callback callback, MessageLite response) {
-        var selection = callback.patch_getQueueSaveSelection();
-        if (selection == null) return response;
         try {
+            var selection = callback.patch_getQueueSaveSelection();
+            if (selection == null) return response;
             var result = QueueSaveEditResponse.parseFrom(response.toByteArray());
             String message = selection.title().isEmpty() ? str("morphe_native_playlist_queue_saved")
                     : str("morphe_native_playlist_queue_saved_to", selection.title());
             var decorated = QueueSaveFeedback.decorate(result, selection, message,
                     str("offline_undo_snackbar_button_text"));
             return decorated == result ? response : callback.patch_parseQueueSaveResult(decorated.toByteArray());
-        } catch (InvalidProtocolBufferException exception) {
+        } catch (Exception ex) {
             // The save already completed; never replace its result with a UI failure.
-            Logger.printException(() -> "Could not display native queue save confirmation", exception);
+            Logger.printException(() -> "onEditResult failure", ex);
             return response;
         }
     }
-
 }
