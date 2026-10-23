@@ -1,11 +1,13 @@
 /*
  * Copyright 2026 Morphe.
- * https://github.com/MorpheApp/morphe-patches
+ * https://github.com/MorpheApp/morphe-patches/pull/3953
  *
- * See the included NOTICE file for GPLv3 Section 7 terms that apply to Morphe contributions.
+ * See the included NOTICE file for GPLv3 Section 7 terms that apply to this code.
  */
 
 package app.morphe.extension.youtube.patches.queue;
+
+import static app.morphe.extension.shared.StringRef.str;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -15,8 +17,6 @@ import android.util.Base64;
 import android.view.accessibility.AccessibilityManager;
 
 import androidx.annotation.Nullable;
-
-import static app.morphe.extension.shared.StringRef.str;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
@@ -43,10 +43,10 @@ import app.morphe.extension.youtube.innertube.IconOuterClass.YTIconType;
 import app.morphe.extension.youtube.innertube.NextResponseOuterClass.SingleColumnWatchNextResults;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.patches.AddToQueuePatch;
-import app.morphe.extension.youtube.patches.LocalQueuePatch;
-import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.LoadVideoPatch;
+import app.morphe.extension.youtube.patches.LocalQueuePatch;
 import app.morphe.extension.youtube.patches.OpenVideosFullscreenHookPatch;
+import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
@@ -199,6 +199,7 @@ public final class NativePlaylistQueuePatch {
     // A menu click can open the first video before a watch controller exists.
     // Keep this intent separate from an attached, usable native queue.
     private static QueueStart pendingQueueStart;
+    private static int pendingQueueStartInlinePlaybackBlockId;
     private static final class ClosedPlayback {
         final long positionMilliseconds;
         @Nullable PlaylistController feedbackOwner;
@@ -1103,7 +1104,7 @@ public final class NativePlaylistQueuePatch {
 
     /** Release only our session; never modify Morphe's saved queue or its settings. */
     private static void yieldToMorpheQueue() {
-        pendingQueueStart = null;
+        clearPendingQueueStart();
         pendingUndo = null;
         OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
         if (queue == null) return;
@@ -1186,15 +1187,29 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
+    private static void clearPendingQueueStart() {
+        int blockId = pendingQueueStartInlinePlaybackBlockId;
+        pendingQueueStart = null;
+        pendingQueueStartInlinePlaybackBlockId = 0;
+        if (blockId != 0) LoadVideoPatch.releaseInlinePlaybackBlock(blockId);
+    }
+
     private static void startQueue(QueueStart start) {
+        clearPendingQueueStart();
         pendingUndo = null;
         pendingQueueStart = start;
-        LoadVideoPatch.openVideoIntent(start.watchUrl(), false);
         Utils.runOnMainThreadDelayed(() -> {
             if (pendingQueueStart != start) return;
-            pendingQueueStart = null;
+            clearPendingQueueStart();
             OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
         }, NAVIGATION_TIMEOUT_MILLISECONDS);
+        // After close, a focused feed preview can steal the watch player even
+        // with the correct saved video ID. Reuse Reload's native feed protection
+        // without dismissing another player or retaining its playback parameters.
+        if (start.restoresClosedPlayer()) {
+            pendingQueueStartInlinePlaybackBlockId = LoadVideoPatch.blockInlinePlaybackUntilPlayerOpens();
+        }
+        LoadVideoPatch.openVideoIntent(start.watchUrl(), false);
     }
 
     /** Commit a first-item queue only after native playback accepts the requested video. */
@@ -1211,7 +1226,7 @@ public final class NativePlaylistQueuePatch {
         if (ShortsPlayerState.isOpen() || type == PlayerType.HIDDEN
                 || (!type.isNoneOrHidden() && type != PlayerType.INLINE_MINIMAL
                 && start.isSupersededBy(videoId))) {
-            pendingQueueStart = null;
+            clearPendingQueueStart();
             OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
             return;
         }
@@ -1222,7 +1237,7 @@ public final class NativePlaylistQueuePatch {
         if (controller == null || !requestedId.equals(videoId)
                 || !requestedId.equals(controller.patch_getVideoId())) return;
         if (hasPlaylist(controller)) {
-            pendingQueueStart = null;
+            clearPendingQueueStart();
             OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
             return;
         }
@@ -1230,7 +1245,7 @@ public final class NativePlaylistQueuePatch {
         Object baseline = controller.patch_getModel();
         if (publish(controller, start.candidate(), false)) {
             originalModel = baseline;
-            pendingQueueStart = null;
+            clearPendingQueueStart();
             if (start.restoresClosedPlayer()) {
                 NativePlayback playback = nativePlaybackRef.get();
                 playback.patch_restoreQueueRepeat(start.candidate().repeatMode());
@@ -1363,7 +1378,7 @@ public final class NativePlaylistQueuePatch {
 
     private static void releasePanel() {
         pendingUndo = null;
-        pendingQueueStart = null;
+        clearPendingQueueStart();
         OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
         PlaylistController controller = controllerRef.get();
         Object expectedModel = publishedModel;

@@ -1,11 +1,13 @@
 /*
  * Copyright 2026 Morphe.
- * https://github.com/MorpheApp/morphe-patches
+ * https://github.com/MorpheApp/morphe-patches/pull/3953
  *
- * See the included NOTICE file for GPLv3 Section 7 terms that apply to Morphe contributions.
+ * See the included NOTICE file for GPLv3 Section 7 terms that apply to this code.
  */
 
 package app.morphe.extension.youtube.patches.queue;
+
+import static app.morphe.extension.shared.StringRef.str;
 
 import androidx.annotation.Nullable;
 
@@ -15,8 +17,6 @@ import java.lang.ref.WeakReference;
 
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.youtube.innertube.queue.fullscreen.QueueFullscreenRenderer;
-
-import static app.morphe.extension.shared.StringRef.str;
 
 /** Supplies only the playlist action to YouTube's existing fullscreen renderer. */
 public final class QueueFullscreenActions {

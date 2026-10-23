@@ -1,15 +1,18 @@
 /*
  * Copyright 2026 Morphe.
- * https://github.com/MorpheApp/morphe-patches
+ * https://github.com/MorpheApp/morphe-patches/pull/3953
  *
- * See the included NOTICE file for GPLv3 Section 7 terms that apply to Morphe contributions.
+ * See the included NOTICE file for GPLv3 Section 7 terms that apply to this code.
  */
 
 package app.morphe.extension.youtube.patches.queue;
 
 import static org.junit.Assert.assertEquals;
-
-import static app.morphe.extension.youtube.patches.queue.QueueShortsSession.Action.*;
+import static app.morphe.extension.youtube.patches.queue.QueueShortsSession.Action.NONE;
+import static app.morphe.extension.youtube.patches.queue.QueueShortsSession.Action.RELEASE;
+import static app.morphe.extension.youtube.patches.queue.QueueShortsSession.Action.RESUME;
+import static app.morphe.extension.youtube.patches.queue.QueueShortsSession.Action.SUSPEND;
+import static app.morphe.extension.youtube.patches.queue.QueueShortsSession.Action.WAIT;
 
 import org.junit.Test;
 

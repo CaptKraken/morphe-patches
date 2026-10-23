@@ -17,6 +17,7 @@ import app.morphe.patches.youtube.interaction.feedactions.feedVideoActionsPatch
 import app.morphe.patches.youtube.layout.feedcards.feedCardLayoutPatch
 import app.morphe.patches.youtube.video.series.seriesTrackerPatch
 import app.morphe.patches.youtube.interaction.loop.loopVideoPatch
+import app.morphe.patches.youtube.interaction.reload.reloadVideoButtonPatch
 import app.morphe.patches.youtube.interaction.savetowatchlater.saveToWatchLaterButtonPatch
 import app.morphe.patches.youtube.interaction.downloads.downloadsPatch
 import app.morphe.patches.youtube.layout.buttons.action.hideVideoActionButtonsPatch
@@ -72,6 +73,7 @@ fun main(arguments: Array<String>) {
     val sdk = System.getenv("ANDROID_HOME") ?: error("ANDROID_HOME is required for SDK verification")
     val relatedPatches = setOf(
         addToQueuePatch, saveToWatchLaterButtonPatch, downloadsPatch, openSystemShareSheetPatch(), loopVideoPatch,
+        reloadVideoButtonPatch,
         disablePlaylistAutoplayPatch, hidePlayerOverlayButtonsPatch, hideVideoActionButtonsPatch,
         restoreOriginalTitlesPatch, deArrowPatch, openChannelOfLiveAvatarPatch, returnYouTubeDislikePatch,
         hideLayoutComponentsPatch, hideRelatedVideosPatch, exitFullscreenPatch, openVideosFullscreenPatch,

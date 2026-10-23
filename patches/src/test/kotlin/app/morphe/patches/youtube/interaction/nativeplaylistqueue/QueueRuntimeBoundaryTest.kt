@@ -47,6 +47,10 @@ class QueueRuntimeBoundaryTest {
         withFixture("closedPlayerRestore")
 
     @Test
+    fun `closed restore releases its inline block on cancellation and timeout without releasing newer opens`() =
+        withFixture("closedRestoreInlineLifetime")
+
+    @Test
     fun `new playback and provider handoff invalidate closed player Undo`() = withFixture("closedPlayerSuperseded")
 
     @Test
@@ -128,9 +132,17 @@ class QueueRuntimeBoundaryTest {
                 package app.morphe.extension.youtube.patches;
                 public class LoadVideoPatch {
                     public static String url;
-                    public static int opens;
+                    public static int opens, blocks, releases, activeBlock;
+                    public static int blockInlinePlaybackUntilPlayerOpens() {
+                        return activeBlock = ++blocks;
+                    }
+                    public static void releaseInlinePlaybackBlock(int token) {
+                        if (token != 0 && token == activeBlock) { activeBlock = 0; releases++; }
+                    }
                     public static void openVideoIntent(String value, boolean dismiss) {
                         if (dismiss) throw new AssertionError("Undo must not dismiss a replacement player");
+                        if (value.contains("&t=") && activeBlock == 0)
+                            throw new AssertionError("Block inline playback before dispatching a closed queue restore");
                         opens++; url = value;
                     }
                 }
@@ -411,6 +423,9 @@ class QueueRuntimeBoundaryTest {
                             "Close must release the live local sequence");
                         require(((WeakReference<?>) field("nativePlaybackRef").get(null)).get() == null,
                             "Disposed playback must not be retained as the restore target");
+                        VideoInformation.id = "ZYXWVUTSRQP";
+                        app.morphe.extension.youtube.shared.PlayerType.current =
+                            app.morphe.extension.youtube.shared.PlayerType.INLINE_MINIMAL;
                         require(NativePlaylistQueuePatch.onQueueUndoCommand(undo), "Native button must consume local Undo");
                         require(LoadVideoPatch.opens == 1 && LoadVideoPatch.url.equals(
                             "https://www.youtube.com/watch?v=abcdefghijk&t=75s"), "Reopen at the saved position");
@@ -420,6 +435,8 @@ class QueueRuntimeBoundaryTest {
                         call("tryStartQueue");
                         require(old.playback.attaches == 0 && field("queue").get(null) == null,
                             "Do not attach through the detached old controller");
+                        require(LoadVideoPatch.activeBlock != 0 && LoadVideoPatch.releases == 0,
+                            "The feed preview must stay blocked while the requested player is not accepted");
                         var watch = app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.NavigationEndpoint
                             .newBuilder().setWatchEndpoint(app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer
                             .WatchEndpoint.newBuilder().setVideoId("abcdefghijk")).build();
@@ -427,6 +444,7 @@ class QueueRuntimeBoundaryTest {
                             .get("start_watch_minimized")), "Undo must reopen in the mini player");
                         var replacement = new Controller(new Playback()); replacement.playback.repeat = 0;
                         field("controllerRef").set(null, new WeakReference<>(replacement));
+                        VideoInformation.id = "abcdefghijk";
                         app.morphe.extension.youtube.shared.PlayerType.current =
                             app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MINIMIZED;
                         call("tryStartQueue");
@@ -440,8 +458,44 @@ class QueueRuntimeBoundaryTest {
                             "Restore repeat after the new backend attaches");
                         require(field("pendingQueueStart").get(null) == null && Utils.toasts == 0,
                             "Successful Undo must finish without an unrelated Added toast");
+                        require(LoadVideoPatch.activeBlock == 0 && LoadVideoPatch.releases == 1,
+                            "Release inline protection once the restored mini player owns its new backend");
                         NativePlaylistQueuePatch.onQueueUndoCommand(undo);
                         require(LoadVideoPatch.opens == 1, "Undo can activate only once");
+                    }
+                    static void beginClosedRestore() throws Exception {
+                        VideoInformation.id = "abcdefghijk";
+                        var controller = new Controller(new Playback()); installOwned(controller);
+                        var undo = closePlayer(controller);
+                        VideoInformation.id = "ZYXWVUTSRQP";
+                        app.morphe.extension.youtube.shared.PlayerType.current =
+                            app.morphe.extension.youtube.shared.PlayerType.INLINE_MINIMAL;
+                        NativePlaylistQueuePatch.onQueueUndoCommand(undo);
+                    }
+                    public static void closedRestoreInlineLifetime() throws Exception {
+                        beginClosedRestore();
+                        app.morphe.extension.youtube.shared.ShortsPlayerState.open = true;
+                        call("tryStartQueue");
+                        require(field("pendingQueueStart").get(null) == null && LoadVideoPatch.activeBlock == 0,
+                            "Shorts must cancel the restore and release its feed block");
+                        app.morphe.extension.youtube.shared.ShortsPlayerState.open = false;
+                        beginClosedRestore();
+                        Utils.advanceBy(9999);
+                        require(LoadVideoPatch.activeBlock != 0, "Keep protection while native restore can still complete");
+                        Utils.advanceBy(1);
+                        require(field("pendingQueueStart").get(null) == null && LoadVideoPatch.activeBlock == 0,
+                            "A failed restore must release protection at the navigation deadline");
+                        beginClosedRestore();
+                        int replacementBlock = LoadVideoPatch.blockInlinePlaybackUntilPlayerOpens();
+                        call("yieldToMorpheQueue");
+                        require(LoadVideoPatch.activeBlock == replacementBlock,
+                            "Cancelling queue restore must not release a newer Reload operation's block");
+                        var start = owner.getDeclaredMethod("startQueue", QueueStart.class); start.setAccessible(true);
+                        int blocks = LoadVideoPatch.blocks;
+                        start.invoke(null, new QueueStart(new PlaylistQueue("abcdefghijk", "New queue"), "ZYXWVUTSRQP"));
+                        call("releasePanel");
+                        require(LoadVideoPatch.blocks == blocks && LoadVideoPatch.activeBlock == replacementBlock,
+                            "Ordinary first-queue navigation must not acquire or release a restore block");
                     }
                     public static void closedPlayerSuperseded() throws Exception {
                         var controller = new Controller(new Playback()); installOwned(controller);

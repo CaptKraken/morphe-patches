@@ -1,8 +1,8 @@
 /*
  * Copyright 2026 Morphe.
- * https://github.com/MorpheApp/morphe-patches
+ * https://github.com/MorpheApp/morphe-patches/pull/3953
  *
- * See the included NOTICE file for GPLv3 Section 7 terms that apply to Morphe contributions.
+ * See the included NOTICE file for GPLv3 Section 7 terms that apply to this code.
  */
 
 package app.morphe.extension.youtube.patches.queue;
@@ -10,10 +10,10 @@ package app.morphe.extension.youtube.patches.queue;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertNull;
 
-import org.junit.Test;
-
 import com.google.protobuf.ByteString;
 import com.google.protobuf.CodedOutputStream;
+
+import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
 
@@ -37,8 +37,8 @@ import app.morphe.extension.youtube.innertube.NextResponseOuterClass.SerialComma
 import app.morphe.extension.youtube.innertube.NextResponseOuterClass.Type;
 import app.morphe.extension.youtube.innertube.NextResponseOuterClass.VideoActionBarData;
 import app.morphe.extension.youtube.innertube.NextResponseOuterClass.VideoActionBarModel;
-import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.LikeEndpoint.Status;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
+import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.LikeEndpoint.Status;
 
 public class QueueRatingActionsTest {
     private static ByteString endpoint(String id, Status status) throws Exception {

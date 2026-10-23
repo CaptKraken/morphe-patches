@@ -103,12 +103,15 @@ public final class LoadVideoPatch {
      * Once the player is dismissed, the video of the feed below it can start playing in the feed.
      * The player opened next then plays that video instead, with a black screen and a page that never loads.
      * Playback in feeds is blocked until the player opens again.
+     * Opens that finish minimized can release the returned token once their player is accepted.
+     *
+     * @return the block generation, or zero if feed playback has not initialized.
      */
-    private static void blockInlinePlaybackUntilPlayerOpens() {
+    public static int blockInlinePlaybackUntilPlayerOpens() {
         InlinePlaybackInterface inlinePlaybackInterface = inlinePlaybackInterfaceRef.get();
         if (inlinePlaybackInterface == null) {
             Logger.printDebug(() -> "Cannot block playback in feeds, interface is not set");
-            return;
+            return 0;
         }
 
         if (!inlinePlaybackBlocked) {
@@ -124,6 +127,14 @@ public final class LoadVideoPatch {
                 unblockInlinePlayback();
             }
         }, INLINE_PLAYBACK_BLOCK_TIMEOUT_MILLISECONDS);
+        return blockId;
+    }
+
+    /** A completed or cancelled open must not release a newer operation's protection. */
+    public static void releaseInlinePlaybackBlock(int blockId) {
+        if (blockId != 0 && blockId == inlinePlaybackBlockId) {
+            unblockInlinePlayback();
+        }
     }
 
     private static void unblockInlinePlayback() {
