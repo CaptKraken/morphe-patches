@@ -7,12 +7,12 @@
 
 package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 
-import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
-import app.morphe.util.addInstructionsAtControlFlowLabel
-import app.morphe.util.getReference
-import app.morphe.util.matchSingle
+import app.morphe.patcher.patch.BytecodePatchContext
+import app.morphe.patcher.util.getReference
+import app.morphe.patcher.util.matchSingle
 import app.morphe.patcher.util.smali.ExternalLabel
+import app.morphe.util.addInstructionsAtControlFlowLabel
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference

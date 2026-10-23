@@ -12,10 +12,10 @@ import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLa
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.patch.PatchException
+import app.morphe.patcher.util.getReference
+import app.morphe.patcher.util.matchSingle
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
 import app.morphe.patches.youtube.layout.buttons.action.QuickActionsElementSyntheticFingerprint
-import app.morphe.util.getReference
-import app.morphe.util.matchSingle
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation

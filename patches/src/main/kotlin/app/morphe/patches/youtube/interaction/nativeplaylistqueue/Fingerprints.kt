@@ -8,23 +8,23 @@
 package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 
 import app.morphe.patcher.Fingerprint
-import app.morphe.patcher.StringComparisonType
-import app.morphe.patcher.checkCast
 import app.morphe.patcher.InstructionLocation.MatchAfterImmediately
 import app.morphe.patcher.InstructionLocation.MatchAfterWithin
-import app.morphe.patcher.resource.ResourceType
-import app.morphe.patcher.resourceLiteral
+import app.morphe.patcher.StringComparisonType
+import app.morphe.patcher.checkCast
 import app.morphe.patcher.fieldAccess
+import app.morphe.patcher.literal
 import app.morphe.patcher.methodCall
 import app.morphe.patcher.opcode
-import app.morphe.patcher.literal
+import app.morphe.patcher.resource.ResourceType
+import app.morphe.patcher.resourceLiteral
 import app.morphe.patcher.string
-import app.morphe.util.getReference
+import app.morphe.patcher.util.getReference
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
-import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 
 /** The native batch request, not the modern panel's single-video parameter. */
 internal object QueueSaveRequestFingerprint : Fingerprint(
