@@ -70,7 +70,6 @@ val addToQueuePatch = bytecodePatch(
                         entryValuesKey = "morphe_queue_type_legacy_entry_values"
                     )
                 },
-                SwitchPreference("morphe_queue_override_flyout_menu", summary = true),
                 SwitchPreference("morphe_queue_add_flyout_menu", summary = true)
             )
         )

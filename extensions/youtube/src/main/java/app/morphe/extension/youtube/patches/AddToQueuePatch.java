@@ -122,7 +122,7 @@ public final class AddToQueuePatch {
     }
 
     public static void onListBound(ViewGroup itemList) {
-        if (!isFlyoutOverrideEnabled()) {
+        if (!isCustomQueueEnabled()) {
             return;
         }
 
@@ -159,14 +159,6 @@ public final class AddToQueuePatch {
                 });
             }
         }
-    }
-
-    private static boolean isFlyoutOverrideEnabled() {
-        if (!isCustomQueueEnabled()) {
-            return false;
-        }
-
-        return LocalQueuePatch.isEnabled() || Settings.QUEUE_OVERRIDE_FLYOUT_MENU.get();
     }
 
     private static boolean hasFlyoutButton(String buttonName) {
@@ -228,7 +220,7 @@ public final class AddToQueuePatch {
      * Injection point.
      */
     public static Runnable replaceButtonRunnable(Runnable original) {
-        if (!isFlyoutOverrideEnabled()) {
+        if (!isCustomQueueEnabled()) {
             return original;
         }
 
@@ -252,7 +244,7 @@ public final class AddToQueuePatch {
      */
     public static boolean replaceOnItemClick(Object object) {
         try {
-            if (!isFlyoutOverrideEnabled()) {
+            if (!isCustomQueueEnabled()) {
                 return false;
             }
 
