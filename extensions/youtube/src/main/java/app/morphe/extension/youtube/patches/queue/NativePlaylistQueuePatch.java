@@ -844,7 +844,7 @@ public final class NativePlaylistQueuePatch {
                 clearFeedback(undo));
     }
 
-    /** Called only from the native mini-player close click, before it destroys the player. */
+    /** Called from accepted native mini-player close clicks or gestures before teardown. */
     public static void onQueuePlayerClosing() {
         try {
             if (queue == null) return;

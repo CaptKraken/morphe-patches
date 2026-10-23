@@ -579,17 +579,15 @@ private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
     val commandTypes = classes.filter { commandInterface in it.interfaces }
     val nativeMethods = classes.filter { !it.type.startsWith("Lapp/morphe/") }.flatMap { it.methods }
     val closeHook = "L$extensionOwner;->onQueuePlayerClosing()V"
-    val closeClicks = nativeMethods.filter { method -> method.implementation?.instructions?.any {
+    val closeHandlers = nativeMethods.filter { method -> method.implementation?.instructions?.any {
         (it as? ReferenceInstruction)?.reference?.toString() == closeHook
     } == true }
     val closeFeedback = nativeMethods.filter { it.name == "patch_showQueueFeedback" }
-    check(closeClicks.size == if (selected) 1 else 0) { "Unexpected queue player-close interception" }
+    check(closeHandlers.size == if (selected) 3 else 0) { "Unexpected queue player-close interception" }
     check(closeFeedback.size == if (selected) 1 else 0) { "Unexpected queue player-close feedback bridge" }
     if (selected) {
-        val click = closeClicks.single()
-        check(click.name == "onClick" && click.parameterTypes == listOf("Landroid/view/View;")) {
-            "Only the mini-player close click may capture player-close Undo"
-        }
+        val click = closeHandlers.single { it.name == "onClick" &&
+                it.parameterTypes == listOf("Landroid/view/View;") }
         val code = click.implementation!!.instructions.toList()
         val hookIndex = code.indexOfFirst { (it as? ReferenceInstruction)?.reference?.toString() == closeHook }
         val original = (code[hookIndex + 1] as ReferenceInstruction).reference as MethodReference
@@ -600,6 +598,36 @@ private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
                 code[hookIndex + 2].opcode == Opcode.RETURN_VOID) {
             "Player-close capture must preserve the original dismissal and listener return"
         }
+        val fling = closeHandlers.single { method ->
+            method.name == "onFling" && method.returnType == "Z" && method.parameterTypes ==
+                    listOf("Landroid/view/MotionEvent;", "Landroid/view/MotionEvent;", "F", "F") ||
+                    method.returnType == "V" && method.parameterTypes == listOf("Landroid/view/MotionEvent;", "F", "F")
+        }
+        if (fling.name != "onFling") {
+            check(nativeMethods.count { method -> method.name == "onFling" &&
+                    method.implementation?.instructions?.any {
+                        (it as? ReferenceInstruction)?.reference?.toString() == fling.toString()
+                    } == true } == 1) { "Legacy accepted-dismiss helper must belong to the native fling callback" }
+        }
+        val touch = closeHandlers.single { it.returnType == "Z" &&
+                it.parameterTypes == listOf("Landroid/view/View;", "Landroid/view/MotionEvent;") }
+        for ((gesture, expectedCalls) in listOf(fling to 2, touch to 1)) {
+            val instructions = gesture.implementation!!.instructions.toList()
+            val dismissCalls = instructions.indices.filter {
+                (instructions[it] as? ReferenceInstruction)?.reference?.toString() == original.toString()
+            }
+            val captures = instructions.indices.filter {
+                (instructions[it] as? ReferenceInstruction)?.reference?.toString() == closeHook
+            }
+            check(dismissCalls.size == expectedCalls && captures == dismissCalls.map { it - 1 } &&
+                    captures.all { instructions[it].opcode == Opcode.INVOKE_STATIC &&
+                            (instructions[it] as FiveRegisterInstruction).registerCount == 0 } &&
+                    dismissCalls.all { instructions[it].opcode == Opcode.INVOKE_VIRTUAL &&
+                            instructions[it + 1].opcode in if (gesture.returnType == "V") setOf(Opcode.RETURN_VOID)
+                            else setOf(Opcode.GOTO, Opcode.GOTO_16, Opcode.GOTO_32) }) {
+                "Accepted gesture dismissals must each capture Undo and keep their original continuation"
+            }
+        }
         val feedback = closeFeedback.single().implementation!!.instructions.toList()
         val calls = feedback.mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }
         check(calls.any { it.name == "patch_parseQueueCommand" } && calls.any {
@@ -607,7 +635,7 @@ private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
         } && calls.last().parameterTypes == listOf(commandTypes.single().type, "Ljava/util/Map;")) {
             "Player-close feedback must use the native command parser and activity dispatcher"
         }
-        println("Queue player-close: user click keeps native dismissal; feedback uses native parser and dispatcher")
+        println("Queue player-close: click, fling and drag keep native dismissal; feedback uses native parser and dispatcher")
     }
     val snackbars = classes.filter { !it.type.startsWith("Lapp/morphe/") }.flatMap { it.methods }.filter { method ->
         method.implementation?.instructions?.any {

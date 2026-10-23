@@ -703,6 +703,31 @@ internal fun queuePlayerCloseClickFingerprint(dismiss: MethodReference) = Finger
     custom = { _, classDef -> "Landroid/view/View\$OnClickListener;" in classDef.interfaces }
 )
 
+/** Fling thresholds live in the callback, or in its MotionEvent/velocity helper on older builds. */
+internal fun queuePlayerCloseFlingFingerprint(dismiss: MethodReference) = Fingerprint(
+    filters = listOf(methodCall(reference = dismiss)),
+    custom = { method, _ ->
+        method.name == "onFling" && method.returnType == "Z" && method.parameterTypes ==
+                listOf("Landroid/view/MotionEvent;", "Landroid/view/MotionEvent;", "F", "F") ||
+                method.returnType == "V" && method.parameterTypes == listOf("Landroid/view/MotionEvent;", "F", "F")
+    }
+)
+
+/** Require the older helper to be called by the native framework gesture callback. */
+internal fun queuePlayerFlingCallerFingerprint(handler: MethodReference) = Fingerprint(
+    name = "onFling",
+    parameters = listOf("Landroid/view/MotionEvent;", "Landroid/view/MotionEvent;", "F", "F"),
+    returnType = "Z",
+    filters = listOf(methodCall(reference = handler))
+)
+
+/** A slow drag can close on touch release without going through onFling. */
+internal fun queuePlayerCloseTouchFingerprint(dismiss: MethodReference) = Fingerprint(
+    parameters = listOf("Landroid/view/View;", "Landroid/view/MotionEvent;"),
+    returnType = "Z",
+    filters = listOf(methodCall(reference = dismiss))
+)
+
 internal fun queueUndoClickFingerprint(listenerType: String, factoryType: String,
                                       dispatcherType: String, callback: MethodReference) = Fingerprint(
     definingClass = listenerType,

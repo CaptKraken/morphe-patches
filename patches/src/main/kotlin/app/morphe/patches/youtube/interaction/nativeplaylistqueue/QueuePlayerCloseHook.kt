@@ -30,9 +30,27 @@ internal fun installQueuePlayerClose(
 ) = with(context) {
     val dismiss = MiniAppOpenYtContentCommandEndpointFingerprint.matchSingle()
         .instructionMatches.last().instruction.getReference<MethodReference>()!!
-    val click = queuePlayerCloseClickFingerprint(dismiss).matchSingle()
-    click.method.addInstructionsAtControlFlowLabel(click.instructionMatches.single().index,
-        "invoke-static {}, $EXTENSION_CLASS->onQueuePlayerClosing()V")
+    val fling = queuePlayerCloseFlingFingerprint(dismiss).matchSingle().originalMethod
+    if (fling.name != "onFling") queuePlayerFlingCallerFingerprint(fling).matchSingle()
+    for ((fingerprint, expectedCalls) in listOf(
+        queuePlayerCloseClickFingerprint(dismiss) to 1,
+        queuePlayerCloseFlingFingerprint(dismiss) to 2,
+        queuePlayerCloseTouchFingerprint(dismiss) to 1
+    )) {
+        val method = fingerprint.matchSingle().method
+        val dismissCalls = method.implementation!!.instructions.withIndex().filter {
+            it.value.getReference<MethodReference>()?.toString() == dismiss.toString()
+        }.map { it.index }
+        check(dismissCalls.size == expectedCalls) {
+            "Native playlist queue: unexpected user-dismiss branches in $method"
+        }
+        // Fling has separate accepted-dismiss branches. Preserve their thresholds,
+        // branch targets and native continuation, without hooking programmatic close.
+        for (index in dismissCalls.asReversed()) {
+            method.addInstructionsAtControlFlowLabel(index,
+                "invoke-static {}, $EXTENSION_CLASS->onQueuePlayerClosing()V")
+        }
+    }
 
     // This dispatcher belongs to the activity, not the disposed playback backend.
     // Reading it remains valid after the watch view detaches. No listener is replaced.
