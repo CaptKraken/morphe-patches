@@ -1244,3 +1244,57 @@ internal fun queueUndoClickFingerprint(
                 )
             }.flatten()
 )
+
+/** Both menu sheets read their renderer before iterating its item list. */
+internal object QueueFlyoutRendererFingerprint : Fingerprint(
+    parameters = emptyList(),
+    filters = listOf(
+        fieldAccess(opcode = Opcode.IGET_OBJECT, definingClass = "this"),
+        fieldAccess(opcode = Opcode.IGET_OBJECT, location = MatchAfterWithin(3)),
+        methodCall("Ljava/util/List;->iterator()Ljava/util/Iterator;", location = MatchAfterImmediately())
+    ),
+    strings = listOf("Bottom Sheet Menu is empty. No menu items were supported.")
+)
+
+/** Native visibility filtering lives beside the popup menu list builder. */
+internal object QueueFlyoutResolverFingerprint : Fingerprint(
+    filters = listOf(string("Unknown menu visibility condition: %d"))
+)
+
+/** Popup menus filter the same renderer in the native visibility resolver's class. */
+internal fun queueFlyoutPopupFingerprint(resolverType: String, menuType: String, items: FieldReference) = Fingerprint(
+    definingClass = resolverType,
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC),
+    parameters = listOf(menuType, "L", "L", "L"),
+    returnType = "L",
+    filters = listOf(
+        fieldAccess(opcode = Opcode.IGET_OBJECT, reference = items),
+        methodCall("Ljava/util/List;->iterator()Ljava/util/Iterator;", location = MatchAfterImmediately())
+    )
+)
+
+/** Sheet item dispatch bypasses the model's Runnable in both native sheet variants. */
+internal fun queueFlyoutClickFingerprint(sheetType: String, buttonType: String, itemType: String) = Fingerprint(
+    definingClass = sheetType,
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(opcode = Opcode.IGET_OBJECT, definingClass = buttonType, type = itemType),
+        // Dismissal is inherited from the native fragment superclass.
+        methodCall(parameters = emptyList(), returnType = "V"),
+        opcode(Opcode.RETURN_VOID, location = MatchAfterImmediately())
+    )
+)
+
+/** The concrete button stores its native menu item; Runnable belongs to a superclass. */
+internal fun queueFlyoutButtonConstructorFingerprint(factory: MethodReference, itemType: String) = Fingerprint(
+    definingClass = factory.definingClass,
+    name = factory.name,
+    parameters = factory.parameterTypes.map { it.toString() },
+    returnType = factory.returnType,
+    filters = listOf(methodCall(
+        opcode = Opcode.INVOKE_DIRECT,
+        name = "<init>",
+        parameters = listOf("Ljava/lang/String;", itemType),
+        returnType = "V"
+    ))
+)

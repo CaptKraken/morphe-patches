@@ -23,6 +23,7 @@ import app.morphe.extension.shared.ResourceType;
 import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.shared.Utils;
 import app.morphe.extension.shared.settings.Setting;
+import app.morphe.extension.youtube.patches.queue.NativePlaylistQueuePatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.LocalQueueSheet;
 import app.morphe.extension.youtube.patches.utils.PlaylistPatch;
@@ -122,7 +123,9 @@ public final class AddToQueuePatch {
     }
 
     public static void onListBound(ViewGroup itemList) {
-        if (!isCustomQueueEnabled()) {
+        final boolean nativeQueue = NativePlaylistQueuePatch.isPatchIncluded()
+                && Settings.QUEUE_TYPE.get() == QueueType.NATIVE;
+        if (!isCustomQueueEnabled() && !nativeQueue) {
             return;
         }
 
@@ -139,6 +142,12 @@ public final class AddToQueuePatch {
             }
 
             android.view.View item = itemList.getChildAt(itemIndex);
+            if (nativeQueue && queueButtonOriginalNames.get(1).equals(buttonName)
+                    && !NativePlaylistQueuePatch.canShowFlyoutLast()) {
+                // The queue may have been cleared since the native model was prepared.
+                item.setVisibility(android.view.View.GONE);
+                continue;
+            }
             var badge = SECONDARY_CONTAINER_ID == 0 ? null : item.findViewById(SECONDARY_CONTAINER_ID);
             if (badge != null && badge.getVisibility() != android.view.View.GONE) {
                 Logger.printDebug(() -> "Hiding the menu item secondary icon");
@@ -220,6 +229,11 @@ public final class AddToQueuePatch {
      * Injection point.
      */
     public static Runnable replaceButtonRunnable(Runnable original) {
+        if (Settings.QUEUE_TYPE.get() == QueueType.NATIVE) {
+            Runnable action = getNativeQueueAction(FlyoutUtils.getCurrentButtonName(),
+                    FlyoutUtils.getFlyoutVideoId());
+            return action == null ? original : action;
+        }
         if (!isCustomQueueEnabled()) {
             return original;
         }
@@ -244,10 +258,13 @@ public final class AddToQueuePatch {
      */
     public static boolean replaceOnItemClick(Object object) {
         try {
-            if (!isCustomQueueEnabled()) {
+            if (!isCustomQueueEnabled() && Settings.QUEUE_TYPE.get() != QueueType.NATIVE) {
                 return false;
             }
 
+            if (Settings.QUEUE_TYPE.get() == QueueType.NATIVE && object instanceof String name) {
+                return flyoutButtonClickLogic(name, FlyoutUtils.getFlyoutVideoId());
+            }
             if (FlyoutUtils.getFlyoutVideoId().isEmpty()) {
                 Logger.printDebug(() -> "Cannot replace on item click, flyoutVideoId is empty");
                 return false;
@@ -297,7 +314,13 @@ public final class AddToQueuePatch {
     }
 
     public static boolean flyoutButtonClickLogic(String buttonName, String videoId) {
+        final boolean nativeAction = Settings.QUEUE_TYPE.get() == QueueType.NATIVE
+                && queueButtonOriginalNames.contains(buttonName);
         try {
+            if (nativeAction) {
+                getNativeQueueAction(buttonName, videoId).run();
+                return true;
+            }
             if (queueButtonOriginalNames.contains(buttonName)) {
                 if (LocalQueuePatch.isEnabled()) {
                     LocalQueuePatch.add(videoId, queueButtonOriginalNames.get(0).equals(buttonName));
@@ -321,6 +344,23 @@ public final class AddToQueuePatch {
             Logger.printException(() -> "flyoutButtonClickLogic failure: " + buttonName, ex);
         }
 
-        return false;
+        // An error in a Native-owned action must not dispatch the original
+        // Premium command through the caller's fallback path.
+        return nativeAction;
+    }
+
+    @Nullable
+    private static Runnable getNativeQueueAction(String buttonName, String videoId) {
+        if (!queueButtonOriginalNames.contains(buttonName)) {
+            return null;
+        }
+        Runnable action = NativePlaylistQueuePatch.getFlyoutQueueAction(videoId,
+                queueButtonOriginalNames.get(1).equals(buttonName));
+        // An unsupported/stale menu context cannot silently invoke a Premium or
+        // account-backed queue when the user explicitly selected Native queue.
+        return action != null ? action : () -> {
+            Utils.showToastShort(str("morphe_native_playlist_queue_not_ready"));
+            FlyoutUtils.dismissFlyout();
+        };
     }
 }

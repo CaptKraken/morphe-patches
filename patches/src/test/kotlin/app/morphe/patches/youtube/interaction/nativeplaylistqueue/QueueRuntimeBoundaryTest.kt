@@ -59,6 +59,15 @@ class QueueRuntimeBoundaryTest {
     @Test
     fun `menu Clear Undo reattaches without reopening or seeking playback`() = withFixture("menuClearUndo")
 
+    @Test
+    fun `stock queue actions route to Native without opening the account queue dialog`() = withFixture("stockQueueRouting")
+
+    @Test
+    fun `Morphe and Local stock actions keep their existing destinations`() = withFixture("otherQueueRouting")
+
+    @Test
+    fun `Native Last requires a queue and stale callbacks cannot create one`() = withFixture("staleLastAction")
+
     // NativePlaylistQueuePatch depends on Android settings, scheduling and UI classes.
     // Isolate those boundaries while executing its actual compiled coordinator.
     private fun withFixture(scenario: String) {
@@ -95,9 +104,85 @@ class QueueRuntimeBoundaryTest {
                     public final android.view.accessibility.AccessibilityManager accessibility =
                         new android.view.accessibility.AccessibilityManager();
                     public Object getSystemService(String service) { return accessibility; }
+                    public android.graphics.drawable.Drawable getDrawable(int id) { return null; }
                 }
             """,
-            "View" to "package android.view; public class View {}",
+            "Activity" to """
+                package android.app;
+                public class Activity extends android.content.Context {
+                    public boolean isFinishing() { return false; }
+                    public boolean isDestroyed() { return false; }
+                }
+            """,
+            "Drawable" to "package android.graphics.drawable; public class Drawable {}",
+            "View" to """
+                package android.view;
+                public class View {
+                    public static final int GONE = 8;
+                    public interface OnClickListener { void onClick(View view); }
+                    public int getVisibility() { return 0; }
+                    public void setVisibility(int value) {}
+                    public View findViewById(int id) { return null; }
+                    public void setOnClickListener(OnClickListener listener) {}
+                }
+            """,
+            "ViewGroup" to """
+                package android.view;
+                public class ViewGroup extends View {
+                    public int getChildCount() { return 0; }
+                    public View getChildAt(int index) { throw new AssertionError("Unexpected UI binding"); }
+                }
+            """,
+            "Pair" to """
+                package android.util;
+                public class Pair<F, S> {
+                    public final F first; public final S second;
+                    public Pair(F first, S second) { this.first = first; this.second = second; }
+                }
+            """,
+            "ResourceType" to "package app.morphe.extension.shared; public enum ResourceType { ID, DRAWABLE }",
+            "ResourceUtils" to """
+                package app.morphe.extension.shared;
+                public class ResourceUtils {
+                    public static int getIdentifier(ResourceType type, String name) { return 0; }
+                }
+            """,
+            "FlyoutUtils" to """
+                package app.morphe.extension.youtube.patches.utils;
+                import android.util.Pair;
+                import java.util.*;
+                public class FlyoutUtils {
+                    public static String video = "ZYXWVUTSRQP", button = "QUEUE_PLAY_NEXT";
+                    public static final List<Pair<String, Integer>> stock = new ArrayList<>();
+                    public static List<Pair<String, Integer>> getVisibleFlyoutButtons() { return stock; }
+                    public static String getCurrentButtonName() { return button; }
+                    public static String getFlyoutVideoId() { return video; }
+                    public static String getFlyoutPlaylistId() { return ""; }
+                    public static String getFlyoutChannelName() { return "Channel"; }
+                    public static void resetCurrentButtonIndex() {}
+                    public static void dismissFlyout() {}
+                    public static int addFlyoutButton(Object panel, android.graphics.drawable.Drawable icon,
+                            String text, android.view.View.OnClickListener action, int index) {
+                        return index + 1;
+                    }
+                }
+            """,
+            "PlaylistPatch" to """
+                package app.morphe.extension.youtube.patches.utils;
+                public class PlaylistPatch {
+                    public enum QueueManager { OPEN_QUEUE; public final int drawableId = 0; }
+                    public static int dialogs;
+                    public static void prepareDialogBuilder(android.content.Context context, String video) { dialogs++; }
+                }
+            """,
+            "LocalQueueSheet" to """
+                package app.morphe.extension.youtube.patches.utils;
+                public class LocalQueueSheet { public static void show(android.app.Activity activity) {} }
+            """,
+            "ChannelIdRequest" to """
+                package app.morphe.extension.youtube.patches.utils.requests;
+                public class ChannelIdRequest { public static String getVideoTitleIfAvailable(String video) { return video; } }
+            """,
             "PlayerType" to """
                 package app.morphe.extension.youtube.shared;
                 public enum PlayerType {
@@ -208,8 +293,13 @@ class QueueRuntimeBoundaryTest {
                     public static void runOnMainThread(Runnable action) { pending.add(action); }
                     public static void runOnMainThreadNowOrLater(Runnable action) { action.run(); }
                     public static void runOnBackgroundThread(Runnable action) { /* Network boundary. */ }
+                    public static android.app.Activity getActivity() { return new android.app.Activity(); }
                     public static int toasts;
-                    public static void showToastShort(String text) { toasts++; }
+                    public static boolean failToast;
+                    public static void showToastShort(String text) {
+                        if (failToast) throw new IllegalStateException("Unavailable feedback surface");
+                        toasts++;
+                    }
                     public static void drain() { while (!pending.isEmpty()) pending.remove().run(); }
                 }
             """,
@@ -218,6 +308,7 @@ class QueueRuntimeBoundaryTest {
                 public class Logger {
                     public interface LogMessage { String buildMessageString(); }
                     public static int errors;
+                    public static void printDebug(LogMessage message) { message.buildMessageString(); }
                     public static void printException(LogMessage message) { message.buildMessageString(); errors++; }
                     public static void printException(LogMessage message, Throwable e) { printException(message); }
                 }
@@ -234,21 +325,22 @@ class QueueRuntimeBoundaryTest {
             "Settings" to """
                 package app.morphe.extension.youtube.settings;
                 import app.morphe.extension.youtube.patches.AddToQueuePatch.QueueType;
+                import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
+                import app.morphe.extension.youtube.innertube.IconOuterClass;
                 public class Settings {
                     public static final app.morphe.extension.shared.settings.EnumSetting<QueueType> QUEUE_TYPE =
                         new app.morphe.extension.shared.settings.EnumSetting<>(QueueType.NATIVE);
-                }
-            """,
-            "AddToQueuePatch" to """
-                package app.morphe.extension.youtube.patches;
-                public class AddToQueuePatch {
-                    public enum QueueType { DEFAULT, NATIVE, MORPHE, LOCAL }
                 }
             """,
             "LocalQueuePatch" to """
                 package app.morphe.extension.youtube.patches;
                 public class LocalQueuePatch {
                     public static final java.util.List<String> savedItems = java.util.List.of("saved-video");
+                    public static int additions;
+                    public static boolean next;
+                    public static boolean isEnabled() { return app.morphe.extension.youtube.settings.Settings.QUEUE_TYPE.get() == AddToQueuePatch.QueueType.LOCAL; }
+                    public static void add(String video, boolean playNext) { additions++; next = playNext; }
+                    public static int size() { return 0; }
                 }
             """,
             "OpenVideosFullscreenHookPatch" to """
@@ -273,6 +365,8 @@ class QueueRuntimeBoundaryTest {
                 import app.morphe.extension.shared.*;
                 import app.morphe.extension.youtube.patches.*;
                 import app.morphe.extension.youtube.patches.AddToQueuePatch.QueueType;
+                import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
+                import app.morphe.extension.youtube.innertube.IconOuterClass;
                 import app.morphe.extension.youtube.settings.Settings;
                 import java.lang.ref.WeakReference;
                 import java.lang.reflect.*;
@@ -310,6 +404,89 @@ class QueueRuntimeBoundaryTest {
                         field("pendingUndo").set(null, create.newInstance("token", queue, new WeakReference<>(playback), null));
                         clears = 0; Logger.errors = 0; QueueFullscreenActions.refreshes = 0;
                         return queue;
+                    }
+                    public static void stockQueueRouting() throws Exception {
+                        int[] originals = {0};
+                        Runnable original = () -> originals[0]++;
+                        var action = AddToQueuePatch.replaceButtonRunnable(original);
+                        require(action != original, "Native must replace the stock Next callback");
+                        app.morphe.extension.youtube.patches.utils.FlyoutUtils.video = "LMNOPQRSTUV";
+                        action.run();
+                        require(LoadVideoPatch.opens == 1 && LoadVideoPatch.url.contains("ZYXWVUTSRQP"),
+                            "Stock Next must start the selected video through the existing queue path");
+                        require(field("pendingQueueStart").get(null) != null && field("queue").get(null) == null,
+                            "First video must wait for native attachment rather than preassigning a queue");
+                        require(originals[0] == 0 && app.morphe.extension.youtube.patches.utils.PlaylistPatch.dialogs == 0,
+                            "Native action must not invoke Premium or the account queue dialog");
+                        app.morphe.extension.youtube.patches.utils.FlyoutUtils.stock.add(
+                            new android.util.Pair<>("QUEUE_PLAY_NEXT", 1));
+                        require(AddToQueuePatch.replaceOnItemClick("QUEUE_PLAY_NEXT") && LoadVideoPatch.opens == 2,
+                            "The existing contextual click hook must route to Native as well");
+                        require(QueueFlyoutActions.onStockQueueItemClick(IconOuterClass.YTIconType.QUEUE_PLAY_NEXT)
+                                && LoadVideoPatch.opens == 3,
+                            "Direct native sheet dispatch must route to the same captured action");
+                        require(!QueueFlyoutActions.onStockQueueItemClick(IconOuterClass.YTIconType.SHARE),
+                            "Direct sheet dispatch leaves unrelated actions untouched");
+                        app.morphe.extension.youtube.patches.utils.FlyoutUtils.button = "SAVE_TO_PLAYLIST";
+                        require(AddToQueuePatch.replaceButtonRunnable(original) == original,
+                            "Unrelated stock actions must retain their exact callback");
+                        app.morphe.extension.youtube.patches.utils.FlyoutUtils.button = "QUEUE_PLAY_NEXT";
+                        app.morphe.extension.youtube.patches.utils.FlyoutUtils.video = "";
+                        int opens = LoadVideoPatch.opens;
+                        var unavailable = AddToQueuePatch.replaceButtonRunnable(original);
+                        require(unavailable != original, "Missing context cannot invoke Premium in Native mode");
+                        unavailable.run();
+                        require(AddToQueuePatch.replaceOnItemClick("QUEUE_PLAY_NEXT") && LoadVideoPatch.opens == opens
+                                && originals[0] == 0, "Contextual clicks must also consume missing-context queue actions");
+                        require(AddToQueuePatch.flyoutButtonClickLogic("QUEUE_PLAY_LAST", "ZYXWVUTSRQP")
+                                && LoadVideoPatch.opens == opens, "Unavailable Last stays Native and never creates a queue");
+                        Utils.failToast = true;
+                        require(AddToQueuePatch.flyoutButtonClickLogic("QUEUE_PLAY_NEXT", ""),
+                            "Even a Native feedback failure must not fall through to the Premium command");
+                        Utils.failToast = false;
+                        Settings.QUEUE_TYPE.value = QueueType.DEFAULT;
+                        require(AddToQueuePatch.replaceButtonRunnable(original) == original,
+                            "Default mode must retain the original callback");
+                    }
+                    public static void otherQueueRouting() {
+                        var menu = PlaylistQueueRenderer.MenuRenderer.newBuilder();
+                        for (var icon : List.of(IconOuterClass.YTIconType.QUEUE_PLAY_NEXT,
+                                IconOuterClass.YTIconType.QUEUE_PLAY_LAST)) {
+                            menu.addItems(PlaylistQueueRenderer.MenuItem.newBuilder().setMenuServiceItemRenderer(
+                                PlaylistQueueRenderer.MenuServiceItem.newBuilder().setIcon(
+                                    IconOuterClass.Icon.newBuilder().setYtIconType(icon))));
+                        }
+                        var originalMenu = menu.build();
+                        Settings.QUEUE_TYPE.value = QueueType.MORPHE;
+                        require(!QueueFlyoutActions.onStockQueueItemClick(IconOuterClass.YTIconType.QUEUE_PLAY_NEXT),
+                            "Additional Native dispatch hooks must not intercept another queue provider");
+                        require(QueueFlyoutActions.completeQueueMenu(originalMenu) == originalMenu,
+                            "Morphe must retain its exact native menu object");
+                        require(AddToQueuePatch.flyoutButtonClickLogic("QUEUE_PLAY_NEXT", "ZYXWVUTSRQP"), "Morphe action");
+                        require(app.morphe.extension.youtube.patches.utils.PlaylistPatch.dialogs == 1
+                                && LoadVideoPatch.opens == 0, "Morphe must retain its playlist dialog");
+                        Settings.QUEUE_TYPE.value = QueueType.LOCAL;
+                        require(QueueFlyoutActions.completeQueueMenu(originalMenu) == originalMenu,
+                            "Local must retain its exact native menu object");
+                        require(AddToQueuePatch.flyoutButtonClickLogic("QUEUE_PLAY_LAST", "ZYXWVUTSRQP"), "Local action");
+                        require(LocalQueuePatch.additions == 1 && !LocalQueuePatch.next
+                                && app.morphe.extension.youtube.patches.utils.PlaylistPatch.dialogs == 1,
+                            "Local Last must retain its client-side queue and append direction");
+                        require(!AddToQueuePatch.flyoutButtonClickLogic("SAVE_TO_PLAYLIST", "ZYXWVUTSRQP"),
+                            "Other actions must not be consumed");
+                    }
+                    public static void staleLastAction() throws Exception {
+                        require(!NativePlaylistQueuePatch.canShowFlyoutLast(),
+                            "Last must not be shown without a Native queue");
+                        var controller = new Controller(new Playback());
+                        installOwned(controller);
+                        require(NativePlaylistQueuePatch.canShowFlyoutLast(), "Last is available for an owned Native queue");
+                        Runnable last = NativePlaylistQueuePatch.getFlyoutQueueAction("ZYXWVUTSRQP", true);
+                        require(last != null, "Last available for an existing queue");
+                        field("queue").set(null, null);
+                        last.run();
+                        require(LoadVideoPatch.opens == 0 && field("pendingQueueStart").get(null) == null,
+                            "A stale Last callback must not start a new queue");
                     }
                     static SharedPreferences.OnSharedPreferenceChangeListener listener() throws Exception {
                         return (SharedPreferences.OnSharedPreferenceChangeListener) field("QUEUE_SETTING_LISTENER").get(null);

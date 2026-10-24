@@ -33,8 +33,6 @@ import java.util.WeakHashMap;
 
 import app.morphe.extension.shared.ByteTrieSearch;
 import app.morphe.extension.shared.Logger;
-import app.morphe.extension.shared.ResourceType;
-import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.shared.Utils;
 import app.morphe.extension.shared.settings.Setting;
 import app.morphe.extension.youtube.innertube.IconOuterClass.Icon;
@@ -1254,40 +1252,18 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
-    public static int addFlyoutButton(Object flyoutPanel, int index, String videoId) {
-        try {
-            if (isNativeQueueDisabled() || dragSession != null || !PlaylistQueue.isVideoId(videoId)) return index;
-            PlayerType playerType = PlayerType.getCurrent();
-            String playingVideoId = VideoInformation.getVideoId();
-            boolean canStart = canStartQueue();
-            if (!canStart && (playerType.isNoneOrHidden() || playerType == PlayerType.INLINE_MINIMAL
-                    || !PlaylistQueue.isVideoId(playingVideoId) || videoId.equals(playingVideoId))) return index;
+    /** Captures the eligible native menu action for the selected video. */
+    @Nullable
+    public static Runnable getFlyoutQueueAction(String videoId, boolean playLast) {
+        if (isNativeQueueDisabled() || !PlaylistQueue.isVideoId(videoId)) return null;
+        // Claim every stock Next/Last click in Native mode. Readiness is checked
+        // by the action; a temporarily unavailable controller must not open Premium.
+        return () -> addToQueue(videoId, playLast);
+    }
 
-            // The latest player response can belong to a prefetched video. Only the
-            // accepted controller for the playing video can hide this as a playlist.
-            PlaylistController controller = controllerRef.get();
-            if (!canStart && controller != null && playingVideoId.equals(controller.patch_getVideoId())
-                    && hasPlaylist(controller)) return index;
-
-            int iconId = ResourceUtils.getIdentifier(ResourceType.DRAWABLE,
-                    "yt_outline_experimental_queue_next_vd_theme_24");
-            int nextIndex = FlyoutUtils.addFlyoutButton(flyoutPanel,
-                    iconId == 0 ? null : Utils.getContext().getDrawable(iconId),
-                    str("morphe_native_playlist_queue_next"),
-                    view -> addToQueue(videoId, false), index);
-            index = nextIndex > index ? nextIndex : index;
-            if (queue == null) return index;
-            int lastIconId = ResourceUtils.getIdentifier(ResourceType.DRAWABLE,
-                    "yt_outline_experimental_queue_last_vd_theme_24");
-            int lastIndex = FlyoutUtils.addFlyoutButton(flyoutPanel,
-                    lastIconId == 0 ? null : Utils.getContext().getDrawable(lastIconId),
-                    str("morphe_native_playlist_queue_last"),
-                    view -> addToQueue(videoId, true), index);
-            return lastIndex > index ? lastIndex : index;
-        } catch (Exception ex) {
-            Logger.printException(() -> "addFlyoutButton failure", ex);
-            return index;
-        }
+    /** Only our Native queue makes Last available; account playlists and Mixes do not. */
+    public static boolean canShowFlyoutLast() {
+        return queue != null;
     }
 
     private static boolean isNativeQueueDisabled() {
@@ -1342,6 +1318,11 @@ public final class NativePlaylistQueuePatch {
     private static void addToQueue(String videoId, boolean playLast) {
         if (isNativeQueueDisabled()) {
             releaseNativeQueue();
+            return;
+        }
+        if (playLast && queue == null) {
+            // A menu callback can outlive the queue that made Play last available.
+            Utils.showToastShort(str("morphe_native_playlist_queue_not_ready"));
             return;
         }
 

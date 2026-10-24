@@ -76,6 +76,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
 
         hookVideoIntentContext(EXTENSION_CLASS, "prepareQueueStartContext")
 
+        installQueueFlyout(this)
         installPlaylistPanel(this)
         installRatingCapture(this)
         installPlaylistRemoval(this)

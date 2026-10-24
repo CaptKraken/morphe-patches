@@ -34,18 +34,39 @@ message MenuRenderer {
 message MenuItem {
     optional MenuNavigationItem menu_navigation_item_renderer = 66441108;
     optional MenuServiceItem menu_service_item_renderer = 66441155;
+    optional MenuConditionalServiceItem menu_conditional_service_item_renderer = 77258115;
+    optional MenuConditionalNavigationItem menu_conditional_navigation_item_renderer = 77262503;
 }
 
 message MenuNavigationItem {
     optional Text text = 1;
     optional app.morphe.extension.youtube.innertube.Icon icon = 2;
     optional NavigationEndpoint navigation_endpoint = 3;
+    optional app.morphe.extension.youtube.innertube.Icon secondary_icon = 11;
 }
 
 message MenuServiceItem {
     optional Text text = 1;
     optional app.morphe.extension.youtube.innertube.Icon icon = 2;
     optional NavigationEndpoint service_endpoint = 3;
+    optional app.morphe.extension.youtube.innertube.Icon secondary_icon = 9;
+}
+
+// Native feed queue actions use this conditional variant, not MenuServiceItem.
+message MenuConditionalServiceItem {
+    optional Text text = 1;
+    optional app.morphe.extension.youtube.innertube.Icon icon = 2;
+    optional NavigationEndpoint service_endpoint = 3;
+    // Native MDX_CONNECTED=1 and MDX_DISCONNECTED=2. Preserve other conditions.
+    optional int32 visibility = 7;
+    optional app.morphe.extension.youtube.innertube.Icon secondary_icon = 12;
+}
+
+message MenuConditionalNavigationItem {
+    optional Text text = 1;
+    optional app.morphe.extension.youtube.innertube.Icon icon = 2;
+    optional NavigationEndpoint navigation_endpoint = 3;
+    optional int32 visibility = 7;
 }
 
 message Item {

@@ -499,13 +499,6 @@ public final class FlyoutUtils {
 
         final String flyoutVideoId = getFlyoutVideoId();
 
-        if (NativePlaylistQueuePatch.isPatchIncluded()
-                && !PlayerFlyoutMenuComponentsFilter.getTopFlyoutMenuVisible() && !isShortFlyout
-                && !isNativeQueueRowFlyout) {
-            nextButtonIndex = NativePlaylistQueuePatch.addFlyoutButton(
-                    flyoutPanel, nextButtonIndex, flyoutVideoId);
-        }
-
         // region to show the following buttons only for specific flyout menus.
         final String allButtonsVideoId;
         if (!flyoutVideoId.isEmpty()) {
