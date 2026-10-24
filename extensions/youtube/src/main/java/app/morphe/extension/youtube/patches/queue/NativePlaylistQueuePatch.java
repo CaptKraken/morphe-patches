@@ -1939,7 +1939,7 @@ public final class NativePlaylistQueuePatch {
         var button = PlaylistQueueRenderer.SwipeButton.newBuilder()
                 .setStyle(PlaylistQueueRenderer.SwipeButton.Style.BLACK_FILLED)
                 .setSize(PlaylistQueueRenderer.SwipeButton.Size.DEFAULT).setIsDisabled(false)
-                .setIcon(Icon.newBuilder().setYtIconType(YTIconType.VISIBILITY_OFF))
+                .setIcon(Icon.newBuilder().setYtIconType(YTIconType.DELETE))
                 .setAccessibilityData(label).setServiceEndpoint(endpoint);
         return PlaylistQueueRenderer.SwipeAction.newBuilder().setButtonRenderer(button).build();
     }
@@ -2004,7 +2004,7 @@ public final class NativePlaylistQueuePatch {
         if (index != source.selectedIndex() && !videoId.equals(VideoInformation.getVideoId())) {
             var remove = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setHideEnclosingAction(
                     PlaylistQueueRenderer.HideEnclosingAction.newBuilder().setHack(true));
-            items.addItems(serviceMenuItem(str("remove"), YTIconType.VISIBILITY_OFF, remove.build()));
+            items.addItems(serviceMenuItem(str("remove"), YTIconType.DELETE, remove.build()));
         }
 
         return PlaylistQueueRenderer.Menu.newBuilder().setMenuRenderer(items
