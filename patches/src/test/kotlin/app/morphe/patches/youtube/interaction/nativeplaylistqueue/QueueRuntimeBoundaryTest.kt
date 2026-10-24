@@ -60,6 +60,15 @@ class QueueRuntimeBoundaryTest {
     fun `menu Clear Undo reattaches without reopening or seeking playback`() = withFixture("menuClearUndo")
 
     @Test
+    fun `Reload offers Clear Undo on the reloaded player without reopening it again`() = withFixture("reloadQueueUndo")
+
+    @Test
+    fun `Reload feedback expires and cannot replace newer playback or queue ownership`() = withFixture("reloadQueueLifetime")
+
+    @Test
+    fun `Reload leaves other providers and foreign or unavailable playback unchanged`() = withFixture("reloadQueueGuards")
+
+    @Test
     fun `stock queue actions route to Native without opening the account queue dialog`() = withFixture("stockQueueRouting")
 
     @Test
@@ -765,7 +774,7 @@ class QueueRuntimeBoundaryTest {
                     // These native boundaries record calls; they do not implement a
                     // second playback engine. The coordinator and serialized models are real.
                     static class Playback implements NativePlaylistQueuePatch.NativePlayback {
-                        boolean local = true, attachSucceeds = true;
+                        boolean local = true, attachSucceeds = true, clearSucceeds = true;
                         int clears, attaches, repeat = PlaylistQueue.REPEAT_ONE;
                         byte[] panel;
                         public boolean patch_isLocalQueue() { return local; }
@@ -783,7 +792,11 @@ class QueueRuntimeBoundaryTest {
                         public int patch_getSelectedIndex() { return 0; }
                         public int patch_getRepeatMode() { return repeat; }
                         public void patch_restoreQueueRepeat(int value) { repeat = value; }
-                        public boolean patch_clearQueue() { clears++; local = false; return true; }
+                        public boolean patch_clearQueue() {
+                            clears++;
+                            if (!clearSucceeds) return false;
+                            local = false; return true;
+                        }
                     }
                     static class Controller implements NativePlaylistQueuePatch.PlaylistController {
                         final Playback playback;
@@ -831,9 +844,220 @@ class QueueRuntimeBoundaryTest {
                         field("originalModel").set(null, null);
                         field("pendingQueueStart").set(null, null);
                         field("pendingUndo").set(null, null);
+                        field("pendingReload").set(null, null);
                         app.morphe.extension.youtube.shared.PlayerType.current =
                             app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MINIMIZED;
                         return queue;
+                    }
+                    static PlaylistQueue prepareReload(Controller controller) throws Exception {
+                        var before = installOwned(controller);
+                        field("observingPlayer").setBoolean(null, true);
+                        Runnable dispatch = NativePlaylistQueuePatch.prepareVideoReload("abcdefghijk");
+                        require(dispatch != null, "Capture an owned Reload");
+                        require(field("queue").get(null) == null && controller.playback.clears == 1
+                                && field("pendingUndo").get(null) == null && controller.feedbacks == 0,
+                            "Reload clears local rows and waits for a usable replacement before showing Undo");
+                        NativePlaylistQueuePatch.onPlaybackTransition(controller); Utils.drain();
+                        require(controller.feedbacks == 0, "The old descriptor cannot present feedback before intent dispatch");
+                        controller.attached = false;
+                        app.morphe.extension.youtube.shared.PlayerType.current =
+                            app.morphe.extension.youtube.shared.PlayerType.NONE;
+                        call("onPlaybackContextChanged"); Utils.drain();
+                        VideoInformation.id = "ZYXWVUTSRQP";
+                        app.morphe.extension.youtube.shared.PlayerType.current =
+                            app.morphe.extension.youtube.shared.PlayerType.INLINE_MINIMAL;
+                        NativePlaylistQueuePatch.onVideoChanged("ZYXWVUTSRQP"); Utils.drain();
+                        require(field("pendingReload").get(null) != null && controller.feedbacks == 0,
+                            "Expected teardown and inline previews neither cancel nor receive Reload Undo");
+                        VideoInformation.id = "abcdefghijk";
+                        dispatch.run(); // The delayed Reload intent is now being opened.
+                        return before;
+                    }
+                    static Controller finishReload() throws Exception {
+                        var controller = new Controller(new Playback()); controller.playback.local = false;
+                        controller.model = null; // Ordinary standalone playback has no playlist model.
+                        app.morphe.extension.youtube.shared.PlayerType.current =
+                            app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MAXIMIZED;
+                        NativePlaylistQueuePatch.onControllerUpdated(controller); Utils.drain();
+                        require(controller.feedbacks == 0, "A binding callback alone does not authorize Reload Undo");
+                        NativePlaylistQueuePatch.onPlaybackTransition(controller); Utils.drain();
+                        return controller;
+                    }
+                    static com.google.protobuf.MessageLite feedbackUndo(Controller controller) throws Exception {
+                        var toast = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(controller.feedback)
+                            .getAddToToastAction().getItem().getToastRenderer();
+                        require(toast.getResponseText().getSimpleText().equals("morphe_native_playlist_queue_cleared")
+                                && QueueSaveFeedback.confirmationDuration(toast) == 5000,
+                            "Reload shares the normal Queue cleared label and five-second Undo duration");
+                        return toast.getActionButton().getButtonRenderer().getServiceEndpoint();
+                    }
+                    public static void reloadQueueUndo() throws Exception {
+                        var old = new Controller(new Playback()); var before = prepareReload(old);
+                        // An old controller notification cannot offer Undo before the reload watch dispatch.
+                        old.attached = true;
+                        app.morphe.extension.youtube.shared.PlayerType.current =
+                            app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MINIMIZED;
+                        NativePlaylistQueuePatch.onControllerUpdated(old); Utils.drain();
+                        require(old.feedbacks == 0, "Retained old models must not present Reload feedback");
+                        var watch = playlistWatch("abcdefghijk", ""); var context = Map.of("existing", true);
+                        require(NativePlaylistQueuePatch.prepareQueueStartContext(watch, context) == context,
+                            "Reload does not force minimized presentation or change native watch arguments");
+                        NativePlaylistQueuePatch.onControllerUpdated(old); Utils.drain();
+                        require(old.feedbacks == 0, "Dispatch alone cannot make the old cleared model usable");
+                        var replacement = finishReload();
+                        require(replacement.feedbacks == 1 && old.feedbacks == 0
+                                && field("queue").get(null) == null && field("pendingReload").get(null) == null,
+                            "Only accepted reloaded playback gets Queue cleared, with queue still cleared");
+                        NativePlaylistQueuePatch.onControllerUpdated(replacement); Utils.drain();
+                        require(replacement.feedbacks == 1, "Later binding must not present feedback twice");
+                        var undo = feedbackUndo(replacement);
+                        VideoInformation.time = 81000;
+                        NativePlaylistQueuePatch.onQueueUndoCommand(undo);
+                        var restored = (PlaylistQueue) field("queue").get(null);
+                        require(restored != null && restored.entries().equals(before.entries())
+                                && restored.selectedIndex() == 2 && replacement.playback.repeat == PlaylistQueue.REPEAT_ONE
+                                && old.playback.attaches == 0 && replacement.playback.attaches == 1,
+                            "Undo restores order, selected duplicate and repeat on the reloaded backend only");
+                        require(LoadVideoPatch.opens == 0 && LoadVideoPatch.dismissals == 0
+                                && VideoInformation.time == 81000 && field("pendingQueueStart").get(null) == null,
+                            "Reload Undo never opens, dismisses or seeks the running replacement");
+                        NativePlaylistQueuePatch.onQueueUndoCommand(undo);
+                        require(replacement.playback.attaches == 1, "Reload Undo is single-use");
+
+                        call("releaseNativeQueue"); VideoInformation.time = 75432;
+                        old = verifyPlaylistHandoff(false, false);
+                        Runnable convertedDispatch = NativePlaylistQueuePatch.prepareVideoReload("abcdefghijk");
+                        require(convertedDispatch != null
+                                && field("convertedPlaylist").get(null) == null
+                                && VideoInformation.playlist.equals("PL-account"),
+                            "Converted queues clear their source exemption without rewriting shared response data");
+                        convertedDispatch.run();
+                        NativePlaylistQueuePatch.prepareQueueStartContext(watch, Map.of());
+                        replacement = finishReload();
+                        require(replacement.feedbacks == 0, "Wait for the list-free reload response identity");
+                        VideoInformation.playlist = "";
+                        NativePlaylistQueuePatch.onNativeQueueResponse(replacement.playback); Utils.drain();
+                        require(replacement.feedbacks == 1, "Service readiness can finish a converted-playlist Reload");
+                        undo = feedbackUndo(replacement);
+                        NativePlaylistQueuePatch.onQueueUndoCommand(undo);
+                        require(field("queue").get(null) != null && LoadVideoPatch.opens == 0,
+                            "Converted queue Reload Undo reattaches without reopening the old account playlist");
+
+                        call("releaseNativeQueue");
+                        old = new Controller(new Playback()); prepareReload(old);
+                        // Watch intents need not pass through the UI command dispatcher.
+                        replacement = finishReload();
+                        require(replacement.feedbacks == 1,
+                            "A standalone playback transition after our intent dispatch is sufficient without a menu watch command");
+                    }
+                    public static void reloadQueueLifetime() throws Exception {
+                        for (String scenario : List.of("otherWatch", "secondWatch", "shorts", "provider",
+                                "timeout", "playlist", "activeVideo")) {
+                            VideoInformation.id = "abcdefghijk";
+                            var old = new Controller(new Playback()); prepareReload(old);
+                            var watch = playlistWatch("abcdefghijk", "");
+                            if (scenario.equals("otherWatch")) NativePlaylistQueuePatch.prepareQueueStartContext(
+                                playlistWatch("ZYXWVUTSRQP", ""), Map.of());
+                            if (scenario.equals("secondWatch")) {
+                                NativePlaylistQueuePatch.prepareQueueStartContext(watch, Map.of());
+                                NativePlaylistQueuePatch.prepareQueueStartContext(watch, Map.of());
+                            }
+                            if (scenario.equals("shorts")) {
+                                app.morphe.extension.youtube.shared.ShortsPlayerState.open = true;
+                                call("onPlaybackContextChanged"); Utils.drain();
+                                app.morphe.extension.youtube.shared.ShortsPlayerState.open = false;
+                            }
+                            if (scenario.equals("provider")) {
+                                Settings.QUEUE_TYPE.value = QueueType.LOCAL;
+                                call("releaseNativeQueue"); Settings.QUEUE_TYPE.value = QueueType.NATIVE;
+                            }
+                            if (scenario.equals("timeout")) Utils.advanceBy(10000);
+                            if (scenario.equals("playlist")) NativePlaylistQueuePatch.prepareQueueStartContext(
+                                playlistWatch("abcdefghijk", "PL-account"), Map.of());
+                            if (scenario.equals("activeVideo")) {
+                                app.morphe.extension.youtube.shared.PlayerType.current =
+                                    app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MAXIMIZED;
+                                VideoInformation.id = "ZYXWVUTSRQP";
+                                NativePlaylistQueuePatch.onVideoChanged("ZYXWVUTSRQP"); Utils.drain();
+                                VideoInformation.id = "abcdefghijk";
+                            }
+                            NativePlaylistQueuePatch.prepareQueueStartContext(watch, Map.of());
+                            var replacement = finishReload();
+                            require(replacement.feedbacks == 0 && field("pendingReload").get(null) == null
+                                    && field("pendingUndo").get(null) == null,
+                                "Cancelled Reload must never show late feedback or retain an Undo capability: " + scenario);
+                        }
+                        var old = new Controller(new Playback()); prepareReload(old);
+                        var watch = playlistWatch("abcdefghijk", "");
+                        NativePlaylistQueuePatch.prepareQueueStartContext(watch, Map.of());
+                        var replacement = finishReload(); var undo = feedbackUndo(replacement);
+                        Utils.advanceBy(5001); NativePlaylistQueuePatch.onQueueUndoCommand(undo);
+                        require(field("queue").get(null) == null && replacement.playback.attaches == 0,
+                            "Expired Reload Undo keeps the queue cleared");
+                        old = new Controller(new Playback()); prepareReload(old);
+                        NativePlaylistQueuePatch.prepareQueueStartContext(watch, Map.of());
+                        replacement = finishReload(); undo = feedbackUndo(replacement);
+                        NativePlaylistQueuePatch.prepareQueueStartContext(watch, Map.of());
+                        NativePlaylistQueuePatch.onQueueUndoCommand(undo);
+                        require(field("queue").get(null) == null && replacement.playback.attaches == 0,
+                            "A deliberate same-video watch cancels Reload Undo even if a backend is reused");
+
+                        old = new Controller(new Playback()); prepareReload(old);
+                        NativePlaylistQueuePatch.prepareQueueStartContext(watch, Map.of());
+                        replacement = finishReload(); undo = feedbackUndo(replacement);
+                        AddToQueuePatch.flyoutButtonClickLogic("QUEUE_PLAY_NEXT", "ZYXWVUTSRQP");
+                        var newer = (PlaylistQueue) field("queue").get(null);
+                        NativePlaylistQueuePatch.onQueueUndoCommand(undo);
+                        require(newer != null && newer.entries().size() == 2 && field("queue").get(null) == newer,
+                            "Starting another queue invalidates Reload Undo and cannot resurrect the old sequence");
+
+                        old = new Controller(new Playback()); prepareReload(old);
+                        NativePlaylistQueuePatch.prepareQueueStartContext(watch, Map.of());
+                        replacement = finishReload(); undo = feedbackUndo(replacement);
+                        require(NativePlaylistQueuePatch.prepareVideoReload("abcdefghijk") == null,
+                            "A second Reload has no active queue to capture");
+                        NativePlaylistQueuePatch.onQueueUndoCommand(undo);
+                        require(field("queue").get(null) == null && replacement.playback.attaches == 0,
+                            "A second Reload invalidates earlier Undo before its delayed watch dispatch");
+                        beginClosedRestore();
+                        require(field("pendingQueueStart").get(null) != null, "Closed-player Undo is awaiting acceptance");
+                        NativePlaylistQueuePatch.prepareVideoReload("abcdefghijk");
+                        require(field("pendingQueueStart").get(null) == null && LoadVideoPatch.activeBlock == 0,
+                            "A new Reload cancels an unfinished restore and releases only that restore's inline block");
+
+                        VideoInformation.id = "abcdefghijk";
+                        old = new Controller(new Playback()); installOwned(old);
+                        Runnable obsoleteDispatch = NativePlaylistQueuePatch.prepareVideoReload("abcdefghijk");
+                        var newerOwner = new Controller(new Playback()); installOwned(newerOwner);
+                        Runnable currentDispatch = NativePlaylistQueuePatch.prepareVideoReload("abcdefghijk");
+                        require(obsoleteDispatch != null && currentDispatch != null, "Prepare two distinct Reload operations");
+                        obsoleteDispatch.run();
+                        replacement = finishReload();
+                        require(replacement.feedbacks == 0, "An old delayed intent cannot authorize the newer Reload");
+                        currentDispatch.run();
+                        NativePlaylistQueuePatch.onPlaybackTransition(replacement); Utils.drain();
+                        require(replacement.feedbacks == 1, "Only the matching Reload dispatch authorizes its new player");
+                    }
+                    public static void reloadQueueGuards() throws Exception {
+                        for (var type : new QueueType[] { QueueType.DEFAULT, QueueType.MORPHE, QueueType.LOCAL }) {
+                            var controller = new Controller(new Playback()); var before = installOwned(controller);
+                            Settings.QUEUE_TYPE.value = type;
+                            require(NativePlaylistQueuePatch.prepareVideoReload("abcdefghijk") == null
+                                    && controller.playback.clears == 0 && field("queue").get(null) == before,
+                                "Other queue types must retain their own Reload behavior");
+                        }
+                        Settings.QUEUE_TYPE.value = QueueType.NATIVE;
+                        var controller = new Controller(new Playback()); var before = installOwned(controller);
+                        require(NativePlaylistQueuePatch.prepareVideoReload("ZYXWVUTSRQP") == null
+                                && controller.playback.clears == 0 && field("queue").get(null) == before,
+                            "A different starting video does not authorize queue disposal");
+                        controller.playback.local = false;
+                        require(NativePlaylistQueuePatch.prepareVideoReload("abcdefghijk") == null
+                                && controller.playback.clears == 0, "Foreign playback must not be cleared");
+                        controller.playback.local = true; controller.playback.clearSucceeds = false;
+                        require(NativePlaylistQueuePatch.prepareVideoReload("abcdefghijk") == null
+                                && field("queue").get(null) == before && field("pendingReload").get(null) == null,
+                            "A rejected clear cannot create misleading Reload Undo");
                     }
                     static com.google.protobuf.MessageLite closePlayer(Controller controller) throws Exception {
                         NativePlaylistQueuePatch.onQueuePlayerClosing();

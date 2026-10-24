@@ -24,6 +24,7 @@ import java.util.Objects;
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.Utils;
 import app.morphe.extension.youtube.patches.playback.speed.RememberPlaybackSpeedPatch;
+import app.morphe.extension.youtube.patches.queue.NativePlaylistQueuePatch;
 import app.morphe.extension.youtube.shared.PlayerType;
 import kotlin.Unit;
 import kotlin.jvm.functions.Function1;
@@ -173,6 +174,13 @@ public final class LoadVideoPatch {
             String videoId = VideoInformation.getStartingOrPlayingVideoId();
             String playlistId = VideoInformation.getPlaylistId();
             final long videoTime = VideoInformation.getVideoTime();
+            Runnable queueReload = NativePlaylistQueuePatch.isPatchIncluded()
+                    ? NativePlaylistQueuePatch.prepareVideoReload(videoId) : null;
+            if (queueReload != null) {
+                // A converted queue can retain its source playlist in the playing
+                // response. Reload only this video, not that replaced playlist.
+                playlistId = "";
+            }
             String parameterSeparator = "&";
             StringBuilder builder = new StringBuilder(videoId);
             if (!playlistId.isEmpty()) {
@@ -189,7 +197,7 @@ public final class LoadVideoPatch {
             String builderString = "https://www.youtube.com/watch?v=" + builder;
             Logger.printDebug(() -> "Opening: " + builderString);
 
-            openVideoIntent(builderString, true);
+            openVideoIntent(builderString, true, queueReload);
         } catch (Exception ex) {
             Logger.printException(() -> "Failed to reload video", ex);
         }
@@ -205,6 +213,10 @@ public final class LoadVideoPatch {
     }
 
     public static void openVideoIntent(String url, boolean closeCurrentPlayerInstance) {
+        openVideoIntent(url, closeCurrentPlayerInstance, null);
+    }
+
+    private static void openVideoIntent(String url, boolean closeCurrentPlayerInstance, Runnable onDispatch) {
         int loadVideoDelay = 0;
 
         // Close the current player instance.
@@ -230,6 +242,7 @@ public final class LoadVideoPatch {
             Intent intent = new Intent("android.intent.action.VIEW", Uri.parse(url));
             intent.setPackage(context.getPackageName());
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (onDispatch != null) onDispatch.run();
             context.startActivity(intent);
         }, loadVideoDelay);
     }

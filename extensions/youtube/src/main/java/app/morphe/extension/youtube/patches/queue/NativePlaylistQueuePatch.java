@@ -250,6 +250,20 @@ public final class NativePlaylistQueuePatch {
     private record PendingUndo(String token, PlaylistQueue before, WeakReference<NativePlayback> playback,
                                ClosedPlayback closedPlayback) {}
     private static PendingUndo pendingUndo;
+
+    // Reload opens a standalone video, which may have no playlist model. Its
+    // dispatched intent and completed native playback transition identify the owner.
+    private static final class PendingReload {
+        final PlaylistQueue before;
+        WeakReference<PlaylistController> controller = new WeakReference<>(null);
+        boolean opening;
+        boolean watchDispatched;
+
+        PendingReload(PlaylistQueue before) {
+            this.before = before;
+        }
+    }
+    private static PendingReload pendingReload;
     private static final int UNDO_DURATION_MILLISECONDS = 5_000;
     private static final int ACCESSIBLE_UNDO_DURATION_MILLISECONDS = 20_000;
     private static final Set<RepeatHeader> repeatHeaders = Collections.newSetFromMap(new WeakHashMap<>());
@@ -321,8 +335,22 @@ public final class NativePlaylistQueuePatch {
 
     /** Injection point, after a native model acceptance or completed video transition. */
     public static void onControllerUpdated(PlaylistController controller) {
+        onControllerUpdated(controller, false);
+    }
+
+    /** A completed native descriptor transition can leave the playlist model null. */
+    public static void onPlaybackTransition(PlaylistController controller) {
+        onControllerUpdated(controller, true);
+    }
+
+    private static void onControllerUpdated(PlaylistController controller, boolean playbackTransition) {
         Utils.runOnMainThreadNowOrLater(() -> {
             try {
+                PendingReload reload = pendingReload;
+                if (playbackTransition && reload != null && reload.opening && !hasPlaylist(controller)
+                        && reload.before.currentEntry().videoId().equals(controller.patch_getVideoId())) {
+                    reload.controller = new WeakReference<>(controller);
+                }
                 updateController(controller);
             } catch (Exception ex) {
                 Logger.printException(() -> "onControllerUpdated failure", ex);
@@ -401,6 +429,7 @@ public final class NativePlaylistQueuePatch {
             // The native acceptance hook runs immediately after the model store,
             // before its subscriptions and rendering finish. Never reenter it.
             if (pendingQueueStart != null) Utils.runOnMainThread(NativePlaylistQueuePatch::tryStartQueue);
+            if (pendingReload != null) Utils.runOnMainThread(NativePlaylistQueuePatch::showPendingReloadFeedback);
             return;
         }
 
@@ -466,6 +495,7 @@ public final class NativePlaylistQueuePatch {
         }
 
         PlayerType currentType = PlayerType.getCurrent();
+        if (ShortsPlayerState.isOpen() || currentType == PlayerType.HIDDEN) pendingReload = null;
         if (pendingUndo != null && pendingUndo.closedPlayback() != null) {
             // Until native close completes, queued notifications can still describe
             // the old mini player or its dismissal animation. Once feedback is shown,
@@ -498,6 +528,7 @@ public final class NativePlaylistQueuePatch {
     private static void reconcilePlaybackContext() {
         if (queue == null) {
             showClosedQueueFeedback();
+            showPendingReloadFeedback();
             tryStartQueue();
             return;
         }
@@ -632,6 +663,7 @@ public final class NativePlaylistQueuePatch {
         }
 
         if (queue == null) {
+            showPendingReloadFeedback();
             tryStartQueue();
             return;
         }
@@ -1057,6 +1089,66 @@ public final class NativePlaylistQueuePatch {
                 clearFeedback(undo));
     }
 
+    /** Returns a request-bound callback for Reload's actual intent dispatch, or null if no queue was cleared. */
+    @Nullable
+    public static Runnable prepareVideoReload(String videoId) {
+        try {
+            if (isNativeQueueDisabled()) return null;
+            // Reload's dismissal/open is delayed. Cancel older capabilities now,
+            // before they can restore a queue into the player being replaced.
+            pendingUndo = null;
+            pendingReload = null;
+            clearPendingQueueStart();
+            OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
+            if (queue == null || !queue.currentEntry().videoId().equals(videoId)) return null;
+            PlaylistController controller = readyController();
+            if (controller == null || controller.patch_getModel() != publishedModel
+                    || pendingSelection != null || dragSession != null) return null;
+            NativePlayback playback = playbackFor(controller);
+            if (playback == null || !playback.patch_isLocalQueue()) return null;
+            PlaylistQueue before = queue.withRepeatMode(playback.patch_getRepeatMode());
+            if (!playback.patch_clearQueue()) {
+                Logger.printException(() -> "Could not clear native queue before reloading the video");
+                return null;
+            }
+
+            releasePanel();
+            convertedPlaylist = null;
+            PendingReload reload = new PendingReload(before);
+            pendingReload = reload;
+            // Do not retain a queue indefinitely if Reload never opens its player.
+            Utils.runOnMainThreadDelayed(() -> {
+                if (pendingReload == reload) pendingReload = null;
+            }, NAVIGATION_TIMEOUT_MILLISECONDS);
+            return () -> {
+                if (pendingReload == reload) reload.opening = true;
+            };
+        } catch (Exception exception) {
+            pendingReload = null;
+            Logger.printException(() -> "Could not prepare native queue Reload Undo", exception);
+            return null;
+        }
+    }
+
+    private static void showPendingReloadFeedback() {
+        PendingReload reload = pendingReload;
+        if (reload == null || !reload.opening) return;
+        PlaylistController controller = readyController();
+        if (controller == null || controller != reload.controller.get()
+                || !reload.before.currentEntry().videoId().equals(VideoInformation.getVideoId())
+                || hasForeignPlaybackPlaylist()) return;
+        NativePlayback playback = playbackFor(controller);
+        if (playback == null || playback.patch_isLocalQueue()) return;
+        pendingReload = null;
+        PendingUndo undo = beginUndo(reload.before, playback, null);
+        try {
+            controller.patch_showQueueFeedback(clearFeedback(undo));
+        } catch (Exception exception) {
+            if (pendingUndo == undo) pendingUndo = null;
+            Logger.printException(() -> "Could not show native queue reload confirmation", exception);
+        }
+    }
+
     /** Called from accepted native mini-player close clicks or gestures before teardown. */
     public static void onQueuePlayerClosing() {
         try {
@@ -1269,6 +1361,11 @@ public final class NativePlaylistQueuePatch {
             return;
         }
 
+        if (pendingReload != null && !PlayerType.getCurrent().isNoneOrHidden()
+                && PlayerType.getCurrent() != PlayerType.INLINE_MINIMAL
+                && !pendingReload.before.currentEntry().videoId().equals(videoId)) pendingReload = null;
+        showPendingReloadFeedback();
+
         // A cleared queue belongs to the uninterrupted ordinary playback session.
         // Returning to its video later must not revive an earlier Undo action.
         if (pendingUndo != null && pendingUndo.closedPlayback() == null
@@ -1349,6 +1446,7 @@ public final class NativePlaylistQueuePatch {
     /** Release only our session; never modify the Morphe queue or its settings. */
     private static void releaseNativeQueue() {
         convertedPlaylist = null;
+        pendingReload = null;
         clearPendingQueueStart();
         pendingUndo = null;
         OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
@@ -1532,6 +1630,7 @@ public final class NativePlaylistQueuePatch {
 
     private static void startQueue(QueueStart start) {
         clearPendingQueueStart();
+        pendingReload = null;
         pendingUndo = null;
         pendingQueueStart = start;
         Utils.runOnMainThreadDelayed(() -> {
@@ -1641,11 +1740,18 @@ public final class NativePlaylistQueuePatch {
         QueueStart start = pendingQueueStart;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
-            // A deliberate new watch invalidates a closed player's Undo even if it
-            // opens the same video. This hook runs on dispatch, not on prefetch.
-            if (pendingUndo != null && pendingUndo.closedPlayback() != null
-                    && command.hasWatchEndpoint()) {
+            // A deliberate new watch supersedes Clear/close/reload Undo, even for
+            // the same video. This hook runs on dispatch, not on prefetch.
+            if (command.hasWatchEndpoint()) {
                 pendingUndo = null;
+                PendingReload reload = pendingReload;
+                if (reload != null) {
+                    var watch = command.getWatchEndpoint();
+                    if (reload.opening && !reload.watchDispatched && watch.getPlaylistId().isEmpty()
+                            && reload.before.currentEntry().videoId().equals(watch.getVideoId())) {
+                        reload.watchDispatched = true;
+                    } else pendingReload = null;
+                }
             }
 
             if (convertedPlaylist != null && command.hasWatchEndpoint()
@@ -1719,6 +1825,7 @@ public final class NativePlaylistQueuePatch {
             // The native sequencer, including its inherited Loop mode, is authoritative.
             candidate = candidate.withRepeatMode(playback.patch_getRepeatMode());
             queue = candidate;
+            pendingReload = null;
             if (changedItems) pendingUndo = null;
             publishedModel = acceptedModel;
             selectionNeedsPublishing = false;
@@ -1750,6 +1857,7 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static void releasePanel() {
+        pendingReload = null;
         pendingUndo = null;
         clearPendingQueueStart();
         OpenVideosFullscreenHookPatch.keepVideoMinimized(null);

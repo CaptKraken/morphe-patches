@@ -209,13 +209,15 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
     """)
 
     // Observe completed transitions, including native early returns that leave no model.
+    // Keep this event distinct from a model bind: Reload can reopen a standalone
+    // video without a playlist model, but it still has a native playback descriptor.
     // Do not publish between the native assignments of its video/playlist identity fields.
     // The native transition reuses p0 as a local on some exits. Preserve the
     // original receiver before adding callbacks at those returns.
     transition.method.cloneParameters().apply {
         findInstructionIndicesReversedOrThrow(Opcode.RETURN_VOID).forEach { index ->
             addInstructionsAtControlFlowLabel(index,
-                "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onControllerUpdated($CONTROLLER_INTERFACE)V")
+                "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onPlaybackTransition($CONTROLLER_INTERFACE)V")
         }
     }
 }

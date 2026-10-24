@@ -451,7 +451,22 @@ private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
     check(shufflePresses.size == if (selected) 1 else 0) {
         "Queue shuffle command must intercept one native listener only when selected"
     }
+    val transitionHook = "$EXTENSION_CLASS->onPlaybackTransition(${EXTENSION_CLASS.removeSuffix(";")}\$PlaylistController;)V"
+    val transitions = dexFiles.flatMap { it.classes }.filter { !it.type.startsWith("Lapp/morphe/") }
+        .flatMap { it.methods }.filter { method -> method.implementation?.instructions?.any {
+            (it as? ReferenceInstruction)?.reference?.toString() == transitionHook
+        } == true }
+    check(transitions.size == if (selected) 1 else 0) { "Unexpected native playback transition observer inclusion" }
     if (!selected) return
+    val transition = transitions.single()
+    check(transition.returnType == "V" && transition.parameterTypes == List(3) { "Ljava/lang/String;" }) {
+        "Reload readiness must observe the playback descriptor transition, not a playlist model bind"
+    }
+    val transitionCode = transition.implementation!!.instructions.toList()
+    check(transitionCode.indices.filter { transitionCode[it].opcode == Opcode.RETURN_VOID }.all { index ->
+        index > 0 && (transitionCode[index - 1] as? ReferenceInstruction)?.reference?.toString() == transitionHook
+    }) { "Every completed native transition, including standalone playback, must notify queue ownership" }
+    println("Native playback transitions notify queue ownership even without a playlist model")
     val shufflePress = shufflePresses.single().implementation!!.instructions.toList()
     val shuffleIndex = shufflePress.indexOfFirst {
         (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
