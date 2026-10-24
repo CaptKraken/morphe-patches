@@ -58,6 +58,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
+import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.io.path.createTempDirectory
@@ -634,9 +635,19 @@ private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
         }
         val feedback = closeFeedback.single().implementation!!.instructions.toList()
         val calls = feedback.mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }
-        check(calls.any { it.name == "patch_parseQueueCommand" } && calls.any {
+        val commandType = commandTypes.single().type
+        val registryType = "Lcom/google/protobuf/ExtensionRegistryLite;"
+        check(feedback.any { it.opcode == Opcode.SGET_OBJECT &&
+                ((it as? ReferenceInstruction)?.reference as? FieldReference)?.type == commandType
+        } && calls.any { it.definingClass == registryType && it.name == "getGeneratedRegistry" } &&
+                calls.any { it.name == "parseFrom" && it.parameterTypes.size == 3 &&
+                        it.parameterTypes.drop(1) == listOf("[B", registryType) &&
+                        it.returnType == it.parameterTypes.first()
+                } && feedback.any { it.opcode == Opcode.CHECK_CAST &&
+                        ((it as? ReferenceInstruction)?.reference as? TypeReference)?.type == commandType
+                } && calls.any {
             it.definingClass == "Ljava/util/Collections;" && it.name == "emptyMap"
-        } && calls.last().parameterTypes == listOf(commandTypes.single().type, "Ljava/util/Map;")) {
+        } && calls.last().parameterTypes == listOf(commandType, "Ljava/util/Map;")) {
             "Player-close feedback must use the native command parser and activity dispatcher"
         }
         println("Queue player-close: click, fling and drag keep native dismissal; feedback uses native parser and dispatcher")
