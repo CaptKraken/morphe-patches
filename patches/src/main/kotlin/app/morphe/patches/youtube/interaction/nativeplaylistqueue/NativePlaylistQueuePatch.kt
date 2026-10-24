@@ -37,6 +37,8 @@ internal const val REPEAT_HEADER_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQ
 internal const val ROW_CLICK_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$RowClick;"
 internal const val SWIPE_BACKGROUND_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$SwipeBackground;"
 internal const val QUEUE_PANEL_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$QueuePanel;"
+internal const val PLAYLIST_TITLE_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$PlaylistTitle;"
+internal const val PLAYLIST_MODEL_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$PlaylistModel;"
 internal const val QUEUE_ROW_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$QueueRow;"
 internal const val REORDER_ITEMS_INTERFACE = "$EXTENSION_PACKAGE/NativePlaylistQueuePatch\$ReorderItems;"
 internal const val FULLSCREEN_ACTIONS_CLASS = "$EXTENSION_PACKAGE/QueueFullscreenActions;"
@@ -78,6 +80,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
 
         installQueueFlyout(this)
         installPlaylistPanel(this)
+        installPlaylistTitle(this)
         installRatingCapture(this)
         installPlaylistRemoval(this)
         installFullscreenPlaylist(this)

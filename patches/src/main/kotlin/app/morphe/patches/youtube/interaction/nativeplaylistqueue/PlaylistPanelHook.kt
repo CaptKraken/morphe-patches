@@ -10,6 +10,7 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.cloneParameters
+import app.morphe.patcher.util.findFreeRegister
 import app.morphe.patcher.util.getReference
 import app.morphe.patcher.util.matchSingle
 import app.morphe.patcher.util.p0Register
@@ -39,6 +40,8 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
 
     val accept = acceptedPlaylistModelFingerprint(controllerType, modelType, responseVideoField).matchSingle()
     val modelField = accept.instructionMatches.last().instruction.getReference<FieldReference>()!!
+    val activePlaylistField = playlistControllerIdentityFingerprint(accept.originalMethod).matchSingle()
+        .instructionMatches.first().instruction.getReference<FieldReference>()!!
     val activeVideoMatch = accept.instructionMatches[2]
     val activeVideoField = activeVideoMatch.instruction.getReference<FieldReference>()!!
     check(activeVideoMatch.getInstruction<TwoRegisterInstruction>().registerB == accept.originalMethod.p0Register) {
@@ -74,6 +77,13 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
         controller.addBridgeMethod(name, parameters, returnType, locals, body)
 
     controller.interfaces.add(CONTROLLER_INTERFACE)
+    mutableClassDefBy(modelType).apply {
+        interfaces.add(PLAYLIST_MODEL_INTERFACE)
+        addBridgeMethod("patch_getPlaylistId", emptyList(), "Ljava/lang/String;", 1, """
+            iget-object v0, p0, $playlistField
+            return-object v0
+        """)
+    }
 
     // A watch response can omit its video ID. Use the native stale-response guard's
     // active video instead of treating an optional response field as playback state.
@@ -123,6 +133,7 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
     val copyArguments = constructorFields.mapIndexed { index, field ->
         when {
             field == responseVideoField -> "iget-object v${index + 5}, p0, $activeVideoField"
+            field == playlistField -> "const-string v${index + 5}, \"\""
             field == panelField -> "move-object v${index + 5}, v1"
             field == navigationField -> "const/4 v${index + 5}, 0x0"
             field.type == "I" -> "const/4 v${index + 5}, $DEFAULT_QUEUE_MODE"
@@ -148,6 +159,8 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
         invoke-direct {p0, v4}, ${accept.originalMethod}
         iget-object v0, p0, $modelField
         if-ne v0, v4, :rejected
+        const-string v1, ""
+        iput-object v1, p0, $activePlaylistField
         return-object v4
 
         :rejected
@@ -159,6 +172,12 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
         iget-object v0, p0, $modelField
         if-ne v0, p1, :done
         check-cast p2, $modelType
+        const-string v0, ""
+        if-eqz p2, :identity_ready
+        iget-object v0, p2, $playlistField
+
+        :identity_ready
+        iput-object v0, p0, $activePlaylistField
         iput-object p2, p0, $modelField
         invoke-virtual/range {p0 .. p0}, ${render.originalMethod}
 
@@ -170,8 +189,24 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
 
     // Preserve every native rejection before this assignment. In particular, a stale model
     // must not claim the current controller or overwrite our local insertion state.
-    accept.method.addInstruction(accept.instructionMatches.last().index + 1,
+    val acceptMethod = accept.method.cloneParameters()
+    val storeIndex = acceptMethod.findInstructionIndicesReversedOrThrow(Opcode.IPUT_OBJECT).single { index ->
+        acceptMethod.implementation!!.instructions[index].getReference<FieldReference>() == modelField
+    }
+    val guardRegister = acceptMethod.findFreeRegister(
+        storeIndex, acceptMethod.p0Register, acceptMethod.p0Register + 1
+    )
+    acceptMethod.addInstruction(storeIndex + 1,
         "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onControllerUpdated($CONTROLLER_INTERFACE)V")
+    acceptMethod.addInstructionsAtControlFlowLabel(storeIndex, """
+        invoke-static/range {p0 .. p1}, $EXTENSION_CLASS->shouldIgnorePlaylistModel($CONTROLLER_INTERFACE$PLAYLIST_MODEL_INTERFACE)Z
+        move-result v$guardRegister
+        if-eqz v$guardRegister, :accept_model
+        return-void
+
+        :accept_model
+        nop
+    """)
 
     // Observe completed transitions, including native early returns that leave no model.
     // Do not publish between the native assignments of its video/playlist identity fields.

@@ -316,6 +316,14 @@ internal fun nativeQueueResponseSourceFingerprint(responseType: String, sourceTy
     filters = listOf(fieldAccess(definingClass = "this", type = sourceType, opcode = Opcode.IPUT_OBJECT))
 )
 
+/** The response constructor initializes the same navigation-set type used by the UI model. */
+internal fun nativeQueueResponseNavigationFingerprint(responseType: String, navigationType: String) = Fingerprint(
+    definingClass = responseType,
+    name = "<init>",
+    parameters = listOf("L"),
+    filters = listOf(fieldAccess(definingClass = responseType, type = navigationType, opcode = Opcode.IPUT_OBJECT))
+)
+
 /**
  * The mutable queue builds its shuffle order with the framework shuffler,
  * storing successor and predecessor index arrays.
@@ -467,6 +475,21 @@ internal fun acceptedPlaylistModelFingerprint(
         methodCall("Ljava/lang/String;->equals(Ljava/lang/Object;)Z", location = MatchAfterWithin(2)),
         // The accepted model.
         fieldAccess(definingClass = "this", type = modelType, opcode = Opcode.IPUT_OBJECT)
+    )
+)
+
+/** The controller compares its active playlist identity after the stale-video check. */
+internal fun playlistControllerIdentityFingerprint(accept: MethodReference) = Fingerprint(
+    definingClass = accept.definingClass,
+    name = accept.name,
+    parameters = accept.parameterTypes.map { it.toString() },
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(definingClass = "this", type = "Ljava/lang/String;", opcode = Opcode.IGET_OBJECT),
+        methodCall(
+            "Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z",
+            location = MatchAfterImmediately()
+        )
     )
 )
 
@@ -870,6 +893,34 @@ internal fun playlistPlayerControlsConstructorFingerprint(controlsType: String, 
     definingClass = controlsType,
     name = "<init>",
     filters = listOf(fieldAccess(definingClass = "this", type = navigatorType, opcode = Opcode.IPUT_OBJECT))
+)
+
+/** Dedicated playlist engagement header; ordinary engagement headers use another layout. */
+internal object PlaylistTitleCreationFingerprint : Fingerprint(
+    returnType = "Landroid/view/View;",
+    parameters = emptyList(),
+    filters = listOf(resourceLiteral(ResourceType.LAYOUT, "playlist_engagement_panel_header"))
+)
+
+internal object PlaylistTitleViewFingerprint : Fingerprint(
+    classFingerprint = PlaylistTitleCreationFingerprint,
+    returnType = "Landroid/view/View;",
+    parameters = emptyList(),
+    filters = listOf(
+        resourceLiteral(ResourceType.ID, "title"),
+        methodCall("Landroid/view/View;->findViewById(I)Landroid/view/View;", location = MatchAfterImmediately()),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+        checkCast("Landroid/widget/TextView;", location = MatchAfterImmediately()),
+        fieldAccess(definingClass = "this", type = "Landroid/widget/TextView;", opcode = Opcode.IPUT_OBJECT,
+            location = MatchAfterImmediately())
+    )
+)
+
+internal fun playlistTitleBindingFingerprint(headerType: String, panelType: String) = Fingerprint(
+    definingClass = headerType,
+    returnType = "V",
+    parameters = listOf(panelType),
+    filters = listOf(fieldAccess(definingClass = "this", type = panelType, opcode = Opcode.IPUT_OBJECT))
 )
 
 internal object PlaylistHeaderConstructorFingerprint : Fingerprint(

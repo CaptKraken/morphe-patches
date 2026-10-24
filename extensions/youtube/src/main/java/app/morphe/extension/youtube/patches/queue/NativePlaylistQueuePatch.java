@@ -13,8 +13,11 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.Layout;
 import android.util.Base64;
+import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityManager;
+import android.widget.TextView;
 
 import androidx.annotation.Nullable;
 
@@ -113,7 +116,7 @@ public final class NativePlaylistQueuePatch {
     /** Bridge to YouTube's mutable playback queue, independent of the watch view. */
     public interface NativePlayback {
         boolean patch_isLocalQueue();
-        boolean patch_attachQueue(byte[] panel);
+        boolean patch_attachQueue(byte[] panel, byte[] currentWatchCommand);
         void patch_updateSnapshot(byte[] panel);
         int patch_getSelectedIndex();
         int patch_getRepeatMode();
@@ -126,6 +129,17 @@ public final class NativePlaylistQueuePatch {
         Object patch_getPanel();
         void patch_enableRepeat();
         void patch_setShuffleAvailable(boolean available);
+    }
+
+    /** Native playlist title and its currently bound panel. */
+    public interface PlaylistTitle {
+        Object patch_getPanel();
+        TextView patch_getTitle();
+    }
+
+    /** Read-only identity of a model which passed YouTube's stale-video checks. */
+    public interface PlaylistModel {
+        String patch_getPlaylistId();
     }
 
     /** Native listener bridge retains the bound endpoint before logging decorates it. */
@@ -178,6 +192,14 @@ public final class NativePlaylistQueuePatch {
     private static WeakReference<NativePlayback> nativePlaybackRef = new WeakReference<>(null);
     private static Object originalModel;
     private static Object publishedModel;
+    private record TitleWidth(int original, int applied) {}
+    private static final Map<TextView, TitleWidth> originalTitleWidths = new WeakHashMap<>();
+
+    // The running video keeps its original player-response identity when only its
+    // navigation is replaced. Retain this exact source/owner through Clear and Undo;
+    // do not rewrite shared VideoInformation or claim another playlist/player.
+    private record ConvertedPlaylist(String videoId, String playlistId, WeakReference<NativePlayback> playback) {}
+    private static volatile ConvertedPlaylist convertedPlaylist;
 
     // Background playback can confirm selection before the watch screen catches up.
     private static boolean selectionNeedsPublishing;
@@ -359,8 +381,10 @@ public final class NativePlaylistQueuePatch {
 
         PlaylistController previous = controllerRef.get();
         if (queue != null && previous != controller) {
-            if (!hasPlaylist(controller) && previous != null && previous.patch_isAttached()
-                    && previous.patch_getVideoId().equals(VideoInformation.getVideoId())) return;
+            if (previous != null && previous.patch_isAttached()
+                    && previous.patch_getVideoId().equals(VideoInformation.getVideoId())
+                    && (!hasPlaylist(controller) || (!controller.patch_isAttached()
+                    && !hasForeignPlaybackPlaylist()))) return;
 
             // Recreating a watch screen must not discard an owned background
             // session. Its new controller still needs a fresh native baseline.
@@ -407,7 +431,7 @@ public final class NativePlaylistQueuePatch {
             // responses and Shorts cannot insert entries; account playlists win above.
             PlayerType type = PlayerType.getCurrent();
             if (!PlaylistQueue.isVideoId(videoId) || type.isNoneOrHidden()
-                    || type == PlayerType.INLINE_MINIMAL || !VideoInformation.getPlaylistId().isEmpty()) return;
+                    || type == PlayerType.INLINE_MINIMAL || hasForeignPlaybackPlaylist()) return;
             pendingSelection = null;
             if (controller.patch_getModel() != publishedModel) originalModel = controller.patch_getModel();
 
@@ -560,7 +584,7 @@ public final class NativePlaylistQueuePatch {
 
     /** Resolve live playback, without treating a retained watch model as a service owner. */
     private static boolean serviceOwnsQueue() {
-        if (queue == null || !VideoInformation.getPlaylistId().isEmpty()) return false;
+        if (queue == null || hasForeignPlaybackPlaylist()) return false;
         NativePlayback playback = nativePlaybackRef.get();
         if (playback != null && playback.patch_isLocalQueue()) return true;
         String videoId = queue.currentEntry().videoId();
@@ -612,7 +636,7 @@ public final class NativePlaylistQueuePatch {
             return;
         }
 
-        if (!VideoInformation.getPlaylistId().isEmpty()) return;
+        if (hasForeignPlaybackPlaylist()) return;
         if (!queue.currentEntry().videoId().equals(VideoInformation.getVideoId())) {
             if (isQueueSuspended()) return;
             PlaylistController controller = readyController();
@@ -629,7 +653,7 @@ public final class NativePlaylistQueuePatch {
         }
 
         if (!current) return;
-        if (playback.patch_attachQueue(renderer(queue))) nativePlaybackRef = new WeakReference<>(playback);
+        if (playback.patch_attachQueue(renderer(queue), currentQueueCommand(queue))) nativePlaybackRef = new WeakReference<>(playback);
     }
 
     public static void onNativeQueueSelection() {
@@ -694,6 +718,48 @@ public final class NativePlaylistQueuePatch {
             if (pendingSelection == selection) pendingSelection = null;
         }, NAVIGATION_TIMEOUT_MILLISECONDS);
         return selection;
+    }
+
+    /** Keep the Queue label at its native text width instead of shrinking it in the counter chain. */
+    public static void onPlaylistTitleBound(PlaylistTitle header) {
+        // Native bind can run inside publish, before ownership and row markers are
+        // committed. Recheck after it completes and after any newer rebind.
+        Utils.runOnMainThread(() -> {
+            try {
+                TextView title = header.patch_getTitle();
+                if (title == null) return;
+                ViewGroup.LayoutParams params = title.getLayoutParams();
+                if (params == null) return;
+                PlaylistController controller = readyController();
+                Object panel = header.patch_getPanel();
+                boolean owned = panel != null && queue != null && publishedModel != null && controller != null
+                        && controller.patch_getModel() == publishedModel
+                        && panel == controller.patch_getPanel();
+                if (owned) {
+                    CharSequence text = title.getText();
+                    if (text == null || text.length() == 0) return;
+                    // ConstraintLayout normalizes the native 0dp/wrap constraint
+                    // to constrained WRAP_CONTENT, which can still shrink. Use the
+                    // actual styled font metrics and padding, without a fixed dp size.
+                    int width = (int) Math.ceil(Layout.getDesiredWidth(text, title.getPaint()))
+                            + title.getCompoundPaddingLeft() + title.getCompoundPaddingRight();
+                    if (width <= 0 || params.width == width) return;
+                    TitleWidth previous = originalTitleWidths.get(title);
+                    originalTitleWidths.put(title,
+                            new TitleWidth(previous == null ? params.width : previous.original(), width));
+                    params.width = width;
+                    title.setLayoutParams(params);
+                } else {
+                    TitleWidth width = originalTitleWidths.remove(title);
+                    if (width != null && params.width == width.applied()) {
+                        params.width = width.original();
+                        title.setLayoutParams(params);
+                    }
+                }
+            } catch (Exception exception) {
+                Logger.printException(() -> "Could not update native queue title width", exception);
+            }
+        });
     }
 
     public static void onRepeatHeaderBound(RepeatHeader header) {
@@ -1098,7 +1164,7 @@ public final class NativePlaylistQueuePatch {
         PlaylistController controller = readyController();
         if (controller == null) return;
         if (pendingSelection != null || dragSession != null) return;
-        if (!VideoInformation.getPlaylistId().isEmpty()) return;
+        if (hasForeignPlaybackPlaylist()) return;
         NativePlayback playback = undo.playback().get();
         if (playback == null) return;
         if (playbackFor(controller) != playback) return;
@@ -1117,8 +1183,8 @@ public final class NativePlaylistQueuePatch {
         try {
             if (context == null) return;
             Object row = context.get(ENDPOINT_TAG_KEY);
-            if (row instanceof QueueRow owned && owned.patch_isQueueOwned()
-                    && row instanceof FlyoutUtils.FlyoutMenuVideoIdInterface) {
+            if (row instanceof FlyoutUtils.FlyoutMenuVideoIdInterface
+                    && (!isNativeQueueDisabled() || (row instanceof QueueRow owned && owned.patch_isQueueOwned()))) {
                 FlyoutUtils.extractFlyoutIdFromMap(context);
             }
         } catch (Exception ex) {
@@ -1266,12 +1332,23 @@ public final class NativePlaylistQueuePatch {
         return queue != null;
     }
 
+    @Nullable
+    private static PlaylistController activePlaylistController() {
+        PlaylistController controller = controllerRef.get();
+        PlayerType type = PlayerType.getCurrent();
+        return controller != null && controller.patch_isAttached() && hasPlaylist(controller)
+                && !type.isNoneOrHidden() && type != PlayerType.INLINE_MINIMAL
+                && !ShortsPlayerState.isOpen()
+                && controller.patch_getVideoId().equals(VideoInformation.getVideoId()) ? controller : null;
+    }
+
     private static boolean isNativeQueueDisabled() {
         return Settings.QUEUE_TYPE.get() != QueueType.NATIVE;
     }
 
     /** Release only our session; never modify the Morphe queue or its settings. */
     private static void releaseNativeQueue() {
+        convertedPlaylist = null;
         clearPendingQueueStart();
         pendingUndo = null;
         OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
@@ -1310,6 +1387,48 @@ public final class NativePlaylistQueuePatch {
         return controller;
     }
 
+    private static boolean hasForeignPlaybackPlaylist() {
+        String playlistId = VideoInformation.getPlaylistId();
+        if (playlistId.isEmpty()) return false;
+        ConvertedPlaylist converted = convertedPlaylist;
+        if (converted == null || isNativeQueueDisabled()
+                || !converted.videoId().equals(VideoInformation.getVideoId())
+                || !converted.playlistId().equals(playlistId)) return true;
+        NativePlayback playback = converted.playback().get();
+        if (playback == null) return true;
+        // The service can retain our queue after its watch UI is collected.
+        if (queue != null && nativePlaybackRef.get() == playback && playback.patch_isLocalQueue()) return false;
+        return playback != playbackFor(returningController());
+    }
+
+    /** Keep a late response for the replaced list from reclaiming this same player. */
+    public static boolean shouldIgnorePlaylistResponse(NativePlayback playback, MessageLite endpoint) {
+        ConvertedPlaylist converted = convertedPlaylist;
+        if (converted == null || isNativeQueueDisabled() || endpoint == null
+                || converted.playback().get() != playback
+                || !converted.videoId().equals(VideoInformation.getVideoId())) return false;
+        try {
+            var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
+            return command.hasWatchEndpoint()
+                    && converted.videoId().equals(command.getWatchEndpoint().getVideoId())
+                    && converted.playlistId().equals(command.getWatchEndpoint().getPlaylistId());
+        } catch (Exception exception) {
+            Logger.printException(() -> "Could not inspect replaced playlist response", exception);
+            return false;
+        }
+    }
+
+    /** Called after native stale-video validation, before storing the incoming model. */
+    public static boolean shouldIgnorePlaylistModel(PlaylistController controller, PlaylistModel model) {
+        ConvertedPlaylist converted = convertedPlaylist;
+        return converted != null && !isNativeQueueDisabled() && !publishing
+                && converted.videoId().equals(VideoInformation.getVideoId())
+                && converted.videoId().equals(controller.patch_getVideoId())
+                && converted.playlistId().equals(model.patch_getPlaylistId())
+                && converted.playback().get() != null
+                && converted.playback().get() == playbackFor(controller);
+    }
+
     private static boolean hasPlaylist(PlaylistController controller) {
         String playlistId = controller.patch_getPlaylistId();
         return playlistId != null && !playlistId.isEmpty();
@@ -1326,9 +1445,43 @@ public final class NativePlaylistQueuePatch {
             return;
         }
 
+        PlaylistController playlist = activePlaylistController();
         String channelName = videoId.equals(FlyoutUtils.getFlyoutVideoId())
                 ? FlyoutUtils.getFlyoutChannelName() : "";
         try {
+            if (playlist != null) {
+                if (dragSession != null || queue != null) {
+                    Utils.showToastShort(str("morphe_native_playlist_queue_not_ready"));
+                    return;
+                }
+                NativePlayback playback = playbackFor(playlist);
+                if (playback == null) {
+                    Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+                    return;
+                }
+                String currentId = playlist.patch_getVideoId();
+                String currentTitle = VideoInformation.getVideoTitle();
+                String title = ChannelIdRequest.getVideoTitleIfAvailable(videoId);
+                rememberChannel(currentId, currentTitle, VideoInformation.getChannelName());
+                rememberChannel(videoId, title.isEmpty() ? videoId : title, channelName);
+                PlaylistQueue candidate = new PlaylistQueue(currentId, currentTitle);
+                if (!currentId.equals(videoId)) candidate = candidate.playNext(videoId);
+                // The native accept transaction replaces navigation rows without a
+                // load, seek, pause or player dismissal. Reuse the mutable navigator
+                // when available; its factory receives only our list-free command.
+                String sourcePlaylistId = playlist.patch_getPlaylistId();
+                if (publish(playlist, candidate, true)) {
+                    convertedPlaylist = new ConvertedPlaylist(currentId, sourcePlaylistId, new WeakReference<>(playback));
+                    // Clear must hide the replaced playlist, not restore its old rows.
+                    originalModel = null;
+                    refreshPlayerControls(playlist.patch_getNavigator());
+                    QueueFullscreenActions.refresh();
+                    FlyoutUtils.dismissFlyout();
+                    Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
+                    completeMetadata();
+                }
+                return;
+            }
             if (!playLast && canStartQueue()) {
                 String title = ChannelIdRequest.getVideoTitleIfAvailable(videoId);
                 rememberChannel(videoId, title.isEmpty() ? videoId : title, channelName);
@@ -1355,7 +1508,10 @@ public final class NativePlaylistQueuePatch {
                     ? new PlaylistQueue(controller.patch_getVideoId(), VideoInformation.getVideoTitle())
                     : queue;
             if (queue == null) originalModel = controller.patch_getModel();
-            PlaylistQueue updated = playLast ? candidate.playLast(videoId) : candidate.playNext(videoId);
+            // The first queue already contains the playing video. An explicit
+            // addition to an existing queue can still create another occurrence.
+            PlaylistQueue updated = queue == null && controller.patch_getVideoId().equals(videoId)
+                    ? candidate : playLast ? candidate.playLast(videoId) : candidate.playNext(videoId);
             if (publish(controller, updated, true)) {
                 FlyoutUtils.dismissFlyout();
                 Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
@@ -1384,14 +1540,20 @@ public final class NativePlaylistQueuePatch {
             OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
         }, NAVIGATION_TIMEOUT_MILLISECONDS);
 
-        // After close, a focused feed preview can steal the watch player even
-        // with the correct saved video ID. Reuse Reload's native feed protection
-        // without dismissing another player or retaining its playback parameters.
+        // A focused feed preview must not take ownership of closed-player Undo.
         if (start.restoresClosedPlayer()) {
             pendingQueueStartInlinePlaybackBlockId = LoadVideoPatch.blockInlinePlaybackUntilPlayerOpens();
         }
 
-        LoadVideoPatch.openVideoIntent(start.watchUrl(), false);
+        try {
+            LoadVideoPatch.openVideoIntent(start.watchUrl(), false);
+        } catch (RuntimeException exception) {
+            if (pendingQueueStart == start) {
+                clearPendingQueueStart();
+                OpenVideosFullscreenHookPatch.keepVideoMinimized(null);
+            }
+            throw exception;
+        }
     }
 
     /** Commit a first-item queue only after native playback accepts the requested video. */
@@ -1478,17 +1640,25 @@ public final class NativePlaylistQueuePatch {
         if (endpoint == null) return context;
         QueueStart start = pendingQueueStart;
         try {
+            var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
             // A deliberate new watch invalidates a closed player's Undo even if it
             // opens the same video. This hook runs on dispatch, not on prefetch.
             if (pendingUndo != null && pendingUndo.closedPlayback() != null
-                    && PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray()).hasWatchEndpoint()) {
+                    && command.hasWatchEndpoint()) {
                 pendingUndo = null;
             }
 
+            if (convertedPlaylist != null && command.hasWatchEndpoint()
+                    && !command.getWatchEndpoint().getPlaylistId().isEmpty()) {
+                // This hook observes dispatch, not prefetch. An explicit playlist
+                // navigation, even to the same video/list, supersedes conversion.
+                releaseNativeQueue();
+            }
             if (isNativeQueueDisabled() || start == null || queue != null) return context;
             Map<?, ?> minimized = start.minimizedContext(endpoint, context);
             if (minimized != context) {
-                OpenVideosFullscreenHookPatch.keepVideoMinimized(start.candidate().currentEntry().videoId());
+                OpenVideosFullscreenHookPatch.keepVideoMinimized(
+                        start.candidate().currentEntry().videoId());
             }
 
             return minimized;
@@ -1496,6 +1666,14 @@ public final class NativePlaylistQueuePatch {
             Logger.printException(() -> "prepareQueueStartContext failure", ex);
             return context;
         }
+    }
+
+    private static byte[] currentQueueCommand(PlaylistQueue candidate) {
+        // The navigation factory must not inherit the playing video's old list ID.
+        // This describes navigation only; it is never loaded into the running player.
+        return PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setWatchEndpoint(
+                PlaylistQueueRenderer.WatchEndpoint.newBuilder()
+                        .setVideoId(candidate.currentEntry().videoId())).build().toByteArray();
     }
 
     private static boolean publish(PlaylistController controller, PlaylistQueue candidate, boolean reportFailure) {
@@ -1530,7 +1708,7 @@ public final class NativePlaylistQueuePatch {
             }
 
             if (!playback.patch_isLocalQueue() || changedItems) {
-                if (!playback.patch_attachQueue(panel)) {
+                if (!playback.patch_attachQueue(panel, currentQueueCommand(candidate))) {
                     controller.patch_restorePanel(acceptedModel, previousModel);
                     if (reportFailure) Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
                     return false;

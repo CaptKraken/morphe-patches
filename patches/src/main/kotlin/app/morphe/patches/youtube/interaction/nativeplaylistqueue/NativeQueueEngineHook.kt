@@ -16,6 +16,7 @@ import app.morphe.patcher.util.getReference
 import app.morphe.patcher.util.matchSingle
 import app.morphe.patcher.util.proxy.mutableTypes.MutableField.Companion.toMutable
 import app.morphe.util.addInstructionsAtControlFlowLabel
+import app.morphe.util.findFieldFromToString
 import app.morphe.util.findInstructionIndicesReversedOrThrow
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
@@ -84,6 +85,10 @@ internal fun installNativeQueueEngine(
         responseType,
         responseConstructor.parameterTypes.single().toString()
     ).matchSingle().instructionMatches.single().instruction.getReference<FieldReference>()!!
+    val navigationType = PlaylistModelDescriptionFingerprint.matchSingle().originalMethod
+        .findFieldFromToString(", navigationSets=").type
+    val responseNavigation = nativeQueueResponseNavigationFingerprint(responseType, navigationType).matchSingle()
+        .instructionMatches.single().instruction.getReference<FieldReference>()!!
 
     // The mutable queue holds local rows and builds the shuffle order.
     val shuffle = NativeQueueShuffleFingerprint.matchSingle()
@@ -153,16 +158,21 @@ internal fun installNativeQueueEngine(
         return-void
     """)
 
-    bridge(wrapperType, "patch_attachQueue", listOf("[B"), "Z", 7, """
+    bridge(wrapperType, "patch_attachQueue", listOf("[B", "[B"), "Z", 7, """
         invoke-virtual {p0, p1}, $wrapperType->patch_localPanel([B)$responseType
         move-result-object v0
         if-eqz v0, :missing
         iget-object v1, p0, $nativeNavigator
         invoke-interface {v1}, $repeatGetter
         move-result v6
+        # Reuse an existing playlist queue before constructing an INSERT request.
+        # Its acceptance transaction suppresses selected-item playback callbacks.
+        instance-of v3, v1, $queueType
+        if-nez v3, :existing
         new-instance v2, ${builderConstructor.definingClass}
         invoke-direct {v2}, $builderConstructor
-        iget-object v3, v0, $watchCommand
+        ${parseProtoInstructions(watchCommand.type, bytes = "p2", result = "v3", registry = "v4")}
+        check-cast v3, ${watchCommand.type}
         iput-object v3, v2, $commandField
         invoke-virtual {v2}, $buildDescriptor
         move-result-object v2
@@ -171,8 +181,6 @@ internal fun installNativeQueueEngine(
         invoke-virtual {v3}, Ljava/lang/String;->isEmpty()Z
         move-result v3
         if-eqz v3, :missing
-        instance-of v3, v1, $queueType
-        if-nez v3, :existing
         iget-object v3, p0, $container
         invoke-virtual {v3, v2}, $containerFactory
         move-result-object v3
@@ -184,6 +192,8 @@ internal fun installNativeQueueEngine(
         :populate
         check-cast v3, $queueType
         iget-object v4, v3, $queueOwner
+        instance-of v5, v4, $mutableType
+        if-eqz v5, :missing
         check-cast v4, $mutableType
         invoke-virtual {v4}, $mutableType->patch_clearShuffleOrder()V
         invoke-virtual {v3, v0}, $accept
@@ -236,6 +246,18 @@ internal fun installNativeQueueEngine(
         return v0
     """)
 
+    bridge(wrapperType, "patch_ignorePlaylistResponse", listOf(responseType), "Z", 1, """
+        if-eqz p1, :missing
+        iget-object p1, p1, $watchCommand
+        invoke-static/range {p0 .. p1}, $EXTENSION_CLASS->shouldIgnorePlaylistResponse(${NATIVE_PLAYBACK_INTERFACE}Lcom/google/protobuf/MessageLite;)Z
+        move-result v0
+        return v0
+
+        :missing
+        const/4 v0, 0x0
+        return v0
+    """)
+
     // Required native response feed, separate from the engagement-panel presentation feed.
     // The native parser reuses its receiver register for the delegated navigator.
     // Preserve parameter registers before adding the post-response ownership callback.
@@ -249,6 +271,12 @@ internal fun installNativeQueueEngine(
 
     val receiveRegister = receiveMethod.findFreeRegister(0)
     receiveMethod.addInstructionsWithLabels(0, """
+        invoke-virtual/range {p0 .. p1}, $wrapperType->patch_ignorePlaylistResponse($responseType)Z
+        move-result v$receiveRegister
+        if-eqz v$receiveRegister, :current_response
+        return-void
+
+        :current_response
         iget-boolean v$receiveRegister, p0, $localFlag
         if-eqz v$receiveRegister, :server_queue
         iput-object p1, p0, $response
@@ -310,9 +338,34 @@ internal fun installNativeQueueEngine(
         iget-object v2, p0, $nativeNavigator
         instance-of v0, v2, $queueType
         if-eqz v0, :missing
+        new-instance v4, ${builderConstructor.definingClass}
+        invoke-direct {v4}, $builderConstructor
+        iget-object v0, v1, $watchCommand
+        iput-object v0, v4, $commandField
+        invoke-virtual {v4}, $buildDescriptor
+        move-result-object v4
+        invoke-virtual {v4}, $playlistId
+        move-result-object v4
+        invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
+        move-result v0
+        if-nez v0, :ordinary_autoplay
+        # A replaced playlist must not return through its old next/previous sets.
+        # Copy the response, leaving the running descriptor and server data untouched.
+        iget-object v0, v1, $sourceResponse
+        new-instance v1, $responseType
+        invoke-direct {v1, v0}, $responseConstructor
+        const/4 v0, 0x0
+        iput-object v0, v1, $responseNavigation
+        const/4 v3, 0x0
+        const/4 v5, 0x0
+        goto :create_autoplay
+
+        :ordinary_autoplay
         iget-object v3, p0, $savedAutoplay
         move-object v5, v3
         if-nez v3, :autoplay_ready
+
+        :create_autoplay
         invoke-static {}, $optionalType->empty()$optionalType
         move-result-object v4
         new-instance v3, $autoplayType
