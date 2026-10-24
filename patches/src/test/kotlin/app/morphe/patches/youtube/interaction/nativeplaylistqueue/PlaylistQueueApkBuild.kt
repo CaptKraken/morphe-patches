@@ -258,6 +258,17 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
     val queueContextIndex = watch.indexOfFirst {
         (it as? ReferenceInstruction)?.reference?.toString()?.contains("->prepareQueueStartContext(") == true
     }
+    val queueCommandIndex = watch.indexOfFirst {
+        (it as? ReferenceInstruction)?.reference?.toString()?.contains("->prepareQueueVideoCommand(") == true
+    }
+    check((queueCommandIndex >= 0) == selected) { "Queue watch normalization must exist only when selected" }
+    if (selected) {
+        check(queueCommandIndex in 0 until queueContextIndex
+                && watch[queueCommandIndex + 1].opcode == Opcode.MOVE_RESULT_OBJECT
+                && watch[queueCommandIndex + 2].opcode == Opcode.CHECK_CAST) {
+            "Normalize and restore the native command type before context hooks or descriptor construction"
+        }
+    }
     val cardObserverIndex = watch.indexOfFirst {
         (it as? ReferenceInstruction)?.reference?.toString()?.startsWith(
             "Lapp/morphe/extension/youtube/patches/FeedCardLayoutPatch;->onWatchCommand(") == true

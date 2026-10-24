@@ -16,6 +16,7 @@ import app.morphe.patches.youtube.misc.playertype.playerTypeHookPatch
 import app.morphe.patches.youtube.misc.playservice.is_21_15_or_greater
 import app.morphe.patches.youtube.misc.playservice.versionCheckPatch
 import app.morphe.patches.youtube.misc.settings.settingsPatch
+import app.morphe.patches.youtube.shared.hookVideoIntentCommandTransform
 import app.morphe.patches.youtube.shared.hookVideoIntentContext
 import app.morphe.patches.youtube.shared.openVideoIntentPatch
 import app.morphe.patches.youtube.video.information.videoInformationPatch
@@ -76,6 +77,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
             return@execute
         }
 
+        hookVideoIntentCommandTransform(EXTENSION_CLASS, "prepareQueueVideoCommand")
         hookVideoIntentContext(EXTENSION_CLASS, "prepareQueueStartContext")
 
         installQueueFlyout(this)

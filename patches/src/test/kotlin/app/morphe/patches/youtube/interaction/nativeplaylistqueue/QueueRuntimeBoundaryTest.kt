@@ -69,6 +69,13 @@ class QueueRuntimeBoundaryTest {
     fun `Reload leaves other providers and foreign or unavailable playback unchanged`() = withFixture("reloadQueueGuards")
 
     @Test
+    fun `individual music taps remove only automatic Mix navigation from an owned queue`() = withFixture("musicVideoTap")
+
+    @Test
+    fun `music tap normalization preserves deliberate playlists and unavailable or foreign queue playback`() =
+        withFixture("musicVideoTapGuards")
+
+    @Test
     fun `stock queue actions route to Native without opening the account queue dialog`() = withFixture("stockQueueRouting")
 
     @Test
@@ -217,6 +224,14 @@ class QueueRuntimeBoundaryTest {
                     public static int getIdentifier(ResourceType type, String name) { return 0; }
                 }
             """,
+            "FeedVideoCardsPatch" to """
+                package app.morphe.extension.youtube.patches.utils;
+                public class FeedVideoCardsPatch {
+                    // External mounted UI boundary, observed separately on the phone.
+                    public static boolean individual = true;
+                    public static boolean isIndividualVideoTap(android.view.View view) { return individual; }
+                }
+            """,
             "FlyoutUtils" to """
                 package app.morphe.extension.youtube.patches.utils;
                 import android.util.Pair;
@@ -353,6 +368,8 @@ class QueueRuntimeBoundaryTest {
             "Utils" to """
                 package app.morphe.extension.shared;
                 public class Utils {
+                    public static boolean mainThread = true;
+                    public static boolean isCurrentlyOnMainThread() { return mainThread; }
                     private static final java.util.ArrayDeque<Runnable> pending = new java.util.ArrayDeque<>();
                     public static <K,V> java.util.Map<K,V> createSizeRestrictedMap(int size) {
                         return new java.util.LinkedHashMap<>();
@@ -1037,6 +1054,78 @@ class QueueRuntimeBoundaryTest {
                         currentDispatch.run();
                         NativePlaylistQueuePatch.onPlaybackTransition(replacement); Utils.drain();
                         require(replacement.feedbacks == 1, "Only the matching Reload dispatch authorizes its new player");
+                    }
+                    static com.google.protobuf.MessageLite nativeWatch(PlaylistQueueRenderer.WatchEndpoint watch) {
+                        var command = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setWatchEndpoint(watch).build();
+                        return (com.google.protobuf.MessageLite) Proxy.newProxyInstance(owner.getClassLoader(),
+                            new Class<?>[]{com.google.protobuf.MessageLite.class, QueueUndoActions.Command.class},
+                            (proxy, method, args) -> {
+                                if (method.getName().equals("toByteArray")) return command.toByteArray();
+                                if (method.getName().equals("patch_parseQueueCommand")) return
+                                    PlaylistQueueRenderer.NavigationEndpoint.parseFrom((byte[]) args[0]);
+                                throw new AssertionError("Unexpected native command operation: " + method.getName());
+                            });
+                    }
+                    static final String SENDER_VIEW_KEY = "com.google.android.libraries.youtube.rendering.elements.sender_view";
+                    static com.google.protobuf.MessageLite musicTap(com.google.protobuf.MessageLite command) {
+                        return NativePlaylistQueuePatch.prepareQueueVideoCommand(command, Map.of(SENDER_VIEW_KEY, new android.view.View()));
+                    }
+                    static PlaylistQueueRenderer.WatchEndpoint.Builder musicWatch() {
+                        return PlaylistQueueRenderer.WatchEndpoint.newBuilder().setVideoId("ZYXWVUTSRQP").setPlaylistId("RDZYXWVUTSRQP");
+                    }
+                    public static void musicVideoTap() throws Exception {
+                        var controller = new Controller(new Playback()); var before = installOwned(controller);
+                        var bytes = new java.io.ByteArrayOutputStream();
+                        var fields = com.google.protobuf.CodedOutputStream.newInstance(bytes);
+                        // Player parameters and opaque fields must survive the command rewrite.
+                        fields.writeString(6, "player-params"); fields.writeUInt32(8, 42);
+                        fields.writeBytes(100, com.google.protobuf.ByteString.copyFromUtf8("opaque")); fields.flush();
+                        var watch = musicWatch().mergeFrom(bytes.toByteArray()).build();
+                        var original = nativeWatch(watch);
+                        var prepared = musicTap(original);
+                        require(prepared != original, "Confirmed single-video tap must not start an automatic Mix");
+                        var expected = PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
+                            .setWatchEndpoint(watch.toBuilder().clearPlaylistId()).build();
+                        require(java.util.Arrays.equals(expected.toByteArray(), prepared.toByteArray()),
+                            "Only the playlist ID changes; video, player parameters and opaque fields survive");
+                        require(field("queue").get(null) == before && controller.playback.clears == 0
+                                && controller.playback.attaches == 0 && LoadVideoPatch.opens == 0,
+                            "Normalization must leave playback and queue insertion to existing native watch handling");
+                    }
+                    public static void musicVideoTapGuards() throws Exception {
+                        var controller = new Controller(new Playback()); installOwned(controller);
+                        var original = nativeWatch(musicWatch().build());
+                        app.morphe.extension.youtube.patches.utils.FeedVideoCardsPatch.individual = false;
+                        require(musicTap(original) == original, "Explicit Mix/unknown card must retain its exact command");
+                        app.morphe.extension.youtube.patches.utils.FeedVideoCardsPatch.individual = true;
+                        for (var watch : new PlaylistQueueRenderer.WatchEndpoint[] {
+                                musicWatch().setPlaylistId("PLsaved").build(), musicWatch().clearPlaylistId().build(),
+                                musicWatch().setIndex(0).build(), musicWatch().setPlaylistSetVideoId("entry").build() }) {
+                            var command = nativeWatch(watch);
+                            require(musicTap(command) == command, "Deliberate indexed/playlist and ordinary video commands must be untouched");
+                        }
+                        require(NativePlaylistQueuePatch.prepareQueueVideoCommand(original, Map.of()) == original,
+                            "Missing tapped view cannot establish a single-video intent");
+                        for (var type : new QueueType[] { QueueType.DEFAULT, QueueType.MORPHE, QueueType.LOCAL }) {
+                            Settings.QUEUE_TYPE.value = type;
+                            require(musicTap(original) == original, "Other queue providers retain their navigation");
+                        }
+                        Settings.QUEUE_TYPE.value = QueueType.NATIVE;
+                        Utils.mainThread = false;
+                        require(musicTap(original) == original, "Background dispatch must not inspect mounted views");
+                        Utils.mainThread = true;
+                        controller.playback.local = false;
+                        require(musicTap(original) == original, "A retained panel does not authorize rewriting foreign playback");
+                        controller.playback.local = true; controller.attached = false;
+                        require(musicTap(original) == original, "Detached playback is not an owned queue");
+                        controller.attached = true;
+                        field("publishedModel").set(null, new Object());
+                        require(musicTap(original) == original, "A stale queue model cannot authorize normalization");
+                        field("publishedModel").set(null, controller.model);
+                        field("queue").set(null, null);
+                        require(musicTap(original) == original, "Without a queue the music video must retain stock navigation");
+                        require(controller.playback.clears == 0 && controller.playback.attaches == 0,
+                            "Rejected taps must not modify any backend");
                     }
                     public static void reloadQueueGuards() throws Exception {
                         for (var type : new QueueType[] { QueueType.DEFAULT, QueueType.MORPHE, QueueType.LOCAL }) {

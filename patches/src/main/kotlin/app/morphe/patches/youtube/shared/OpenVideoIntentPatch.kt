@@ -33,6 +33,7 @@ private var videoPlaybackIntentFreeRegister2: Int = 0
 private lateinit var shortsPlaybackIntentMethod: WeakReference<MutableMethod>
 
 private val videoIntentContextHooks = mutableListOf<Pair<String, String>>()
+private val videoIntentCommandTransforms = mutableListOf<Pair<String, String>>()
 
 @Suppress("unused")
 val openVideoIntentPatch = bytecodePatch(
@@ -48,6 +49,7 @@ val openVideoIntentPatch = bytecodePatch(
 
     execute {
         videoIntentContextHooks.clear()
+        videoIntentCommandTransforms.clear()
         VideoPlaybackIntentFingerprint.let {
             it.method.apply {
                 val match = it.instructionMatches[1]
@@ -83,12 +85,21 @@ val openVideoIntentPatch = bytecodePatch(
 
     finalize {
         // Existing filtering hooks cache an instruction index during execute.
-        // Insert context transforms only after all consumers have used that index.
+        // Insert entry transforms only after all consumers have used that index.
         val method = videoPlaybackIntentMethod.get()!!
         videoIntentContextHooks.asReversed().forEach { (classDescriptor, methodName) ->
             method.addInstructionsAtControlFlowLabel(0, """
                 invoke-static/range {p1 .. p2}, $classDescriptor->$methodName(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Ljava/util/Map;
                 move-result-object p2
+            """)
+        }
+        // Normalize the immutable command before context hooks or the native
+        // descriptor can observe its original playlist. Retain its native type.
+        videoIntentCommandTransforms.asReversed().forEach { (classDescriptor, methodName) ->
+            method.addInstructionsAtControlFlowLabel(0, """
+                invoke-static/range {p1 .. p2}, $classDescriptor->$methodName(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;
+                move-result-object p1
+                check-cast p1, ${method.parameterTypes.first()}
             """)
         }
     }
@@ -97,6 +108,11 @@ val openVideoIntentPatch = bytecodePatch(
 /** Transform the command context before native watch-descriptor construction, without consuming it. */
 fun hookVideoIntentContext(classDescriptor: String, methodName: String) {
     videoIntentContextHooks += classDescriptor to methodName
+}
+
+/** Transform the watch command before its context and native playback descriptor are read. */
+fun hookVideoIntentCommandTransform(classDescriptor: String, methodName: String) {
+    videoIntentCommandTransforms += classDescriptor to methodName
 }
 
 /**

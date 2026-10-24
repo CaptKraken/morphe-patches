@@ -15,6 +15,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.text.Layout;
 import android.util.Base64;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityManager;
 import android.widget.TextView;
@@ -47,6 +48,7 @@ import app.morphe.extension.youtube.patches.LoadVideoPatch;
 import app.morphe.extension.youtube.patches.OpenVideosFullscreenHookPatch;
 import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
+import app.morphe.extension.youtube.patches.utils.FeedVideoCardsPatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
 import app.morphe.extension.youtube.settings.Settings;
@@ -1732,6 +1734,36 @@ public final class NativePlaylistQueuePatch {
                 || queue.entries().stream().noneMatch(item -> item.videoId().equals(videoId))) return;
         PlaylistController controller = readyController();
         if (controller != null && controller.patch_getModel() == publishedModel) publish(controller, queue, false);
+    }
+
+    /** Keep an individual music-video tap in our queue instead of starting its automatic Mix. */
+    public static MessageLite prepareQueueVideoCommand(MessageLite endpoint, Map<?, ?> context) {
+        if (!Utils.isCurrentlyOnMainThread() || queue == null || publishing
+                || pendingSelection != null || dragSession != null || context == null
+                || !(endpoint instanceof QueueUndoActions.Command nativeCommand)) return endpoint;
+        PlaylistController controller = readyController();
+        if (controller == null || controller.patch_getModel() != publishedModel) return endpoint;
+        NativePlayback playback = playbackFor(controller);
+        if (playback == null || playback != nativePlaybackRef.get() || !playback.patch_isLocalQueue()) return endpoint;
+        try {
+            var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
+            if (!command.hasWatchEndpoint()) return endpoint;
+            var watch = command.getWatchEndpoint();
+            if (!PlaylistQueue.isVideoId(watch.getVideoId()) || !watch.getPlaylistId().startsWith("RD")
+                    || watch.hasIndex() || !watch.getPlaylistSetVideoId().isEmpty()) return endpoint;
+            Object sender = context.get("com.google.android.libraries.youtube.rendering.elements.sender_view");
+            if (!(sender instanceof View view) || !FeedVideoCardsPatch.isIndividualVideoTap(view)) return endpoint;
+
+            // Only the automatic playlist is removed. Retain the original video,
+            // player parameters, tracking and unknown fields, then use the native
+            // registry to rebuild the command before descriptor construction.
+            // Existing video-change handling selects/inserts it in the queue.
+            var prepared = command.toBuilder().setWatchEndpoint(watch.toBuilder().clearPlaylistId()).build();
+            return nativeCommand.patch_parseQueueCommand(prepared.toByteArray());
+        } catch (Exception ex) {
+            Logger.printException(() -> "prepareQueueVideoCommand failure", ex);
+            return endpoint;
+        }
     }
 
     /** Native watch dispatch reads this flag before constructing the playback descriptor. */
