@@ -1152,6 +1152,31 @@ internal fun directQueueNavigateFingerprint(navigatorType: String, requestType: 
     returnType = "V"
 )
 
+/** The native backend's capability check, before watch-history window policy is added. */
+internal fun directQueueBackendAvailabilityFingerprint(backend: FieldReference, requestType: String) = Fingerprint(
+    definingClass = backend.definingClass,
+    accessFlags = listOf(AccessFlags.PRIVATE, AccessFlags.FINAL),
+    parameters = listOf(requestType),
+    returnType = "Z",
+    filters = listOf(
+        fieldAccess(reference = backend, opcode = Opcode.IGET_OBJECT),
+        methodCall(
+            definingClass = backend.type,
+            opcode = Opcode.INVOKE_VIRTUAL,
+            parameters = listOf(requestType),
+            returnType = "I",
+            location = MatchAfterWithin(2)
+        )
+    )
+)
+
+internal fun queueNavigationIntentFieldFingerprint(requestType: String, enumType: String) = Fingerprint(
+    definingClass = requestType,
+    name = "<init>",
+    parameters = listOf(enumType, "L", "L"),
+    filters = listOf(fieldAccess(definingClass = "this", type = enumType, opcode = Opcode.IPUT_OBJECT))
+)
+
 /**
  * A newer watch navigator forwards queue requests to the same playback service.
  * Other navigation patches can prepend guards, so match the forwarding tail.

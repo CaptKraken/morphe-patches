@@ -125,6 +125,12 @@ public final class NativePlaylistQueuePatch {
         boolean patch_canNavigateQueue(boolean next);
     }
 
+    /** Newer players keep their watch-history window separately from the queue. */
+    public interface DirectQueueNavigator extends ServiceNavigator {
+        Enum<?> patch_getQueueNavigationIntent(Object request);
+        boolean patch_canNavigateNativeQueue(Object request);
+    }
+
     /** Bridge to YouTube's mutable playback queue, independent of the watch view. */
     public interface NativePlayback {
         boolean patch_isLocalQueue();
@@ -1181,6 +1187,34 @@ public final class NativePlaylistQueuePatch {
 
         NativePlayback playback = service.patch_getQueuePlayback();
         return playback != null && playback.patch_isLocalQueue() && playback == nativePlaybackRef.get();
+    }
+
+    /**
+     * Injection point.
+     * <p>
+     * -1 retains the native watch-window policy for playback that we do not own.
+     */
+    public static int nativeQueueNavigationAvailability(DirectQueueNavigator navigator, Object request) {
+        if (!ownsNativePlayback(navigator) || !isQueuePlaybackIntent(navigator.patch_getQueueNavigationIntent(request))) {
+            return -1;
+        }
+        return navigator.patch_canNavigateNativeQueue(request) ? 1 : 0;
+    }
+
+    /**
+     * Injection point.
+     * <p>
+     * Called only after the native queue has committed a non-null target descriptor.
+     */
+    public static boolean retainCommittedQueueNavigation(DirectQueueNavigator navigator, Object request) {
+        return ownsNativePlayback(navigator) && isQueuePlaybackIntent(navigator.patch_getQueueNavigationIntent(request));
+    }
+
+    private static boolean isQueuePlaybackIntent(@Nullable Enum<?> intent) {
+        return intent != null && switch (intent.name()) {
+            case "NEXT", "PREVIOUS", "AUTOPLAY", "AUTONAV" -> true;
+            default -> false;
+        };
     }
 
     /** Bypass watch-history shortcuts, retaining the native queue's validation and ordering. */

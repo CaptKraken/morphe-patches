@@ -38,6 +38,7 @@ import app.morphe.patches.youtube.misc.backgroundplayback.backgroundPlaybackPatc
 import app.morphe.patches.youtube.misc.fix.videoactionbar.restoreOldVideoActionBarPatch
 import app.morphe.patches.youtube.misc.medianotification.mediaNotificationControlsPatchYouTube
 import app.morphe.patches.youtube.misc.playservice.is_21_32_or_greater
+import app.morphe.patches.youtube.misc.playservice.is_21_42_or_greater
 import app.morphe.patches.youtube.misc.spoof.spoofVideoStreamsPatch
 import app.morphe.patches.youtube.video.quality.rememberVideoQualityPatch
 import app.morphe.patches.youtube.video.series.seriesTrackerPatch
@@ -51,12 +52,14 @@ import com.android.tools.smali.dexlib2.analysis.MethodAnalyzer
 import com.android.tools.smali.dexlib2.analysis.RegisterType
 import com.android.tools.smali.dexlib2.dexbacked.DexBackedDexFile
 import com.android.tools.smali.dexlib2.iface.ClassDef
+import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.Instruction
 import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OffsetInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
@@ -569,6 +572,65 @@ private fun verifyNativeServiceDelegates(classes: List<ClassDef>, selected: Bool
     println("Native playback service and ${delegates.size} forwarding navigator(s) verified")
 }
 
+/** A committed queue target must load even when the watch-history window cannot move. */
+private fun verifyNativeQueueWindow(classes: List<ClassDef>, selected: Boolean) {
+    val owners = classes.filter { DIRECT_NAVIGATOR_INTERFACE in it.interfaces }
+    check(owners.size == if (selected && is_21_42_or_greater) 1 else 0) {
+        "Unexpected owned-queue watch-window bridge"
+    }
+    if (owners.isEmpty()) return
+    val owner = owners.single()
+    val playbackType = classes.single { NATIVE_PLAYBACK_INTERFACE in it.interfaces }.type
+    fun calls(method: Method) =
+        method.implementation!!.instructions.mapNotNull {
+            (it as? ReferenceInstruction)?.reference as? MethodReference
+        }.toList()
+    val capability = calls(owner.methods.single { it.name == "patch_canNavigateNativeQueue" }).single()
+    val nativeCapability = owner.methods.single { it.toString() == capability.toString() }
+    check(capability.returnType == "Z" && capability.definingClass == owner.type &&
+            nativeCapability.implementation!!.instructions.any {
+                ((it as? ReferenceInstruction)?.reference as? FieldReference)?.type == playbackType
+            } && calls(nativeCapability).any {
+                it.definingClass == playbackType && it.returnType == "I"
+            }) { "Queue availability must retain the owned native backend's capability restrictions" }
+    val availability = calls(owner.methods.single { it.name == "patch_canNavigateQueue" }).single()
+    check(availability != capability) { "Queue capability must not recurse into the watch-window policy" }
+    val nativeAvailability = owner.methods.single { it.toString() == availability.toString() }
+        .implementation!!.instructions.toList()
+    val override = nativeAvailability.indexOfFirst {
+        ((it as? ReferenceInstruction)?.reference as? MethodReference)?.name == "nativeQueueNavigationAvailability"
+    }
+    check(override >= 0 && nativeAvailability[override + 1].opcode == Opcode.MOVE_RESULT &&
+            nativeAvailability[override + 2].opcode == Opcode.IF_LTZ &&
+            nativeAvailability[override + 3].opcode == Opcode.RETURN &&
+            nativeAvailability.drop(override + 4).any {
+                (it as? ReferenceInstruction)?.reference?.toString() == capability.toString()
+            }) { "Owned capability must override history availability while other playback retains its native policy" }
+    val navigate = calls(owner.methods.single { it.name == "patch_navigateQueue" }).single()
+    val dispatch = owner.methods.single { it.toString() == navigate.toString() }
+    val code = dispatch.implementation!!.instructions.toList()
+    val gates = code.indices.filter {
+        (code[it] as? ReferenceInstruction)?.reference?.toString() == availability.toString()
+    }
+    check(gates.size == 2) { "Native pre-commit and post-commit checks must remain present" }
+    val gate = gates.last()
+    val retain = code.indexOfFirst {
+        ((it as? ReferenceInstruction)?.reference as? MethodReference)?.name == "retainCommittedQueueNavigation"
+    }
+    check(retain > gate && code[gate - 3].opcode == Opcode.IF_EQZ &&
+            ((code[gate - 2] as? ReferenceInstruction)?.reference as? FieldReference)?.type == playbackType &&
+            code[gate - 1].opcode == Opcode.IF_EQZ && code[gate + 1].opcode == Opcode.MOVE_RESULT &&
+            code[retain - 1].opcode == Opcode.IF_NEZ && code[retain + 1].opcode == Opcode.MOVE_RESULT &&
+            code[retain + 3].opcode == Opcode.IF_EQZ) {
+        "Only an accepted non-null queue target may bypass the post-commit history fallback"
+    }
+    val invoke = code[retain] as RegisterRangeInstruction
+    check(invoke.registerCount == 2 && invoke.startRegister == dispatch.implementation!!.registerCount - 2) {
+        "Post-commit ownership must use preserved dispatcher parameters, not reused native locals"
+    }
+    println("Native queue capabilities and accepted-target loading are independent of watch history")
+}
+
 /** Verify repeat operands and the existing shuffle view/listener, not just an enabled flag. */
 private fun verifyNativeQueueHeader(classes: List<ClassDef>, selected: Boolean) {
     val headers = classes.filter { REPEAT_HEADER_INTERFACE in it.interfaces }
@@ -637,6 +699,7 @@ private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
         file.inputStream().buffered().use { DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it) }
     }
     verifyNativeServiceDelegates(dexFiles.flatMap { it.classes }, selected)
+    verifyNativeQueueWindow(dexFiles.flatMap { it.classes }, selected)
     verifyNativeQueueHeader(dexFiles.flatMap { it.classes }, selected)
     val playbackInterface = EXTENSION_CLASS.removeSuffix(";") + "\$NativePlayback;"
     val owners = dexFiles.flatMap { it.classes }.filter { playbackInterface in it.interfaces }

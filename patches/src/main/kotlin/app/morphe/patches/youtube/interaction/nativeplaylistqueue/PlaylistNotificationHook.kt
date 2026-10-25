@@ -203,11 +203,16 @@ internal fun installPlaylistNotification(
         """
     )
     installVideoIdBridge(directType, playerOwner)
+    val directNavigate = directQueueNavigateFingerprint(directType, wrapperType).originalMethod
+    val directCanNavigate = playlistServiceCanNavigateFingerprint(directType, wrapperType).originalMethod
     installNavigationBridges(
         directType,
-        directQueueNavigateFingerprint(directType, wrapperType).originalMethod,
-        playlistServiceCanNavigateFingerprint(directType, wrapperType).originalMethod
+        directNavigate,
+        directCanNavigate
     )
+    if (is_21_42_or_greater) {
+        installNativeQueueWindow(context, backend, enumType, directNavigate, directCanNavigate)
+    }
 
     mutableClassDefBy(owner).interfaces.add(MEDIA_CONTROLS_INTERFACE)
     bridge(
