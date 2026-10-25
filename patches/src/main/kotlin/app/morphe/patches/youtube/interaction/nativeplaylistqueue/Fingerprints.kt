@@ -1085,6 +1085,55 @@ internal fun playlistServiceNavigatorFingerprint(wrapperType: String) = Fingerpr
     )
 )
 
+/** The direct-backend watch navigator reports failed starts through this stable diagnostic. */
+internal object DirectQueueNavigatorFingerprint : Fingerprint(
+    returnType = "V",
+    filters = listOf(string("Watch Page unable to start playback, "))
+)
+
+/** The active native backend is assigned from the same factory used by the legacy sequencer. */
+internal fun directQueueBackendFingerprint(navigatorType: String, playbackType: String) = Fingerprint(
+    definingClass = navigatorType,
+    returnType = "V",
+    filters = listOf(
+        methodCall(returnType = playbackType),
+        opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+        fieldAccess(
+            definingClass = "this",
+            type = playbackType,
+            opcode = Opcode.IPUT_OBJECT,
+            location = MatchAfterImmediately()
+        )
+    )
+)
+
+internal fun directQueuePlayerOwnerFingerprint(navigatorType: String, playerOwnerType: String) = Fingerprint(
+    definingClass = navigatorType,
+    name = "<init>",
+    filters = listOf(fieldAccess(definingClass = "this", type = playerOwnerType, opcode = Opcode.IPUT_OBJECT))
+)
+
+internal fun directQueueNavigateFingerprint(navigatorType: String, requestType: String) = Fingerprint(
+    definingClass = navigatorType,
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf(requestType),
+    returnType = "V"
+)
+
+/**
+ * A newer watch navigator forwards queue requests to the same playback service.
+ * Other navigation patches can prepend guards, so match the forwarding tail.
+ */
+internal fun playlistServiceDelegateFingerprint(navigate: MethodReference) = Fingerprint(
+    parameters = navigate.parameterTypes.map { it.toString() },
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(definingClass = "this", type = navigate.definingClass, opcode = Opcode.IGET_OBJECT),
+        methodCall(reference = navigate, location = MatchAfterImmediately()),
+        opcode(Opcode.RETURN_VOID, location = MatchAfterImmediately())
+    )
+)
+
 /** Only the ordinary watch-page callback is replaced; casting/no-op delegates keep control. */
 internal fun notificationForegroundSkipFingerprint(callbackType: String, request: FieldReference) = Fingerprint(
     interfaces = listOf(callbackType),
@@ -1096,6 +1145,7 @@ internal fun notificationForegroundSkipFingerprint(callbackType: String, request
 /** The playback service checks whether a navigation request can be dispatched. */
 internal fun playlistServiceCanNavigateFingerprint(serviceType: String, requestType: String) = Fingerprint(
     definingClass = serviceType,
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
     returnType = "Z",
     parameters = listOf(requestType)
 )

@@ -37,9 +37,11 @@ import app.morphe.patches.youtube.layout.sharesheet.openSystemShareSheetPatch
 import app.morphe.patches.youtube.misc.backgroundplayback.backgroundPlaybackPatch
 import app.morphe.patches.youtube.misc.fix.videoactionbar.restoreOldVideoActionBarPatch
 import app.morphe.patches.youtube.misc.medianotification.mediaNotificationControlsPatchYouTube
+import app.morphe.patches.youtube.misc.playservice.is_21_32_or_greater
 import app.morphe.patches.youtube.misc.spoof.spoofVideoStreamsPatch
 import app.morphe.patches.youtube.video.quality.rememberVideoQualityPatch
 import app.morphe.patches.youtube.video.series.seriesTrackerPatch
+import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.Opcodes
 import com.android.tools.smali.dexlib2.analysis.ClassPath
@@ -108,7 +110,11 @@ fun main(arguments: Array<String>) {
             verifyNativeMixTap(dexDir, mode != "unselected")
         }
     }
-    Patcher(PatcherConfig(input, workspace, verifier = verifier)).use { patcher ->
+    // Disable only when isolating a known upstream validation failure; normal
+    // patch application and SDK/native contract verification still run.
+    val validateFingerprints = System.getProperty("queueValidateFingerprints", "true").toBooleanStrict()
+    println("Fingerprint validation enabled: $validateFingerprints")
+    Patcher(PatcherConfig(input, workspace, verifier = verifier, validate = validateFingerprints)).use { patcher ->
         patcher += selected
         runBlocking {
             patcher().collect { result ->
@@ -471,11 +477,104 @@ private fun verifyNativeRowMenuPaths(directory: File, selected: Boolean) {
     println("Native row menu dispatch preserves original callback and dismissal branches")
 }
 
+/** A wrapper used by the watch page must expose the same backend as its native service. */
+private fun verifyNativeServiceDelegates(classes: List<ClassDef>, selected: Boolean) {
+    val services = classes.filter {
+        SERVICE_NAVIGATOR_INTERFACE in it.interfaces && !AccessFlags.INTERFACE.isSet(it.accessFlags)
+    }
+    if (!selected) {
+        check(services.isEmpty()) { "Playback service bridges leaked into an unselected build" }
+        return
+    }
+    val service = services.single { owner -> owner.methods.single { it.name == "patch_getQueuePlayback" }
+        .implementation!!.instructions.any { it.opcode == Opcode.INSTANCE_OF } }
+    val navigate = service.methods.single { it.name == "patch_navigateQueue" }
+        .implementation!!.instructions.mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }
+        .single { it.definingClass == service.type }
+    val delegates = classes.mapNotNull { owner ->
+        val forwarder = owner.methods.singleOrNull { method ->
+            val code = method.implementation?.instructions?.toList()?.takeLast(3) ?: return@singleOrNull false
+            code.size == 3 && code[0].opcode == Opcode.IGET_OBJECT &&
+                    ((code[0] as ReferenceInstruction).reference as FieldReference).type == service.type &&
+                    (code[1] as? ReferenceInstruction)?.reference == navigate && code[2].opcode == Opcode.RETURN_VOID
+        }
+        forwarder?.let { owner to it }
+    }
+    for ((delegate, forwarder) in delegates) {
+        check(SERVICE_NAVIGATOR_INTERFACE in delegate.interfaces) {
+            "Native navigator wrapper cannot resolve its playback backend"
+        }
+        val fields = mutableSetOf<FieldReference>()
+        for (name in listOf("patch_getVideoId", "patch_getQueuePlayback")) {
+            val bridge = delegate.methods.single { it.name == name }
+            val code = bridge.implementation!!.instructions.toList()
+            fields += (code.first() as ReferenceInstruction).reference as FieldReference
+            val call = (code[1] as ReferenceInstruction).reference as MethodReference
+            check(code[1].opcode == Opcode.INVOKE_INTERFACE && call.definingClass == SERVICE_NAVIGATOR_INTERFACE &&
+                    call.name == name && call.parameterTypes == bridge.parameterTypes && call.returnType == bridge.returnType) {
+                "Native navigator wrapper must resolve identity and backend from its service"
+            }
+        }
+        check(fields.size == 1 && fields.single().type == service.type) {
+            "Native navigator wrapper must use one playback service for identity and backend"
+        }
+        val dispatch = delegate.methods.single { it.name == "patch_navigateQueue" }
+            .implementation!!.instructions.mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }
+        check(dispatch.single() == forwarder) {
+            "Native queue navigation must retain hooks on the wrapper's original dispatch"
+        }
+        val capability = delegate.methods.single { it.name == "patch_canNavigateQueue" }
+            .implementation!!.instructions.mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }
+            .single()
+        check(capability.definingClass == delegate.type && capability.parameterTypes == forwarder.parameterTypes &&
+                capability.returnType == "Z") { "Native queue must retain the wrapper's navigation eligibility" }
+    }
+    val playbackType = classes.single { NATIVE_PLAYBACK_INTERFACE in it.interfaces }.type
+    val requestType = navigate.parameterTypes.single()
+    val directNavigators = classes.filter { owner ->
+        owner.fields.any { it.type == playbackType } && owner.methods.any {
+            com.android.tools.smali.dexlib2.AccessFlags.PUBLIC.isSet(it.accessFlags) &&
+                    it.returnType == "V" && it.parameterTypes == listOf(requestType)
+        }
+    }
+    for (owner in directNavigators) {
+        check(SERVICE_NAVIGATOR_INTERFACE in owner.interfaces) {
+            "Native direct-backend navigator cannot resolve its active playback backend"
+        }
+        val getter = owner.methods.single { it.name == "patch_getQueuePlayback" }
+            .implementation!!.instructions.toList()
+        check(getter.size == 2 && getter[0].opcode == Opcode.IGET_OBJECT &&
+                ((getter[0] as ReferenceInstruction).reference as FieldReference).type == playbackType &&
+                getter[1].opcode == Opcode.RETURN_OBJECT) {
+            "Native navigator must expose its owned backend without substituting a cached response"
+        }
+        for ((name, result) in listOf("patch_navigateQueue" to "V", "patch_canNavigateQueue" to "Z")) {
+            val call = owner.methods.single { it.name == name }.implementation!!.instructions
+                .mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }.single()
+            check(call.definingClass == owner.type && call.parameterTypes == listOf(requestType) && call.returnType == result) {
+                "Native direct-backend navigator must retain its own navigation and eligibility paths"
+            }
+        }
+        val identity = owner.methods.single { it.name == "patch_getVideoId" }.implementation!!.instructions
+            .mapNotNull { (it as? ReferenceInstruction)?.reference as? FieldReference }.toList()
+        val legacyIdentity = service.methods.single { it.name == "patch_getVideoId" }.implementation!!.instructions
+            .mapNotNull { (it as? ReferenceInstruction)?.reference as? FieldReference }.toList()
+        check(identity.first().definingClass == owner.type && identity.first().type == legacyIdentity.first().type &&
+                identity.drop(1) == legacyIdentity.drop(1)) {
+            "Native navigator identity must come from its own player, using the existing active-ID getter"
+        }
+    }
+    check(services.size == delegates.size + directNavigators.size + 1) { "Unexpected playback service bridge" }
+    println("Native direct-backend navigators verified: ${directNavigators.size}")
+    println("Native playback service and ${delegates.size} forwarding navigator(s) verified")
+}
+
 /** SDK structural checks do not catch a base protobuf value stored in a concrete panel field. */
 private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
     val dexFiles = directory.listFiles()!!.filter { it.extension == "dex" }.map { file ->
         file.inputStream().buffered().use { DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it) }
     }
+    verifyNativeServiceDelegates(dexFiles.flatMap { it.classes }, selected)
     val playbackInterface = EXTENSION_CLASS.removeSuffix(";") + "\$NativePlayback;"
     val owners = dexFiles.flatMap { it.classes }.filter { playbackInterface in it.interfaces }
     check(owners.size == if (selected) 1 else 0) { "Unexpected native playback bridge inclusion" }
@@ -670,7 +769,7 @@ private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
         }
         val touch = closeHandlers.single { it.returnType == "Z" &&
                 it.parameterTypes == listOf("Landroid/view/View;", "Landroid/view/MotionEvent;") }
-        for ((gesture, expectedCalls) in listOf(fling to 2, touch to 1)) {
+        for ((gesture, expectedCalls) in listOf(fling to if (is_21_32_or_greater) 1 else 2, touch to 1)) {
             val instructions = gesture.implementation!!.instructions.toList()
             val dismissCalls = instructions.indices.filter {
                 (instructions[it] as? ReferenceInstruction)?.reference?.toString() == original.toString()
@@ -683,6 +782,7 @@ private fun verifyNativeQueueUndo(directory: File, selected: Boolean) {
                             (instructions[it] as FiveRegisterInstruction).registerCount == 0 } &&
                     dismissCalls.all { instructions[it].opcode == Opcode.INVOKE_VIRTUAL &&
                             instructions[it + 1].opcode in if (gesture.returnType == "V") setOf(Opcode.RETURN_VOID)
+                            else if (gesture == fling && is_21_32_or_greater) setOf(Opcode.RETURN)
                             else setOf(Opcode.GOTO, Opcode.GOTO_16, Opcode.GOTO_32) }) {
                 "Accepted gesture dismissals must each capture Undo and keep their original continuation"
             }
