@@ -21,12 +21,8 @@ import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 
 /** Observe the native playlist title after inflation and model rebinding. */
 internal fun installPlaylistTitle(context: BytecodePatchContext) = with(context) {
-    val creation = PlaylistTitleCreationFingerprint.matchSingle()
-    val headerType = creation.originalClassDef.type
-    val titleMatch = PlaylistTitleViewFingerprint.matchSingle()
-    check(titleMatch.originalMethod == creation.originalMethod) {
-        "Native queue title must be initialized by the playlist header factory"
-    }
+    val titleMatch = PlaylistTitleFingerprint.matchSingle()
+    val headerType = titleMatch.originalClassDef.type
     val titleStore = titleMatch.instructionMatches.last()
     val title = titleStore.instruction.getReference<FieldReference>()!!
     val panelType = PlaylistModelDescriptionFingerprint.matchSingle().originalMethod

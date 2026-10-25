@@ -84,6 +84,13 @@ public final class AddToQueuePatch {
     }
 
     /**
+     * @return If the native queue is selected. It handles the stock queue buttons.
+     */
+    public static boolean isNativeQueueEnabled() {
+        return Settings.QUEUE_TYPE.get() == QueueType.NATIVE;
+    }
+
+    /**
      * @return If the Morphe queue or the Premium-style queue is selected.
      */
     public static boolean isCustomQueueEnabled() {
@@ -123,8 +130,7 @@ public final class AddToQueuePatch {
     }
 
     public static void onListBound(ViewGroup itemList) {
-        final boolean nativeQueue = NativePlaylistQueuePatch.isPatchIncluded()
-                && Settings.QUEUE_TYPE.get() == QueueType.NATIVE;
+        final boolean nativeQueue = isNativeQueueEnabled();
         if (!isCustomQueueEnabled() && !nativeQueue) {
             return;
         }
@@ -229,7 +235,7 @@ public final class AddToQueuePatch {
      * Injection point.
      */
     public static Runnable replaceButtonRunnable(Runnable original) {
-        if (Settings.QUEUE_TYPE.get() == QueueType.NATIVE) {
+        if (isNativeQueueEnabled()) {
             Runnable action = getNativeQueueAction(FlyoutUtils.getCurrentButtonName(),
                     FlyoutUtils.getFlyoutVideoId());
             return action == null ? original : action;
@@ -258,11 +264,11 @@ public final class AddToQueuePatch {
      */
     public static boolean replaceOnItemClick(Object object) {
         try {
-            if (!isCustomQueueEnabled() && Settings.QUEUE_TYPE.get() != QueueType.NATIVE) {
+            if (!isCustomQueueEnabled() && !isNativeQueueEnabled()) {
                 return false;
             }
 
-            if (Settings.QUEUE_TYPE.get() == QueueType.NATIVE && object instanceof String name) {
+            if (isNativeQueueEnabled() && object instanceof String name) {
                 return flyoutButtonClickLogic(name, FlyoutUtils.getFlyoutVideoId());
             }
             if (FlyoutUtils.getFlyoutVideoId().isEmpty()) {
@@ -314,7 +320,7 @@ public final class AddToQueuePatch {
     }
 
     public static boolean flyoutButtonClickLogic(String buttonName, String videoId) {
-        final boolean nativeAction = Settings.QUEUE_TYPE.get() == QueueType.NATIVE
+        final boolean nativeAction = isNativeQueueEnabled()
                 && queueButtonOriginalNames.contains(buttonName);
         try {
             if (nativeAction) {

@@ -57,7 +57,6 @@ import app.morphe.extension.youtube.patches.SaveToWatchLaterPatch;
 import app.morphe.extension.youtube.patches.VideoDelayPatch;
 import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.components.PlayerFlyoutMenuComponentsFilter;
-import app.morphe.extension.youtube.patches.queue.NativePlaylistQueuePatch;
 import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
 import app.morphe.extension.youtube.settings.Settings;
 import app.morphe.extension.youtube.videoplayer.PictureinPictureButton;
@@ -323,7 +322,6 @@ public final class FlyoutUtils {
     private static boolean videoMarkedAsForKids;
     private static boolean isMyTabHistoryFlyout;
     private static boolean isShortFlyout;
-    private static boolean isNativeQueueRowFlyout;
     private static ChannelIdRequest flyoutChannelIdRequest;
 
     public static byte[] getAsciiBytes(String string) {
@@ -487,7 +485,6 @@ public final class FlyoutUtils {
         flyoutPlaylistId = "";
         flyoutChannelId = "";
         flyoutChannelName = "";
-        isNativeQueueRowFlyout = false;
     }
 
     private static void addFlyoutElements(Object flyoutPanel) {
@@ -765,6 +762,7 @@ public final class FlyoutUtils {
         currentButtonIndex++;
 
         visibleFlyoutButtons.add(new Pair<>(currentButtonName, currentButtonIndex));
+        //noinspection SizeReplaceableByIsEmpty
         if (buttonText != null && buttonText.length() > 0) {
             visibleFlyoutButtonTexts.putIfAbsent(currentButtonName, buttonText.toString());
         }
@@ -938,8 +936,6 @@ public final class FlyoutUtils {
      * Injection point.
      */
     public static void extractFlyoutIdFromObject(@Nullable Object bufferObject) {
-        isNativeQueueRowFlyout = bufferObject instanceof NativePlaylistQueuePatch.QueueRow row
-                && row.patch_isQueueOwned();
         Logger.printDebug(() -> "Flyout buffer class: " + ((bufferObject == null)
                 ? null : bufferObject.getClass()));
 

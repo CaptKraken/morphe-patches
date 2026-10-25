@@ -282,6 +282,9 @@ public final class NativePlaylistQueuePatch {
     // click must not authorize a much later, unrelated open of the same video.
     private static final int NAVIGATION_TIMEOUT_MILLISECONDS = 10_000;
 
+    private static final String SENDER_VIEW_KEY = "com.google.android.libraries.youtube.rendering.elements.sender_view";
+    private static final String MIX_PLAYLIST_ID_PREFIX = "RD";
+
     private NativePlaylistQueuePatch() {}
 
     public static boolean isPatchIncluded() {
@@ -762,6 +765,8 @@ public final class NativePlaylistQueuePatch {
 
     /** Keep the Queue label at its native text width instead of shrinking it in the counter chain. */
     public static void onPlaylistTitleBound(PlaylistTitle header) {
+        // Without the native queue, only a previously widened title needs restoring.
+        if (isNativeQueueDisabled() && originalTitleWidths.isEmpty()) return;
         // Native bind can run inside publish, before ownership and row markers are
         // committed. Recheck after it completes and after any newer rebind.
         Utils.runOnMainThread(() -> {
@@ -797,7 +802,7 @@ public final class NativePlaylistQueuePatch {
                     }
                 }
             } catch (Exception exception) {
-                Logger.printException(() -> "Could not update native queue title width", exception);
+                Logger.printException(() -> "onPlaylistTitleBound failure", exception);
             }
         });
     }
@@ -1426,10 +1431,14 @@ public final class NativePlaylistQueuePatch {
     /** Captures the eligible native menu action for the selected video. */
     @Nullable
     public static Runnable getFlyoutQueueAction(String videoId, boolean playLast) {
-        if (isNativeQueueDisabled() || !PlaylistQueue.isVideoId(videoId)) return null;
+        if (!canQueueFlyoutVideo(videoId)) return null;
         // Claim every stock Next/Last click in Native mode. Readiness is checked
         // by the action; a temporarily unavailable controller must not open Premium.
         return () -> addToQueue(videoId, playLast);
+    }
+
+    public static boolean canQueueFlyoutVideo(String videoId) {
+        return !isNativeQueueDisabled() && PlaylistQueue.isVideoId(videoId);
     }
 
     /** Only our Native queue makes Last available; account playlists and Mixes do not. */
@@ -1521,7 +1530,7 @@ public final class NativePlaylistQueuePatch {
                     && converted.videoId().equals(command.getWatchEndpoint().getVideoId())
                     && converted.playlistId().equals(command.getWatchEndpoint().getPlaylistId());
         } catch (Exception exception) {
-            Logger.printException(() -> "Could not inspect replaced playlist response", exception);
+            Logger.printException(() -> "shouldIgnorePlaylistResponse failure", exception);
             return false;
         }
     }
@@ -1750,17 +1759,13 @@ public final class NativePlaylistQueuePatch {
                 || pendingSelection != null || dragSession != null || context == null
                 || !(endpoint instanceof QueueUndoActions.Command nativeCommand)) return endpoint;
         PlaylistController controller = readyController();
-        if (controller == null || controller.patch_getModel() != publishedModel) return endpoint;
-        NativePlayback playback = playbackFor(controller);
-        if (playback == null || playback != nativePlaybackRef.get() || !playback.patch_isLocalQueue()) return endpoint;
+        if (controller == null || !isQueuePlayback(controller, playbackFor(controller))) return endpoint;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
             if (!command.hasWatchEndpoint()) return endpoint;
             var watch = command.getWatchEndpoint();
-            if (!PlaylistQueue.isVideoId(watch.getVideoId()) || !watch.getPlaylistId().startsWith("RD")
-                    || watch.hasIndex() || !watch.getPlaylistSetVideoId().isEmpty()) return endpoint;
-            Object sender = context.get("com.google.android.libraries.youtube.rendering.elements.sender_view");
-            if (!(sender instanceof View view) || !FeedVideoCardsPatch.isIndividualVideoTap(view)) return endpoint;
+            View sender = getMixTapSender(watch, context);
+            if (sender == null || !FeedVideoCardsPatch.isIndividualVideoTap(sender)) return endpoint;
 
             // Only the automatic playlist is removed. Retain the original video,
             // player parameters, tracking and unknown fields, then use the native
@@ -1775,8 +1780,8 @@ public final class NativePlaylistQueuePatch {
     }
 
     /** Pause an intentional Mix tap before any watch-state mutation, using the native dialog. */
-    public static boolean onQueueMixTap(MessageLite endpoint, Map<?, ?> context) {
-        if (!Utils.isCurrentlyOnMainThread() || endpoint == null) return false;
+    public static boolean onQueueMixTap(@Nullable MessageLite endpoint, @Nullable Map<?, ?> context) {
+        if (isNativeQueueDisabled() || !Utils.isCurrentlyOnMainThread() || endpoint == null) return false;
         boolean intercepted = false;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
@@ -1803,17 +1808,14 @@ public final class NativePlaylistQueuePatch {
             // Another explicit watch invalidates old dialog choices and fetches.
             pendingMixChoice = null;
             pendingMixAddition = null;
-            if (isNativeQueueDisabled() || queue == null || publishing || pendingSelection != null
+            if (queue == null || publishing || pendingSelection != null
                     || dragSession != null || context == null) return false;
             var watch = command.getWatchEndpoint();
-            if (!watch.getPlaylistId().startsWith("RD") || !PlaylistQueue.isVideoId(watch.getVideoId())
-                    || watch.hasIndex() || !watch.getPlaylistSetVideoId().isEmpty()) return false;
-            Object sender = context.get("com.google.android.libraries.youtube.rendering.elements.sender_view");
-            if (!(sender instanceof View view) || !FeedVideoCardsPatch.isPlaylistTap(view)) return false;
+            View sender = getMixTapSender(watch, context);
+            if (sender == null || !FeedVideoCardsPatch.isPlaylistTap(sender)) return false;
             PlaylistController controller = readyController();
             NativePlayback playback = controller == null ? null : playbackFor(controller);
-            if (controller == null || controller.patch_getModel() != publishedModel
-                    || playback == null || playback != nativePlaybackRef.get() || !playback.patch_isLocalQueue()) return false;
+            if (controller == null || !isQueuePlayback(controller, playback)) return false;
             MixChoice choice = new MixChoice(UUID.randomUUID().toString(), watch.getPlaylistId(), watch.getVideoId(),
                     new WeakReference<>(controller), new WeakReference<>(playback),
                     Map.copyOf(AuthUtils.getRequestHeader()), Locale.getDefault());
@@ -1825,7 +1827,7 @@ public final class NativePlaylistQueuePatch {
             return true;
         } catch (Exception exception) {
             pendingMixChoice = null;
-            Logger.printException(() -> "Could not handle native queue Mix choice", exception);
+            Logger.printException(() -> "onQueueMixTap failure", exception);
             // A failed prompt must not silently discard the playing queue.
             if (intercepted) Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
             return intercepted;
@@ -1836,10 +1838,26 @@ public final class NativePlaylistQueuePatch {
                                          @Nullable NativePlayback playback) {
         return !isNativeQueueDisabled() && !publishing && pendingSelection == null && dragSession == null
                 && queue != null && controller != null && controller == readyController()
-                && controller.patch_getModel() == publishedModel && playback != null
-                && playback == nativePlaybackRef.get() && playbackFor(controller) == playback
-                && playback.patch_isLocalQueue() && queue.currentEntry().videoId().equals(VideoInformation.getVideoId())
+                && isQueuePlayback(controller, playback) && playbackFor(controller) == playback
+                && queue.currentEntry().videoId().equals(VideoInformation.getVideoId())
                 && choice.headers().equals(AuthUtils.getRequestHeader()) && choice.locale().equals(Locale.getDefault());
+    }
+
+    /** If the controller shows our published model, played by our local native queue. */
+    private static boolean isQueuePlayback(PlaylistController controller, @Nullable NativePlayback playback) {
+        return controller.patch_getModel() == publishedModel && playback != null
+                && playback == nativePlaybackRef.get() && playback.patch_isLocalQueue();
+    }
+
+    /**
+     * @return The view that dispatched a watch command which starts an automatic Mix
+     *         from a video, rather than opening a position of a saved playlist.
+     */
+    @Nullable
+    private static View getMixTapSender(PlaylistQueueRenderer.WatchEndpoint watch, Map<?, ?> context) {
+        if (!PlaylistQueue.isVideoId(watch.getVideoId()) || !watch.getPlaylistId().startsWith(MIX_PLAYLIST_ID_PREFIX)
+                || watch.hasIndex() || !watch.getPlaylistSetVideoId().isEmpty()) return null;
+        return context.get(SENDER_VIEW_KEY) instanceof View view ? view : null;
     }
 
     private static void completeMixAddition(MixChoice choice, @Nullable List<VideoMetadata> videos) {
@@ -1872,7 +1890,7 @@ public final class NativePlaylistQueuePatch {
 
     /** Native watch dispatch reads this flag before constructing the playback descriptor. */
     public static Map<?, ?> prepareQueueStartContext(MessageLite endpoint, Map<?, ?> context) {
-        if (endpoint == null) return context;
+        if (endpoint == null || isNativeQueueDisabled()) return context;
         QueueStart start = pendingQueueStart;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
@@ -1896,11 +1914,10 @@ public final class NativePlaylistQueuePatch {
                 // navigation, even to the same video/list, supersedes conversion.
                 releaseNativeQueue();
             }
-            if (isNativeQueueDisabled() || start == null || queue != null) return context;
+            if (start == null || queue != null) return context;
             Map<?, ?> minimized = start.minimizedContext(endpoint, context);
             if (minimized != context) {
-                OpenVideosFullscreenHookPatch.keepVideoMinimized(
-                        start.candidate().currentEntry().videoId());
+                OpenVideosFullscreenHookPatch.keepVideoMinimized(start.candidate().currentEntry().videoId());
             }
 
             return minimized;

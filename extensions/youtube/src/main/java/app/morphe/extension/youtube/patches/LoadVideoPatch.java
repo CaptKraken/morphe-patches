@@ -17,6 +17,7 @@ import android.net.Uri;
 import android.os.Parcelable;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.lang.ref.WeakReference;
 import java.util.Objects;
@@ -216,7 +217,7 @@ public final class LoadVideoPatch {
         openVideoIntent(url, closeCurrentPlayerInstance, null);
     }
 
-    private static void openVideoIntent(String url, boolean closeCurrentPlayerInstance, Runnable onDispatch) {
+    private static void openVideoIntent(String url, boolean closeCurrentPlayerInstance, @Nullable Runnable onDispatch) {
         int loadVideoDelay = 0;
 
         // Close the current player instance.

@@ -387,15 +387,8 @@ public final class FeedVideoCardsPatch {
      * Must be called on the main thread while the tap's source view is still mounted.
      */
     public static boolean isIndividualVideoTap(View sender) {
-        ViewParent parent = sender instanceof ComponentHost host ? host : sender.getParent();
-        while (parent instanceof View view && !(parent instanceof ComponentHost)) {
-            parent = view.getParent();
-        }
-        if (!(parent instanceof ComponentHost host)) {
-            return false;
-        }
-        ComponentHost root = findRootHost(host);
-        return isVideoShaped(root) && !hasHorizontalList(root) && !isInDialog(root)
+        ComponentHost root = findTappedRootHost(sender);
+        return root != null && isVideoShaped(root) && !hasHorizontalList(root) && !isInDialog(root)
                 && hasDuration(root);
     }
 
@@ -405,13 +398,20 @@ public final class FeedVideoCardsPatch {
      * width feed geometry: Mix cards also appear in smaller library grids/shelves.
      */
     public static boolean isPlaylistTap(View sender) {
+        ComponentHost root = findTappedRootHost(sender);
+        return root != null && root.isAttachedToWindow() && !isInDialog(root) && !hasDuration(root);
+    }
+
+    /**
+     * @return The root host of the card that contains the tapped view.
+     */
+    @Nullable
+    private static ComponentHost findTappedRootHost(View sender) {
         ViewParent parent = sender instanceof ComponentHost host ? host : sender.getParent();
         while (parent instanceof View view && !(parent instanceof ComponentHost)) {
             parent = view.getParent();
         }
-        if (!(parent instanceof ComponentHost host)) return false;
-        ComponentHost root = findRootHost(host);
-        return root != null && root.isAttachedToWindow() && !isInDialog(root) && !hasDuration(root);
+        return parent instanceof ComponentHost host ? findRootHost(host) : null;
     }
 
     private static boolean hasDuration(View view) {

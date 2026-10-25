@@ -41,7 +41,6 @@ internal fun installQueueFlyout(context: BytecodePatchContext) = with(context) {
     // The shared factory exposes native icon conversion and the button's model
     // type. Direct sheet clicks can bypass its Runnable, so intercept both native
     // dispatchers before their backend command, retaining their dismissal branch.
-    FeedFlyoutButtonsInitializerFingerprint.clearMatch()
     val factory = FeedFlyoutButtonsInitializerFingerprint.instructionMatches
     val iconGetter = factory.first().instruction.getReference<MethodReference>()!!
     val iconField = factory[6].instruction.getReference<FieldReference>()!!

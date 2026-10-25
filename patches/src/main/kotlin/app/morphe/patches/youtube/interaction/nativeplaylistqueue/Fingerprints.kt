@@ -896,17 +896,11 @@ internal fun playlistPlayerControlsConstructorFingerprint(controlsType: String, 
 )
 
 /** Dedicated playlist engagement header; ordinary engagement headers use another layout. */
-internal object PlaylistTitleCreationFingerprint : Fingerprint(
-    returnType = "Landroid/view/View;",
-    parameters = emptyList(),
-    filters = listOf(resourceLiteral(ResourceType.LAYOUT, "playlist_engagement_panel_header"))
-)
-
-internal object PlaylistTitleViewFingerprint : Fingerprint(
-    classFingerprint = PlaylistTitleCreationFingerprint,
+internal object PlaylistTitleFingerprint : Fingerprint(
     returnType = "Landroid/view/View;",
     parameters = emptyList(),
     filters = listOf(
+        resourceLiteral(ResourceType.LAYOUT, "playlist_engagement_panel_header"),
         resourceLiteral(ResourceType.ID, "title"),
         methodCall("Landroid/view/View;->findViewById(I)Landroid/view/View;", location = MatchAfterImmediately()),
         opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),

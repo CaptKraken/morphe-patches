@@ -13,6 +13,7 @@ import app.morphe.patcher.util.cloneParameters
 import app.morphe.patcher.util.findFreeRegister
 import app.morphe.patcher.util.getReference
 import app.morphe.patcher.util.matchSingle
+import app.morphe.patcher.util.numberOfParameterRegistersLogical
 import app.morphe.patcher.util.p0Register
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import app.morphe.util.findFieldFromToString
@@ -168,45 +169,57 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
         return-object v0
     """)
 
-    addBridge("patch_restorePanel", List(2) { "Ljava/lang/Object;" }, "V", 1, """
-        iget-object v0, p0, $modelField
-        if-ne v0, p1, :done
-        check-cast p2, $modelType
-        const-string v0, ""
-        if-eqz p2, :identity_ready
-        iget-object v0, p2, $playlistField
-
-        :identity_ready
-        iput-object v0, p0, $activePlaylistField
-        iput-object p2, p0, $modelField
-        invoke-virtual/range {p0 .. p0}, ${render.originalMethod}
-
-        :done
-        return-void
-    """)
+    addBridge(
+        "patch_restorePanel",
+        List(2) { "Ljava/lang/Object;" },
+        "V",
+        1,
+        """
+            iget-object v0, p0, $modelField
+            if-ne v0, p1, :done
+            check-cast p2, $modelType
+            const-string v0, ""
+            if-eqz p2, :identity_ready
+            iget-object v0, p2, $playlistField
+    
+            :identity_ready
+            iput-object v0, p0, $activePlaylistField
+            iput-object p2, p0, $modelField
+            invoke-virtual/range {p0 .. p0}, ${render.originalMethod}
+    
+            :done
+            return-void
+        """
+    )
 
     installPlaylistRowPlayback(context, modelField, panelField)
 
     // Preserve every native rejection before this assignment. In particular, a stale model
     // must not claim the current controller or overwrite our local insertion state.
-    val acceptMethod = accept.method.cloneParameters()
-    val storeIndex = acceptMethod.findInstructionIndicesReversedOrThrow(Opcode.IPUT_OBJECT).single { index ->
-        acceptMethod.implementation!!.instructions[index].getReference<FieldReference>() == modelField
+    val acceptMethod = accept.method.cloneParameters().apply {
+        // Cloning adjusts match indexes.
+        val storeIndex = accept.instructionMatches.last().index + numberOfParameterRegistersLogical
+        val p0Register = p0Register
+        val guardRegister = findFreeRegister(
+            storeIndex, p0Register, p0Register + 1
+        )
+        addInstruction(
+            storeIndex + 1,
+            "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onControllerUpdated($CONTROLLER_INTERFACE)V"
+        )
+        addInstructionsAtControlFlowLabel(
+            storeIndex,
+            """
+                invoke-static/range {p0 .. p1}, $EXTENSION_CLASS->shouldIgnorePlaylistModel($CONTROLLER_INTERFACE$PLAYLIST_MODEL_INTERFACE)Z
+                move-result v$guardRegister
+                if-eqz v$guardRegister, :accept_model
+                return-void
+       
+                :accept_model
+                nop
+            """
+        )
     }
-    val guardRegister = acceptMethod.findFreeRegister(
-        storeIndex, acceptMethod.p0Register, acceptMethod.p0Register + 1
-    )
-    acceptMethod.addInstruction(storeIndex + 1,
-        "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onControllerUpdated($CONTROLLER_INTERFACE)V")
-    acceptMethod.addInstructionsAtControlFlowLabel(storeIndex, """
-        invoke-static/range {p0 .. p1}, $EXTENSION_CLASS->shouldIgnorePlaylistModel($CONTROLLER_INTERFACE$PLAYLIST_MODEL_INTERFACE)Z
-        move-result v$guardRegister
-        if-eqz v$guardRegister, :accept_model
-        return-void
-
-        :accept_model
-        nop
-    """)
 
     // Observe completed transitions, including native early returns that leave no model.
     // Keep this event distinct from a model bind: Reload can reopen a standalone

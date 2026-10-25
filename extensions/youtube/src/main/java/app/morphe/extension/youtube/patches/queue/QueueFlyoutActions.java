@@ -9,6 +9,8 @@ package app.morphe.extension.youtube.patches.queue;
 
 import static app.morphe.extension.shared.StringRef.str;
 
+import androidx.annotation.Nullable;
+
 import com.google.protobuf.MessageLite;
 
 import app.morphe.extension.shared.Logger;
@@ -17,9 +19,8 @@ import app.morphe.extension.youtube.innertube.IconOuterClass.YTIconType;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.MenuItem;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.MenuRenderer;
-import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.AddToQueuePatch;
-import app.morphe.extension.youtube.settings.Settings;
+import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 
 /** Adjusts native menu data before YouTube filters and binds its rows. */
 public final class QueueFlyoutActions {
@@ -31,10 +32,11 @@ public final class QueueFlyoutActions {
     }
 
     /** Injection point. Other queue providers and unrelated menu sources keep the original model. */
-    public static MessageLite completeQueueMenu(MessageLite original) {
-        if (original == null) return null;
-        String videoId = FlyoutUtils.getFlyoutVideoId();
-        if (NativePlaylistQueuePatch.getFlyoutQueueAction(videoId, false) == null) return original;
+    @Nullable
+    public static MessageLite completeQueueMenu(@Nullable MessageLite original) {
+        if (original == null || !NativePlaylistQueuePatch.canQueueFlyoutVideo(FlyoutUtils.getFlyoutVideoId())) {
+            return original;
+        }
         try {
             MenuRenderer menu = MenuRenderer.parseFrom(original.toByteArray());
             MenuRenderer completed = completeMenu(menu,
@@ -43,14 +45,14 @@ public final class QueueFlyoutActions {
             if (completed == menu) return original;
             return ((Menu) original).patch_parseQueueFlyout(completed.toByteArray());
         } catch (Exception exception) {
-            Logger.printException(() -> "Could not prepare native queue menu", exception);
+            Logger.printException(() -> "completeQueueMenu failure", exception);
             return original;
         }
     }
 
     /** Direct native sheet dispatch, which does not run the button model's Runnable. */
     public static boolean onStockQueueItemClick(Enum<?> icon) {
-        return icon != null && Settings.QUEUE_TYPE.get() == AddToQueuePatch.QueueType.NATIVE
+        return icon != null && AddToQueuePatch.isNativeQueueEnabled()
                 && AddToQueuePatch.flyoutButtonClickLogic(icon.name(), FlyoutUtils.getFlyoutVideoId());
     }
 
