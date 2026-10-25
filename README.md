@@ -1,23 +1,22 @@
 # Native playlist queue — dev builds
 
-Test bundles from the dev-based feature branch. [Draft PR #3953](https://github.com/MorpheApp/morphe-patches/pull/3953) describes the patch. Historical PoC builds remain on [`builds/youtube-native-playlist-queue`](https://github.com/CaptKraken/morphe-patches/tree/builds/youtube-native-playlist-queue).
+Test bundles from the dev-based feature branch. [PR #3953](https://github.com/MorpheApp/morphe-patches/pull/3953) describes the patch. Historical PoC builds remain on [`builds/youtube-native-playlist-queue`](https://github.com/CaptKraken/morphe-patches/tree/builds/youtube-native-playlist-queue).
 
-## Latest build: Watch or Add when tapping a Mix
+## Latest build: native queue playback and repeat fixes
 
-- Source: [`8c3dfae50`](https://github.com/CaptKraken/morphe-patches/commit/8c3dfae506edc743ea42f0527d8da89f5195fc34) on [`feature/youtube-native-playlist-queue-dev`](https://github.com/CaptKraken/morphe-patches/tree/feature/youtube-native-playlist-queue-dev).
-- Built: 2026-10-25. Bundle version: **1.48.0**. Required Patcher: **2.0.0**.
-- Native queue targets: **21.16.256** and **21.20.405**. Native mode is not offered on YouTube 20.x, including **20.51.39** and **20.21.37**. Other queue types use the parent Add to queue patch compatibility list.
+- Source fix: local commit `fb0b7bfedcebbd6881dcf878a5d1dc9b96065453`, based on maintainer commit [`7f8a99ea4`](https://github.com/CaptKraken/morphe-patches/commit/7f8a99ea4b69438dea3c6af41cd6ce083d75819b). **The feature fix has not been pushed to the source branch yet.**
+- Built: 2026-10-25. Bundle version: **1.49.0-dev.5**. Required Patcher: **2.0.0**.
+- Native queue APK checks completed on **21.16.256**, **21.20.405**, **21.23.492**, and experimental **21.42.241**. Native mode is not offered on YouTube 20.x. The parent compatibility list also contains targets not verified for Native queue in this build, including **21.43.523**.
 
-[Download latest MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-patcher2-8c3dfae50.mpp) · [Checksums](SHA256SUMS)
+[Download latest MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-patcher2-fb0b7bfed.mpp) · [Checksums](SHA256SUMS)
 
 Import the MPP directly into a Morphe Manager version that supports **Patcher 2.0**. Select **Add to queue** when patching. In YouTube, choose **Morphe → Feed → Play next in queue type → Native queue**. Native is now an option within Add to queue; it is no longer a separate selectable patch. Other queue types keep their existing routing.
 
-With a Native queue active, tapping a Mix card now opens YouTube's native **Watch / Add to queue** dialog. **Watch** opens the original Mix. **Add to queue** fetches and appends its initial batch while the current video keeps playing. Dismissing the dialog keeps the current playback. The returned batch size is not fixed at 50.
-
-This update addresses direct Mix-card taps.
+This build fixes Native queue startup on 21.42.241 by using the active player's native playback backend. It restores the native shuffle button and repeat-all option, keeps repeat when selecting another queue card, and avoids rebuilding the whole panel for repeat-only updates.
 
 The current build also includes:
 
+- With a Native queue active, tapping a Mix card opens YouTube's native **Watch / Add to queue** dialog. Watch opens the original Mix; Add appends its initial batch while playback continues. The returned batch size is not fixed at 50.
 - Swipe-to-remove, the row **Remove** action and **Clear queue** use YouTube's native trash icons.
 - With a Native queue active, tapping a normal music-video card in Search or Home now plays that video within the queue instead of starting an automatic Mix. Without an active Native queue, YouTube's normal music-video behavior is preserved.
 - Reload video clears an active Native queue and offers **Queue cleared / Undo**. Undo restores the queue onto the reloaded player without another reload or seek. Ordinary account playlists retain their original reload behavior.
@@ -33,14 +32,19 @@ Queues are temporary and do not persist after restarting the app. Clear queue Un
 
 ## Validation
 
-All **93 YouTube extension tests** and **39 patch tests** passed; **5 unrelated optional APK-dependent tests** were skipped. The ordered batch test covers both 50 and 100 entries. The final cleaned source passed combined real-APK validation on **21.20.405**, including SDK DEX, class-hierarchy, resources and native-hook ordering. Earlier **21.16.256** combined and **21.20.405** Native-unselected checks covered the same native hook contracts. The combined checks include Remember video quality and the existing related patch combinations. All **105085 resource strings** passed validation.
+All **93 YouTube extension tests** and **39 patch tests** passed; **5 optional APK-dependent tests** were skipped and are not counted as APK checks. All **106298 resource strings** passed validation.
 
-The user confirmed the Mix dialog and reported no issues after testing dismissal, ordinary/music-video taps, Watch, queue controls and edits, Clear/close/Reload Undo, and other queue modes. Phone testing preceded the final reference-lifetime and formatting cleanup; the cleaned code was checked locally. A host check of the production request returned 50 Mix entries in one HTTP request. It was not an Android playback test.
+Real-APK application passed on **21.16.256**, **21.20.405**, **21.23.492**, and **21.42.241**, including SDK DEX, class-hierarchy, native bridge/control-flow contracts and resources. The related-patch selection includes Remember video quality, notifications, Loop video, flyout overrides, metadata/rating hooks, miniplayer and Reload. A 21.42.241 build with Native queue unselected passed isolation checks.
 
-The MPP was built from the source commit linked above after validation. Its current YouTube extension and all Kotlin payloads match the build outputs. ZIP CRC, Android DEX checksums, and the actual Patcher 2.0 loader check passed (191 patches, Add to queue selected by default, all four queue types present). `:patches:buildAndroid` ran last. SHA256SUMS includes every MPP stored on this branch.
+Full fingerprint validation passed on 21.20.405, 21.23.492 and 21.42.241. On 21.16.256, it stops in the unchanged upstream authentication hook because that fingerprint matches two methods; this also reproduces with Native queue unselected. Normal 21.16.256 patching and SDK/native checks passed. No authentication-hook change is included in this fix.
+
+The user confirmed queue creation, repeat retention and playback through the whole queue on 21.42.241 using the preceding local candidate. This build additionally includes the maintainer's latest refactors and upstream sync; a phone regression check of this combined build is still pending.
+
+The published MPP matches the validated native/Kotlin payloads. ZIP CRC, all extension/patch DEX checksums and the actual Patcher 2.0 loader passed (191 patches, Add to queue selected by default, all four queue types present). `:patches:buildAndroid` ran last. SHA256SUMS includes every MPP stored on this branch.
 
 ## Previous builds
 
+- [Mix choice build 8c3dfae50](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-patcher2-8c3dfae50.mpp), retained as the earlier build before the 21.42 playback, shuffle and repeat fixes.
 - [Removal icon build 135e23313](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-patcher2-135e23313.mpp), retained as the earlier build before the Mix-tap choice.
 - [Music-video tap fix fe736a6dd](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-patcher2-fe736a6dd.mpp), retained as the earlier build before the removal icon update.
 - [Reload Undo build 884fc4368](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-patcher2-884fc4368.mpp), retained as the earlier Add to queue integration build.
