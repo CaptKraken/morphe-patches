@@ -1,18 +1,20 @@
 # Native playlist queue — dev builds
 
-Test bundles from the dev-based feature branch. [PR #3953](https://github.com/MorpheApp/morphe-patches/pull/3953) describes the patch. Historical PoC builds remain on [`builds/youtube-native-playlist-queue`](https://github.com/CaptKraken/morphe-patches/tree/builds/youtube-native-playlist-queue).
+Test bundles for the **Native queue** option in **Add to queue**. The original implementation was merged in [PR #3953](https://github.com/MorpheApp/morphe-patches/pull/3953). Follow-up compatibility fixes are on [`fix/youtube-native-queue-experimental-versions`](https://github.com/CaptKraken/morphe-patches/tree/fix/youtube-native-queue-experimental-versions). Historical PoC builds remain on [`builds/youtube-native-playlist-queue`](https://github.com/CaptKraken/morphe-patches/tree/builds/youtube-native-playlist-queue).
 
-## Latest build: native queue playback and repeat fixes
+## Latest build: experimental-version compatibility fixes
 
-- Source fix: local commit `fb0b7bfedcebbd6881dcf878a5d1dc9b96065453`, based on maintainer commit [`7f8a99ea4`](https://github.com/CaptKraken/morphe-patches/commit/7f8a99ea4b69438dea3c6af41cd6ce083d75819b). **The feature fix has not been pushed to the source branch yet.**
+- Source: [`395467a74`](https://github.com/CaptKraken/morphe-patches/commit/395467a749ad9290cbde528dccf92f7eeae6e98d), pushed on `fix/youtube-native-queue-experimental-versions`, based on upstream `dev` commit [`6407d5efa`](https://github.com/MorpheApp/morphe-patches/commit/6407d5efa0f7d99fb54909bc39e2074e8f60ac42).
+- Three reviewable commits: [playback backend discovery](https://github.com/CaptKraken/morphe-patches/commit/f1242058cbcfa97e2bc5fd8e731091183579b78a), [shuffle and repeat](https://github.com/CaptKraken/morphe-patches/commit/a1952e147e8bd17aaee0e8d38ffb87f67d032bf2), and [queue navigation](https://github.com/CaptKraken/morphe-patches/commit/395467a749ad9290cbde528dccf92f7eeae6e98d).
 - Built: 2026-10-25. Bundle version: **1.49.0-dev.5**. Required Patcher: **2.0.0**.
-- Native queue APK checks completed on **21.16.256**, **21.20.405**, **21.23.492**, and experimental **21.42.241**. Native mode is not offered on YouTube 20.x. The parent compatibility list also contains targets not verified for Native queue in this build, including **21.43.523**.
+- Experimental targets checked: **21.28.208**, **21.42.241**, **21.43.523**. These targets remain marked experimental.
+- Phone testing reported successful on the listed targets from **21.20.405** through **21.43.523**. Other versions in the parent patch's compatibility list were not verified by this test round.
 
-[Download latest MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-patcher2-fb0b7bfed.mpp) · [Checksums](SHA256SUMS)
+[Download latest MPP](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-patcher2-395467a74.mpp) · [Checksums](SHA256SUMS)
 
 Import the MPP directly into a Morphe Manager version that supports **Patcher 2.0**. Select **Add to queue** when patching. In YouTube, choose **Morphe → Feed → Play next in queue type → Native queue**. Native is now an option within Add to queue; it is no longer a separate selectable patch. Other queue types keep their existing routing.
 
-This build fixes Native queue startup on 21.42.241 by using the active player's native playback backend. It restores the native shuffle button and repeat-all option, keeps repeat when selecting another queue card, and avoids rebuilding the whole panel for repeat-only updates.
+This build connects Native queue to the active player's native playback backend, restores the shuffle button and repeat state, and retains repeat when selecting another queue card. It also fixes disabled Previous, unresponsive Next, and navigation failing at queue boundaries while keeping YouTube's native selection and playback loading.
 
 The current build also includes:
 
@@ -32,18 +34,17 @@ Queues are temporary and do not persist after restarting the app. Clear queue Un
 
 ## Validation
 
-All **93 YouTube extension tests** and **39 patch tests** passed; **5 optional APK-dependent tests** were skipped and are not counted as APK checks. All **106298 resource strings** passed validation.
+Each of the three source commits passed the patch and YouTube extension checks (**39 patch tests**, **93 extension tests**; **5 optional APK-dependent tests skipped**), the JVM patch build, and **`:patches:buildAndroid`**. All **106308 resource strings** passed validation for the final source tree.
 
-Real-APK application passed on **21.16.256**, **21.20.405**, **21.23.492**, and **21.42.241**, including SDK DEX, class-hierarchy, native bridge/control-flow contracts and resources. The related-patch selection includes Remember video quality, notifications, Loop video, flyout overrides, metadata/rating hooks, miniplayer and Reload. A 21.42.241 build with Native queue unselected passed isolation checks.
+Real-APK application passed with Native queue selected and unselected on **21.28.208**, **21.42.241**, and **21.43.523**, plus a selected regression check on **21.23.492**. All seven checks enabled fingerprint validation and passed SDK DEX, class hierarchy, native bridge/control-flow contracts and resources. The related-patch selection includes notifications, Loop video, playlist autoplay suppression, flyout overrides, metadata/rating hooks, miniplayer, Reload and player button visibility.
 
-Full fingerprint validation passed on 21.20.405, 21.23.492 and 21.42.241. On 21.16.256, it stops in the unchanged upstream authentication hook because that fingerprint matches two methods; this also reproduces with Native queue unselected. Normal 21.16.256 patching and SDK/native checks passed. No authentication-hook change is included in this fix.
+The user reported successful phone tests on the listed targets **21.20.405**, **21.23.492**, **21.28.208**, **21.42.241**, and **21.43.523**, and confirmed background/screen-off notification navigation. This does not establish support for unlisted intermediate releases or older targets.
 
-The user confirmed queue creation, repeat retention and playback through the whole queue on 21.42.241 using the preceding local candidate. This build additionally includes the maintainer's latest refactors and upstream sync; a phone regression check of this combined build is still pending.
-
-The published MPP matches the validated native/Kotlin payloads. ZIP CRC, all extension/patch DEX checksums and the actual Patcher 2.0 loader passed (191 patches, Add to queue selected by default, all four queue types present). `:patches:buildAndroid` ran last. SHA256SUMS includes every MPP stored on this branch.
+The commit split preserved the complete phone-tested source tree. The final YouTube extension and all packaged class payloads match the inputs used for the APK checks. The published MPP is the verified final-commit Android build: ZIP CRC, patch/extension DEX checksums and the actual Patcher 2.0 loader passed (191 patches, Add to queue selected by default, all four queue types present). No Gradle archive tasks ran after its final build and verification. SHA256SUMS includes every MPP stored on this branch.
 
 ## Previous builds
 
+- [Earlier 21.42 compatibility build fb0b7bfed](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-patcher2-fb0b7bfed.mpp), retained as the build before the Next/Previous navigation fix and full experimental-version checks.
 - [Mix choice build 8c3dfae50](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-patcher2-8c3dfae50.mpp), retained as the earlier build before the 21.42 playback, shuffle and repeat fixes.
 - [Removal icon build 135e23313](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-patcher2-135e23313.mpp), retained as the earlier build before the Mix-tap choice.
 - [Music-video tap fix fe736a6dd](https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue-dev/native-playlist-queue-patcher2-fe736a6dd.mpp), retained as the earlier build before the removal icon update.
