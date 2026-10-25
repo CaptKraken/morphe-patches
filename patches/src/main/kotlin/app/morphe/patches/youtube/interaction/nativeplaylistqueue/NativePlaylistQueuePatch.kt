@@ -11,6 +11,7 @@ import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.shared.misc.fix.proto.fixProtoLibraryPatch
 import app.morphe.patches.shared.misc.proto.hookElement
 import app.morphe.patches.youtube.layout.flyout.flyoutPatch
+import app.morphe.patches.youtube.misc.auth.authHookPatch
 import app.morphe.patches.youtube.misc.extension.sharedExtensionPatch
 import app.morphe.patches.youtube.misc.playertype.playerTypeHookPatch
 import app.morphe.patches.youtube.misc.playservice.is_21_15_or_greater
@@ -18,6 +19,7 @@ import app.morphe.patches.youtube.misc.playservice.versionCheckPatch
 import app.morphe.patches.youtube.misc.settings.settingsPatch
 import app.morphe.patches.youtube.shared.hookVideoIntentCommandTransform
 import app.morphe.patches.youtube.shared.hookVideoIntentContext
+import app.morphe.patches.youtube.shared.hookVideoIntentInterceptor
 import app.morphe.patches.youtube.shared.openVideoIntentPatch
 import app.morphe.patches.youtube.video.information.videoInformationPatch
 import app.morphe.patches.youtube.video.videoid.hookBackgroundPlayVideoId
@@ -60,6 +62,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
 ) {
     dependsOn(
         sharedExtensionPatch,
+        authHookPatch,
         settingsPatch,
         flyoutPatch,
         videoInformationPatch,
@@ -78,6 +81,7 @@ val nativePlaylistQueuePatch = bytecodePatch(
         }
 
         hookVideoIntentCommandTransform(EXTENSION_CLASS, "prepareQueueVideoCommand")
+        hookVideoIntentInterceptor(EXTENSION_CLASS, "onQueueMixTap")
         hookVideoIntentContext(EXTENSION_CLASS, "prepareQueueStartContext")
 
         installQueueFlyout(this)

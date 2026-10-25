@@ -399,6 +399,21 @@ public final class FeedVideoCardsPatch {
                 && hasDuration(root);
     }
 
+    /**
+     * Classify a mounted card whose command already identifies a Mix. Unlike an
+     * individual music video, a Mix card has no duration. Do not impose the full
+     * width feed geometry: Mix cards also appear in smaller library grids/shelves.
+     */
+    public static boolean isPlaylistTap(View sender) {
+        ViewParent parent = sender instanceof ComponentHost host ? host : sender.getParent();
+        while (parent instanceof View view && !(parent instanceof ComponentHost)) {
+            parent = view.getParent();
+        }
+        if (!(parent instanceof ComponentHost host)) return false;
+        ComponentHost root = findRootHost(host);
+        return root != null && root.isAttachedToWindow() && !isInDialog(root) && !hasDuration(root);
+    }
+
     private static boolean hasDuration(View view) {
         if (view instanceof ComponentHost host) {
             TextContent content = host.getTextContent();

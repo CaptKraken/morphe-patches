@@ -38,6 +38,7 @@ import java.util.WeakHashMap;
 import app.morphe.extension.shared.ByteTrieSearch;
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.Utils;
+import app.morphe.extension.shared.innertube.utils.AuthUtils;
 import app.morphe.extension.shared.settings.Setting;
 import app.morphe.extension.youtube.innertube.IconOuterClass.Icon;
 import app.morphe.extension.youtube.innertube.IconOuterClass.YTIconType;
@@ -191,6 +192,11 @@ public final class NativePlaylistQueuePatch {
     private static DragSession dragSession;
     private static WeakReference<PlaylistController> controllerRef = new WeakReference<>(null);
     private static PlaylistQueue queue;
+    private record MixChoice(String token, String playlistId, String videoId,
+                             WeakReference<PlaylistController> controller,
+                             WeakReference<NativePlayback> playback, Map<String, String> headers, Locale locale) {}
+    private static MixChoice pendingMixChoice;
+    private static volatile MixChoice pendingMixAddition;
     private static WeakReference<NativePlayback> nativePlaybackRef = new WeakReference<>(null);
     private static Object originalModel;
     private static Object publishedModel;
@@ -1447,6 +1453,8 @@ public final class NativePlaylistQueuePatch {
 
     /** Release only our session; never modify the Morphe queue or its settings. */
     private static void releaseNativeQueue() {
+        pendingMixChoice = null;
+        pendingMixAddition = null;
         convertedPlaylist = null;
         pendingReload = null;
         clearPendingQueueStart();
@@ -1766,6 +1774,102 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
+    /** Pause an intentional Mix tap before any watch-state mutation, using the native dialog. */
+    public static boolean onQueueMixTap(MessageLite endpoint, Map<?, ?> context) {
+        if (!Utils.isCurrentlyOnMainThread() || endpoint == null) return false;
+        boolean intercepted = false;
+        try {
+            var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
+            if (!command.hasWatchEndpoint()) return false;
+            if (command.hasQueueMixChoiceToken()) {
+                intercepted = true;
+                MixChoice choice = pendingMixChoice;
+                // The native dialog re-dispatches the original watch command.
+                // Only this one-use capability can bypass the prompt or append.
+                if (choice == null || !choice.token().equals(command.getQueueMixChoiceToken())) return true;
+                pendingMixChoice = null;
+                if (!ownsMixChoice(choice, choice.controller().get(), choice.playback().get())) return true;
+                if (!command.getQueueMixAdd()) return false;
+                pendingMixAddition = choice;
+                Utils.showToastShort(str("morphe_native_playlist_queue_loading_mix"));
+                Utils.runOnBackgroundThread(() -> {
+                    if (pendingMixAddition != choice) return;
+                    var videos = MixPlaylistRequest.fetch(choice.playlistId(), choice.videoId(), choice.headers());
+                    if (pendingMixAddition != choice) return;
+                    Utils.runOnMainThread(() -> completeMixAddition(choice, videos));
+                });
+                return true;
+            }
+            // Another explicit watch invalidates old dialog choices and fetches.
+            pendingMixChoice = null;
+            pendingMixAddition = null;
+            if (isNativeQueueDisabled() || queue == null || publishing || pendingSelection != null
+                    || dragSession != null || context == null) return false;
+            var watch = command.getWatchEndpoint();
+            if (!watch.getPlaylistId().startsWith("RD") || !PlaylistQueue.isVideoId(watch.getVideoId())
+                    || watch.hasIndex() || !watch.getPlaylistSetVideoId().isEmpty()) return false;
+            Object sender = context.get("com.google.android.libraries.youtube.rendering.elements.sender_view");
+            if (!(sender instanceof View view) || !FeedVideoCardsPatch.isPlaylistTap(view)) return false;
+            PlaylistController controller = readyController();
+            NativePlayback playback = controller == null ? null : playbackFor(controller);
+            if (controller == null || controller.patch_getModel() != publishedModel
+                    || playback == null || playback != nativePlaybackRef.get() || !playback.patch_isLocalQueue()) return false;
+            MixChoice choice = new MixChoice(UUID.randomUUID().toString(), watch.getPlaylistId(), watch.getVideoId(),
+                    new WeakReference<>(controller), new WeakReference<>(playback),
+                    Map.copyOf(AuthUtils.getRequestHeader()), Locale.getDefault());
+            pendingMixChoice = choice;
+            intercepted = true;
+            controller.patch_showQueueFeedback(QueueMixActions.dialog(command, choice.token(),
+                    str("morphe_native_playlist_queue_mix_choice"), str("morphe_native_playlist_queue_watch_mix"),
+                    str("morphe_native_playlist_queue_add_mix")).toByteArray());
+            return true;
+        } catch (Exception exception) {
+            pendingMixChoice = null;
+            Logger.printException(() -> "Could not handle native queue Mix choice", exception);
+            // A failed prompt must not silently discard the playing queue.
+            if (intercepted) Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+            return intercepted;
+        }
+    }
+
+    private static boolean ownsMixChoice(MixChoice choice, @Nullable PlaylistController controller,
+                                         @Nullable NativePlayback playback) {
+        return !isNativeQueueDisabled() && !publishing && pendingSelection == null && dragSession == null
+                && queue != null && controller != null && controller == readyController()
+                && controller.patch_getModel() == publishedModel && playback != null
+                && playback == nativePlaybackRef.get() && playbackFor(controller) == playback
+                && playback.patch_isLocalQueue() && queue.currentEntry().videoId().equals(VideoInformation.getVideoId())
+                && choice.headers().equals(AuthUtils.getRequestHeader()) && choice.locale().equals(Locale.getDefault());
+    }
+
+    private static void completeMixAddition(MixChoice choice, @Nullable List<VideoMetadata> videos) {
+        if (pendingMixAddition != choice) return;
+        pendingMixAddition = null;
+        PlaylistController controller = choice.controller().get();
+        NativePlayback playback = choice.playback().get();
+        if (!ownsMixChoice(choice, controller, playback)) return;
+        if (videos == null || videos.isEmpty()) {
+            Utils.showToastShort(str("morphe_queue_manager_fetch_failed_add"));
+            return;
+        }
+        try {
+            var additions = new ArrayList<PlaylistQueue.Entry>();
+            for (VideoMetadata video : videos) {
+                additions.add(new PlaylistQueue.Entry(video.videoId(), video.title()));
+                metadataCache.put(video.videoId(), video);
+            }
+            PlaylistQueue updated = queue.append(additions)
+                    .withRepeatMode(playback.patch_getRepeatMode());
+            if (publish(controller, updated, true)) {
+                Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
+                completeMetadata();
+            }
+        } catch (Exception exception) {
+            Logger.printException(() -> "Could not append Mix to native queue", exception);
+            Utils.showToastShort(str("morphe_queue_manager_fetch_failed_add"));
+        }
+    }
+
     /** Native watch dispatch reads this flag before constructing the playback descriptor. */
     public static Map<?, ?> prepareQueueStartContext(MessageLite endpoint, Map<?, ?> context) {
         if (endpoint == null) return context;
@@ -1889,6 +1993,8 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static void releasePanel() {
+        pendingMixChoice = null;
+        pendingMixAddition = null;
         pendingReload = null;
         pendingUndo = null;
         clearPendingQueueStart();

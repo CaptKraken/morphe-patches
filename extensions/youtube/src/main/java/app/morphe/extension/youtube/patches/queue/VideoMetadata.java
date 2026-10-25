@@ -19,7 +19,12 @@ import java.util.List;
 import app.morphe.extension.youtube.innertube.queue.QueueCardRenderer;
 
 /** Server-formatted display text for a native playlist row. */
-record VideoMetadata(String videoId, String title, String channelName, String videoInfo, String duration, boolean fullByline) {
+record VideoMetadata(String videoId, String title, String channelName, String videoInfo, String duration,
+                     boolean fullByline, boolean panelMetadata) {
+    VideoMetadata(String videoId, String title, String channelName, String videoInfo, String duration, boolean fullByline) {
+        this(videoId, title, channelName, videoInfo, duration, fullByline, false);
+    }
+
     VideoMetadata {
         // Player metadata can arrive after the queue is created. Use the same
         // missing-title sentinel as queue entries so a later lookup can replace it.
@@ -97,7 +102,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
         return null;
     }
 
-    private static String text(JSONObject text) {
+    static String text(JSONObject text) {
         if (text == null) return "";
         String simple = text.optString("simpleText", "");
         if (!simple.isEmpty()) return simple;
@@ -114,10 +119,11 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     }
 
     boolean isComplete() {
-        // A card/player can expose only the uploading channel, even when its other
-        // details are complete. Only the native long byline confirms all collaborators.
-        return fullByline && !title.isEmpty() && !title.equals(videoId)
-                && !channelName.isEmpty() && !videoInfo.isEmpty();
+        // Native Mix rows can intentionally omit view counts. Their server-supplied
+        // display data is sufficient; adding a Mix must not launch a search per row.
+        // Other sources need the native long byline to confirm all collaborators.
+        return !title.isEmpty() && !title.equals(videoId) && !channelName.isEmpty()
+                && (panelMetadata || fullByline && !videoInfo.isEmpty());
     }
 
     VideoMetadata withCapture(VideoMetadata captured) {
@@ -162,7 +168,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     VideoMetadata withChannelName(String name) {
         if (fullByline || name.isEmpty() || name.equals(channelName)) return this;
         if (videoInfo.isEmpty() || videoInfo.equals(name)) {
-            return new VideoMetadata(videoId, title, name, "", duration, false);
+            return new VideoMetadata(videoId, title, name, "", duration, false, panelMetadata);
         }
 
         // Cards may combine the channel, views and age into one text. Split only an
@@ -170,7 +176,7 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
         for (String separator : List.of(METADATA_SEPARATOR, "\n")) {
             String prefix = name + separator;
             if (videoInfo.startsWith(prefix)) {
-                return new VideoMetadata(videoId, title, name, videoInfo.substring(prefix.length()), duration, false);
+                return new VideoMetadata(videoId, title, name, videoInfo.substring(prefix.length()), duration, false, panelMetadata);
             }
         }
 

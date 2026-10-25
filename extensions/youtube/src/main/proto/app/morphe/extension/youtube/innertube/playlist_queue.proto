@@ -193,6 +193,25 @@ message NavigationEndpoint {
     // Local snackbar capability; never dispatched to a YouTube service.
     optional string queue_undo_token = 500000002;
     optional AddToToastAction add_to_toast_action = 76623563;
+    optional ShowConfirmationDialogEndpoint show_confirmation_dialog_endpoint = 128200871;
+    // Local dialog capabilities, retained by native protobuf copies.
+    optional string queue_mix_choice_token = 500000003;
+    optional bool queue_mix_add = 500000004;
+}
+
+// Native confirmation renderer consumed by YouTube's shared dialog presenter.
+message ShowConfirmationDialogEndpoint {
+    optional ConfirmationDialog dialog = 127046477;
+}
+
+message ConfirmationDialog {
+    optional ConfirmationDialogRenderer confirm_dialog_renderer = 64099105;
+}
+
+message ConfirmationDialogRenderer {
+    optional Text title = 1;
+    optional SwipeAction confirm_button = 12;
+    optional SwipeAction cancel_button = 13;
 }
 
 message PlaylistEditEndpoint {

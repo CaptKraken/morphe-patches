@@ -10,6 +10,7 @@ package app.morphe.patches.youtube.shared
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.patch.bytecodePatch
+import app.morphe.patcher.util.findFreeRegister
 import app.morphe.patcher.util.getFreeRegisterProvider
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
 import app.morphe.patches.all.misc.resources.addResourcesPatch
@@ -34,6 +35,7 @@ private lateinit var shortsPlaybackIntentMethod: WeakReference<MutableMethod>
 
 private val videoIntentContextHooks = mutableListOf<Pair<String, String>>()
 private val videoIntentCommandTransforms = mutableListOf<Pair<String, String>>()
+private val videoIntentInterceptors = mutableListOf<Pair<String, String>>()
 
 @Suppress("unused")
 val openVideoIntentPatch = bytecodePatch(
@@ -50,6 +52,7 @@ val openVideoIntentPatch = bytecodePatch(
     execute {
         videoIntentContextHooks.clear()
         videoIntentCommandTransforms.clear()
+        videoIntentInterceptors.clear()
         VideoPlaybackIntentFingerprint.let {
             it.method.apply {
                 val match = it.instructionMatches[1]
@@ -93,6 +96,17 @@ val openVideoIntentPatch = bytecodePatch(
                 move-result-object p2
             """)
         }
+        videoIntentInterceptors.asReversed().forEach { (classDescriptor, methodName) ->
+            val consumed = method.findFreeRegister(0)
+            method.addInstructionsAtControlFlowLabel(0, """
+                invoke-static/range {p1 .. p2}, $classDescriptor->$methodName(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Z
+                move-result v$consumed
+                if-eqz v$consumed, :continue_video_intent
+                return-void
+                :continue_video_intent
+                nop
+            """)
+        }
         // Normalize the immutable command before context hooks or the native
         // descriptor can observe its original playlist. Retain its native type.
         videoIntentCommandTransforms.asReversed().forEach { (classDescriptor, methodName) ->
@@ -113,6 +127,11 @@ fun hookVideoIntentContext(classDescriptor: String, methodName: String) {
 /** Transform the watch command before its context and native playback descriptor are read. */
 fun hookVideoIntentCommandTransform(classDescriptor: String, methodName: String) {
     videoIntentCommandTransforms += classDescriptor to methodName
+}
+
+/** Intercept a normalized watch command before context mutations or playback starts. */
+fun hookVideoIntentInterceptor(classDescriptor: String, methodName: String) {
+    videoIntentInterceptors += classDescriptor to methodName
 }
 
 /**

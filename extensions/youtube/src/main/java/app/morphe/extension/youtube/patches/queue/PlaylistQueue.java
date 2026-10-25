@@ -81,6 +81,16 @@ public final class PlaylistQueue {
         return new PlaylistQueue(updated, selectedIndex, repeatMode);
     }
 
+    /** Append a fetched Mix batch atomically, retaining duplicate occurrences and selection. */
+    PlaylistQueue append(List<Entry> additions) {
+        var updated = new ArrayList<>(entries);
+        for (Entry entry : additions) {
+            requireVideoId(entry.videoId());
+            updated.add(entry);
+        }
+        return new PlaylistQueue(updated, selectedIndex, repeatMode);
+    }
+
     /** Insert after the playing entry when an outside video becomes the active watch video. */
     public PlaylistQueue playNextAndSelect(String videoId) {
         return playNext(videoId).select(selectedIndex + 1);

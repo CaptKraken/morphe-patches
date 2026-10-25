@@ -38,6 +38,7 @@ import app.morphe.patches.youtube.misc.backgroundplayback.backgroundPlaybackPatc
 import app.morphe.patches.youtube.misc.fix.videoactionbar.restoreOldVideoActionBarPatch
 import app.morphe.patches.youtube.misc.medianotification.mediaNotificationControlsPatchYouTube
 import app.morphe.patches.youtube.misc.spoof.spoofVideoStreamsPatch
+import app.morphe.patches.youtube.video.quality.rememberVideoQualityPatch
 import app.morphe.patches.youtube.video.series.seriesTrackerPatch
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.Opcodes
@@ -82,7 +83,8 @@ fun main(arguments: Array<String>) {
         hideLayoutComponentsPatch, hideRelatedVideosPatch, exitFullscreenPatch, openVideosFullscreenPatch,
         mediaNotificationControlsPatchYouTube, backgroundPlaybackPatch,
         spoofVideoStreamsPatch, restoreOldVideoActionBarPatch,
-        feedVideoActionsPatch, feedCardLayoutPatch, seriesTrackerPatch, askFlyoutMenuPatch, miniplayerPatch
+        feedVideoActionsPatch, feedCardLayoutPatch, seriesTrackerPatch, askFlyoutMenuPatch, miniplayerPatch,
+        rememberVideoQualityPatch
     )
     val selected = when (mode) {
         "standalone" -> setOf(nativePlaylistQueuePatch)
@@ -103,6 +105,7 @@ fun main(arguments: Array<String>) {
             verifyNativeRowMenuPaths(dexDir, mode != "unselected")
             verifyNativeFullscreenActions(dexDir, mode != "unselected")
             verifyNativeQueueUndo(dexDir, mode != "unselected")
+            verifyNativeMixTap(dexDir, mode != "unselected")
         }
     }
     Patcher(PatcherConfig(input, workspace, verifier = verifier)).use { patcher ->
@@ -117,6 +120,31 @@ fun main(arguments: Array<String>) {
         arguments.getOrNull(2)?.let { result.applyTo(File(it)) }
         println("$mode: APK patched and SDK DEX/resource verification completed: $workspace")
     }
+}
+
+/** The dialog must consume navigation before context hooks invalidate the playing queue. */
+private fun verifyNativeMixTap(directory: File, selected: Boolean) {
+    val hooks = directory.listFiles()!!.filter { it.extension == "dex" }.flatMap { file ->
+        file.inputStream().buffered().use { DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it) }
+            .classes.filter { !it.type.startsWith("Lapp/morphe/") }.flatMap { it.methods }
+    }.mapNotNull { method ->
+        val code = method.implementation?.instructions?.toList() ?: return@mapNotNull null
+        val names = code.map { ((it as? ReferenceInstruction)?.reference as? MethodReference)
+            ?.takeIf { it.definingClass == EXTENSION_CLASS }?.name }
+        val intercept = names.indexOf("onQueueMixTap")
+        if (intercept < 0) return@mapNotNull null
+        check(names.indexOf("prepareQueueVideoCommand") in 0 until intercept &&
+                names.indexOf("prepareQueueStartContext") > intercept) {
+            "Mix choice must run after music normalization and before watch context mutations"
+        }
+        check(code[intercept + 1].opcode == Opcode.MOVE_RESULT &&
+                code[intercept + 2].opcode == Opcode.IF_EQZ && code[intercept + 3].opcode == Opcode.RETURN_VOID) {
+            "An owned Mix tap must return before native playback starts"
+        }
+        method
+    }
+    check(hooks.size == if (selected) 1 else 0) { "Unexpected Native queue Mix tap interception" }
+    println("Native Mix choice ordering and queue-unselected isolation verified")
 }
 
 /** Verify the emitted UI bridge reaches the native setter and size subject, not playback. */

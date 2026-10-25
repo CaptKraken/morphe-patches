@@ -113,6 +113,12 @@ class QueueRuntimeBoundaryTest {
     @Test
     fun `ordinary playlist row menus supply their own selected ID in Native mode`() = withFixture("playlistRowContext")
 
+    @Test
+    fun `Mix choice preserves Watch and appends fetched entries without reopening playback`() = withFixture("mixChoice")
+
+    @Test
+    fun `Mix choice ignores music and foreign queues and rejects stale choices and completions`() = withFixture("mixChoiceGuards")
+
     // NativePlaylistQueuePatch depends on Android settings, scheduling and UI classes.
     // Isolate those boundaries while executing its actual compiled coordinator.
     private fun withFixture(scenario: String) {
@@ -230,6 +236,24 @@ class QueueRuntimeBoundaryTest {
                     // External mounted UI boundary, observed separately on the phone.
                     public static boolean individual = true;
                     public static boolean isIndividualVideoTap(android.view.View view) { return individual; }
+                    public static boolean isPlaylistTap(android.view.View view) { return !individual; }
+                }
+            """,
+            "AuthUtils" to """
+                package app.morphe.extension.shared.innertube.utils;
+                public class AuthUtils {
+                    public static String account = "test";
+                    public static java.util.Map<String, String> getRequestHeader() { return java.util.Map.of("account", account); }
+                }
+            """,
+            "MixPlaylistRequest" to """
+                package app.morphe.extension.youtube.patches.queue;
+                public class MixPlaylistRequest {
+                    public static java.util.List<VideoMetadata> result;
+                    static java.util.List<VideoMetadata> fetch(String playlist, String video, java.util.Map<String, String> headers) {
+                        if (app.morphe.extension.shared.Utils.mainThread) throw new AssertionError("Network on UI thread");
+                        return result;
+                    }
                 }
             """,
             "FlyoutUtils" to """
@@ -390,7 +414,13 @@ class QueueRuntimeBoundaryTest {
                     }
                     public static void runOnMainThread(Runnable action) { pending.add(action); }
                     public static void runOnMainThreadNowOrLater(Runnable action) { action.run(); }
-                    public static void runOnBackgroundThread(Runnable action) { /* Network boundary. */ }
+                    private static final java.util.ArrayDeque<Runnable> background = new java.util.ArrayDeque<>();
+                    public static void runOnBackgroundThread(Runnable action) { background.add(action); }
+                    public static void drainBackground() {
+                        mainThread = false;
+                        try { while (!background.isEmpty()) background.remove().run(); }
+                        finally { mainThread = true; }
+                    }
                     public static android.app.Activity getActivity() { return new android.app.Activity(); }
                     public static int toasts;
                     public static boolean failToast;
@@ -1072,6 +1102,86 @@ class QueueRuntimeBoundaryTest {
                     }
                     static PlaylistQueueRenderer.WatchEndpoint.Builder musicWatch() {
                         return PlaylistQueueRenderer.WatchEndpoint.newBuilder().setVideoId("ZYXWVUTSRQP").setPlaylistId("RDZYXWVUTSRQP");
+                    }
+                    static PlaylistQueueRenderer.ConfirmationDialogRenderer mixPrompt(Controller controller) throws Exception {
+                        app.morphe.extension.youtube.patches.utils.FeedVideoCardsPatch.individual = false;
+                        require(NativePlaylistQueuePatch.onQueueMixTap(nativeWatch(musicWatch().build()),
+                                Map.of(SENDER_VIEW_KEY, new android.view.View())), "Intentional Mix tap pauses navigation");
+                        return PlaylistQueueRenderer.NavigationEndpoint.parseFrom(controller.feedback)
+                            .getShowConfirmationDialogEndpoint().getDialog().getConfirmDialogRenderer();
+                    }
+                    public static void mixChoice() throws Exception {
+                        var controller = new Controller(new Playback()); var before = installOwned(controller);
+                        var prompt = mixPrompt(controller);
+                        require(field("queue").get(null) == before && controller.playback.attaches == 0
+                                && LoadVideoPatch.opens == 0, "Showing or cancelling a prompt leaves playback unchanged");
+                        var watch = prompt.getCancelButton().getButtonRenderer().getServiceEndpoint();
+                        require(!NativePlaylistQueuePatch.onQueueMixTap(watch, Map.of()),
+                            "Watch dispatches the original Mix exactly once without a second prompt");
+                        require(watch.getWatchEndpoint().equals(musicWatch().build()), "Watch retains original video and Mix ID");
+                        require(NativePlaylistQueuePatch.onQueueMixTap(watch, Map.of()), "Replayed dialog choice cannot navigate again");
+                        prompt = mixPrompt(controller);
+                        require(NativePlaylistQueuePatch.onQueueMixTap(watch, Map.of()),
+                            "An old choice must not consume the newer dialog capability");
+                        var add = prompt.getConfirmButton().getButtonRenderer().getServiceEndpoint();
+                        MixPlaylistRequest.result = List.of(new VideoMetadata("ZYXWVUTSRQP", "First", "Channel", "", "1:00", false),
+                            new VideoMetadata("abcdefghijk", "Duplicate", "Channel", "", "2:00", false));
+                        require(NativePlaylistQueuePatch.onQueueMixTap(add, Map.of()), "Add consumes the watch command");
+                        require(field("queue").get(null) == before, "Do not mutate before fetch completes");
+                        // An edit in the same playback session must survive the async append.
+                        var edited = before.playLast("0123456789_");
+                        field("queue").set(null, edited);
+                        Utils.drainBackground(); Utils.drain();
+                        var after = (PlaylistQueue) field("queue").get(null);
+                        require(after.entries().size() == edited.entries().size() + 2
+                                && after.entries().get(edited.entries().size()).title().equals("First")
+                                && after.entries().get(before.entries().size()).videoId().equals("0123456789_")
+                                && after.entries().get(after.entries().size()-1).videoId().equals("abcdefghijk")
+                                && after.currentEntry() == before.currentEntry() && after.selectedIndex() == before.selectedIndex(),
+                            "Append the whole ordered batch, including duplicates, without changing selection");
+                        require(controller.playback.attaches == 1 && controller.playback.clears == 0
+                                && LoadVideoPatch.opens == 0 && after.repeatMode() == controller.playback.repeat,
+                            "Publish once to the same backend, retaining repeat and continuous playback");
+                    }
+                    public static void mixChoiceGuards() throws Exception {
+                        var controller = new Controller(new Playback()); var before = installOwned(controller);
+                        var original = nativeWatch(musicWatch().build());
+                        require(!NativePlaylistQueuePatch.onQueueMixTap(original, Map.of(SENDER_VIEW_KEY, new android.view.View())),
+                            "Individual music videos never get the Mix prompt");
+                        app.morphe.extension.youtube.patches.utils.FeedVideoCardsPatch.individual = false;
+                        for (var type : new QueueType[] { QueueType.DEFAULT, QueueType.MORPHE, QueueType.LOCAL }) {
+                            Settings.QUEUE_TYPE.value = type;
+                            require(!NativePlaylistQueuePatch.onQueueMixTap(original, Map.of(SENDER_VIEW_KEY, new android.view.View())),
+                                "Do not intercept other queue modes");
+                        }
+                        Settings.QUEUE_TYPE.value = QueueType.NATIVE;
+                        require(!NativePlaylistQueuePatch.onQueueMixTap(original, Map.of()), "No prompt for an unproven source");
+                        var prompt = mixPrompt(controller);
+                        var add = prompt.getConfirmButton().getButtonRenderer().getServiceEndpoint();
+                        // A later ordinary watch invalidates the dialog capability.
+                        NativePlaylistQueuePatch.onQueueMixTap(playlistWatch("abcdefghijk", ""), Map.of());
+                        require(NativePlaylistQueuePatch.onQueueMixTap(add, Map.of()) && field("pendingMixAddition").get(null) == null,
+                            "A stale dialog cannot append or start playback");
+                        prompt = mixPrompt(controller);
+                        add = prompt.getConfirmButton().getButtonRenderer().getServiceEndpoint();
+                        MixPlaylistRequest.result = null;
+                        NativePlaylistQueuePatch.onQueueMixTap(add, Map.of()); Utils.drainBackground(); Utils.drain();
+                        require(field("queue").get(null) == before && controller.playback.attaches == 0,
+                            "Fetch failure leaves the entire existing queue intact");
+                        prompt = mixPrompt(controller);
+                        add = prompt.getConfirmButton().getButtonRenderer().getServiceEndpoint();
+                        MixPlaylistRequest.result = List.of(new VideoMetadata("ZYXWVUTSRQP", "New", "Channel", "", "1:00", false));
+                        NativePlaylistQueuePatch.onQueueMixTap(add, Map.of()); Utils.drainBackground();
+                        app.morphe.extension.shared.innertube.utils.AuthUtils.account = "different";
+                        Utils.drain();
+                        require(field("queue").get(null) == before && controller.playback.attaches == 0,
+                            "Account changes invalidate a completed fetch before publication");
+                        app.morphe.extension.shared.innertube.utils.AuthUtils.account = "test";
+                        prompt = mixPrompt(controller); add = prompt.getConfirmButton().getButtonRenderer().getServiceEndpoint();
+                        NativePlaylistQueuePatch.onQueueMixTap(add, Map.of()); Utils.drainBackground();
+                        call("releasePanel"); Utils.drain();
+                        require(field("queue").get(null) == null && controller.playback.attaches == 0,
+                            "Clear cancels a pending fetch without resurrecting a queue");
                     }
                     public static void musicVideoTap() throws Exception {
                         var controller = new Controller(new Playback()); var before = installOwned(controller);
