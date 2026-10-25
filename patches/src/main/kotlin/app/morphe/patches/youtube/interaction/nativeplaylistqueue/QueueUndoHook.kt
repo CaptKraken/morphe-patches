@@ -23,10 +23,16 @@ internal fun installQueueUndo(context: BytecodePatchContext, callback: MethodRef
     val endpointType = callback.parameterTypes.first().toString()
     val endpoint = mutableClassDefBy(endpointType)
     endpoint.interfaces.add(UNDO_COMMAND_INTERFACE)
-    endpoint.addBridgeMethod("patch_parseQueueCommand", listOf("[B"), "Lcom/google/protobuf/MessageLite;", 2, """
-        ${parseProtoInstructions(endpointType, bytes = "p1", result = "v0", registry = "v1")}
-        return-object v0
-    """)
+    endpoint.addBridgeMethod(
+        "patch_parseQueueCommand",
+        listOf("[B"),
+        "Lcom/google/protobuf/MessageLite;",
+        2,
+        """
+            ${parseProtoInstructions(endpointType, bytes = "p1", result = "v0", registry = "v1")}
+            return-object v0
+        """
+    )
 
     val modern = QueueSnackbarModernFactoryFingerprint.matchSingle()
     val listenerType = modern.instructionMatches.first().instruction.getReference<MethodReference>()!!.definingClass

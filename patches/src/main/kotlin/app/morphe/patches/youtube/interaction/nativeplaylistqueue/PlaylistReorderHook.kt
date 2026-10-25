@@ -43,33 +43,53 @@ internal fun installPlaylistReordering(context: BytecodePatchContext, videoType:
 
     val adapter = mutableClassDefBy(adapterType)
     adapter.interfaces.add(REORDER_ITEMS_INTERFACE)
-    adapter.addBridgeMethod("patch_getSize", emptyList(), "I", 1, """
-        invoke-interface {p0}, Ljava/util/List;->size()I
-        move-result v0
-        return v0
-    """)
+    adapter.addBridgeMethod(
+        "patch_getSize",
+        emptyList(),
+        "I",
+        1,
+        """
+            invoke-interface {p0}, Ljava/util/List;->size()I
+            move-result v0
+            return v0
+        """
+    )
 
-    adapter.addBridgeMethod("patch_getQueueRow", listOf("I"), "Ljava/lang/Object;", 2, """
-        invoke-interface {p0, p1}, Ljava/util/List;->get(I)Ljava/lang/Object;
-        move-result-object v0
-        instance-of v1, v0, ${rowGetter.definingClass}
-        if-eqz v1, :missing
-        check-cast v0, ${rowGetter.definingClass}
-        invoke-interface {v0}, $rowGetter
-        move-result-object v0
-        return-object v0
+    adapter.addBridgeMethod(
+        "patch_getQueueRow",
+        listOf("I"),
+        "Ljava/lang/Object;",
+        2,
+        """
+            invoke-interface {p0, p1}, Ljava/util/List;->get(I)Ljava/lang/Object;
+            move-result-object v0
+            instance-of v1, v0, ${rowGetter.definingClass}
+            if-eqz v1, :missing
+            check-cast v0, ${rowGetter.definingClass}
+            invoke-interface {v0}, $rowGetter
+            move-result-object v0
+            return-object v0
 
-        :missing
-        const/4 v0, 0x0
-        return-object v0
-    """)
+            :missing
+            const/4 v0, 0x0
+            return-object v0
+        """
+    )
 
     // Both callbacks first reject notifications for another holder. Enter on the
     // guarded branch, before start's visual update reuses p0/p1 as drawable locals.
-    start.method.addInstructionsAtControlFlowLabel(start.instructionMatches[1].index,
-        "invoke-static/range {p1 .. p3}, $EXTENSION_CLASS->onReorderStarted(Ljava/lang/Object;${REORDER_ITEMS_INTERFACE}I)V")
-    end.method.addInstructionsAtControlFlowLabel(end.instructionMatches[1].index,
-        "invoke-static/range {p1 .. p4}, $EXTENSION_CLASS->onReorderEnded(Ljava/lang/Object;${REORDER_ITEMS_INTERFACE}II)V")
-    playlistDragUnbindFingerprint(holderType).matchSingle().method.addInstruction(0,
-        "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onReorderHolderUnbound(Ljava/lang/Object;)V")
+    start.method.addInstructionsAtControlFlowLabel(
+        start.instructionMatches[1].index,
+        "invoke-static/range {p1 .. p3}, $EXTENSION_CLASS->onReorderStarted(Ljava/lang/Object;${REORDER_ITEMS_INTERFACE}I)V"
+    )
+
+    end.method.addInstructionsAtControlFlowLabel(
+        end.instructionMatches[1].index,
+        "invoke-static/range {p1 .. p4}, $EXTENSION_CLASS->onReorderEnded(Ljava/lang/Object;${REORDER_ITEMS_INTERFACE}II)V"
+    )
+
+    playlistDragUnbindFingerprint(holderType).matchSingle().method.addInstruction(
+        0,
+        "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onReorderHolderUnbound(Ljava/lang/Object;)V"
+    )
 }

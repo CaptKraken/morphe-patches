@@ -39,9 +39,14 @@ record QueueStart(PlaylistQueue candidate, String previousVideoId, long resumePo
     Map<?, ?> minimizedContext(MessageLite endpoint, Map<?, ?> context) throws InvalidProtocolBufferException {
         var command = NavigationEndpoint.parseFrom(endpoint.toByteArray());
         if (!command.hasWatchEndpoint()
-                || !command.getWatchEndpoint().getVideoId().equals(candidate.currentEntry().videoId())) return context;
+                || !command.getWatchEndpoint().getVideoId().equals(candidate.currentEntry().videoId())) {
+            return context;
+        }
+
         Map<Object, Object> minimized = new HashMap<>();
-        if (context != null) minimized.putAll(context);
+        if (context != null) {
+            minimized.putAll(context);
+        }
         minimized.put("start_watch_minimized", true);
         return minimized;
     }

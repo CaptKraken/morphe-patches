@@ -79,21 +79,28 @@ internal fun installPlaylistNotification(
         mutableClassDefBy(type).addBridgeMethod(name, parameters, returnType, locals, body)
 
     mutableClassDefBy(navigatorType).interfaces.add(SERVICE_NAVIGATOR_INTERFACE)
-    bridge(navigatorType, "patch_getVideoId", emptyList(), "Ljava/lang/String;", 1, """
-        iget-object v0, p0, ${playerFields[0]}
-        iget-object v0, v0, ${playerFields[1]}
-        iget-object v0, v0, ${playerFields[2]}
-        if-eqz v0, :missing
-        # 21.28 declares the player field as Object.
-        check-cast v0, ${videoId.definingClass}
-        invoke-interface {v0}, $videoId
-        move-result-object v0
-        return-object v0
+    bridge(
+        navigatorType,
+        "patch_getVideoId",
+        emptyList(),
+        "Ljava/lang/String;",
+        1,
+        """
+            iget-object v0, p0, ${playerFields[0]}
+            iget-object v0, v0, ${playerFields[1]}
+            iget-object v0, v0, ${playerFields[2]}
+            if-eqz v0, :missing
+            # 21.28 declares the player field as Object.
+            check-cast v0, ${videoId.definingClass}
+            invoke-interface {v0}, $videoId
+            move-result-object v0
+            return-object v0
 
-        :missing
-        const/4 v0, 0x0
-        return-object v0
-    """)
+            :missing
+            const/4 v0, 0x0
+            return-object v0
+        """
+    )
 
     val canNavigate = playlistServiceCanNavigateFingerprint(navigatorType, wrapperType).matchSingle().originalMethod
     for ((name, resultType, target) in listOf(
@@ -101,47 +108,61 @@ internal fun installPlaylistNotification(
         Triple("patch_canNavigateQueue", "Z", canNavigate)
     )) {
         val result = if (resultType == "Z") "move-result v0\nreturn v0" else "return-void"
-        bridge(navigatorType, name, listOf("Z"), resultType, 1, """
-            if-eqz p1, :previous
-            sget-object v0, $nextRequest
-            goto :dispatch
+        bridge(
+            navigatorType,
+            name,
+            listOf("Z"),
+            resultType,
+            1,
+            """
+                if-eqz p1, :previous
+                sget-object v0, $nextRequest
+                goto :dispatch
 
-            :previous
-            sget-object v0, $previousRequest
+                :previous
+                sget-object v0, $previousRequest
 
-            :dispatch
-            invoke-virtual {p0, v0}, $target
-            $result
-        """)
+                :dispatch
+                invoke-virtual {p0, v0}, $target
+                $result
+            """
+        )
     }
 
     mutableClassDefBy(owner).interfaces.add(MEDIA_CONTROLS_INTERFACE)
-    bridge(owner, "patch_getQueueNavigator", emptyList(), SERVICE_NAVIGATOR_INTERFACE, 2, """
-        iget-object v0, p0, $foregroundCallback
-        if-eqz v0, :previous
-        instance-of v0, v0, $foregroundType
-        if-eqz v0, :missing
+    bridge(
+        owner,
+        "patch_getQueueNavigator",
+        emptyList(),
+        SERVICE_NAVIGATOR_INTERFACE,
+        2,
+        """
+            iget-object v0, p0, $foregroundCallback
+            if-eqz v0, :previous
+            instance-of v0, v0, $foregroundType
+            if-eqz v0, :missing
 
-        :previous
-        iget-object v0, p0, $previousForeground
-        if-eqz v0, :local
-        instance-of v0, v0, $previousForegroundType
-        if-eqz v0, :missing
+            :previous
+            iget-object v0, p0, $previousForeground
+            if-eqz v0, :local
+            instance-of v0, v0, $previousForegroundType
+            if-eqz v0, :missing
 
-        :local
-        iget-object v0, p0, $provider
-        invoke-interface {v0}, $getProvider
-        move-result-object v0
-        check-cast v0, $serviceType
-        instance-of v1, v0, $SERVICE_NAVIGATOR_INTERFACE
-        if-eqz v1, :missing
-        check-cast v0, $SERVICE_NAVIGATOR_INTERFACE
-        return-object v0
+            :local
+            iget-object v0, p0, $provider
+            invoke-interface {v0}, $getProvider
+            move-result-object v0
+            check-cast v0, $serviceType
+            instance-of v1, v0, $SERVICE_NAVIGATOR_INTERFACE
+            if-eqz v1, :missing
+            check-cast v0, $SERVICE_NAVIGATOR_INTERFACE
+            return-object v0
 
-        :missing
-        const/4 v0, 0x0
-        return-object v0
-    """)
+            :missing
+            const/4 v0, 0x0
+            return-object v0
+        """
+    )
 
     installPlaylistNotificationControls(context, owner)
 
@@ -149,14 +170,17 @@ internal fun installPlaylistNotification(
         val method = match.method
         val index = match.instructionMatches.first().index
         val result = method.findFreeRegister(index)
-        method.addInstructionsAtControlFlowLabel(index, """
-            invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->$hook($MEDIA_CONTROLS_INTERFACE)Z
-            move-result v$result
-            if-eqz v$result, :native_skip
-            return-void
+        method.addInstructionsAtControlFlowLabel(
+            index,
+            """
+                invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->$hook($MEDIA_CONTROLS_INTERFACE)Z
+                move-result v$result
+                if-eqz v$result, :native_skip
+                return-void
 
-            :native_skip
-            nop
-        """)
+                :native_skip
+                nop
+            """
+        )
     }
 }

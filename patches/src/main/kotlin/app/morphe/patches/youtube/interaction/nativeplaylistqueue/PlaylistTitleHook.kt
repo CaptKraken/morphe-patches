@@ -32,26 +32,43 @@ internal fun installPlaylistTitle(context: BytecodePatchContext) = with(context)
 
     mutableClassDefBy(headerType).apply {
         interfaces.add(PLAYLIST_TITLE_INTERFACE)
-        addBridgeMethod("patch_getPanel", emptyList(), "Ljava/lang/Object;", 1, """
-            iget-object v0, p0, $panel
-            return-object v0
-        """)
-        addBridgeMethod("patch_getTitle", emptyList(), "Landroid/widget/TextView;", 1, """
-            iget-object v0, p0, $title
-            return-object v0
-        """)
+        addBridgeMethod(
+            "patch_getPanel",
+            emptyList(),
+            "Ljava/lang/Object;",
+            1,
+            """
+                iget-object v0, p0, $panel
+                return-object v0
+            """
+        )
+
+        addBridgeMethod(
+            "patch_getTitle",
+            emptyList(),
+            "Landroid/widget/TextView;",
+            1,
+            """
+                iget-object v0, p0, $title
+                return-object v0
+            """
+        )
     }
 
     // Observe initial inflation once, rather than every call to the cached-view getter.
     // Native model binding can happen earlier, while no TextView exists yet.
     val receiver = (titleStore.instruction as TwoRegisterInstruction).registerB
-    titleMatch.method.addInstruction(titleStore.index + 1,
-        "invoke-static/range {v$receiver .. v$receiver}, $EXTENSION_CLASS->onPlaylistTitleBound($PLAYLIST_TITLE_INTERFACE)V")
+    titleMatch.method.addInstruction(
+        titleStore.index + 1,
+        "invoke-static/range {v$receiver .. v$receiver}, $EXTENSION_CLASS->onPlaylistTitleBound($PLAYLIST_TITLE_INTERFACE)V"
+    )
 
     binding.method.cloneParameters().apply {
         findInstructionIndicesReversedOrThrow(Opcode.RETURN_VOID).forEach { index ->
-            addInstructionsAtControlFlowLabel(index,
-                "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onPlaylistTitleBound($PLAYLIST_TITLE_INTERFACE)V")
+            addInstructionsAtControlFlowLabel(
+                index,
+                "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onPlaylistTitleBound($PLAYLIST_TITLE_INTERFACE)V"
+            )
         }
     }
 }

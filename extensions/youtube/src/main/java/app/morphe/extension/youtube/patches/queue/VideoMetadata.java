@@ -28,7 +28,9 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     VideoMetadata {
         // Player metadata can arrive after the queue is created. Use the same
         // missing-title sentinel as queue entries so a later lookup can replace it.
-        if (title == null || title.isBlank()) title = videoId;
+        if (title == null || title.isBlank()) {
+            title = videoId;
+        }
     }
 
     private static final String WATCH_URL_PREFIX = "https://www.youtube.com/watch?v=";
@@ -37,30 +39,44 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     @Nullable
     static VideoMetadata fromElement(byte[] bytes) throws InvalidProtocolBufferException {
         var model = QueueCardRenderer.Element.parseFrom(bytes).getType().getComponentType().getModel();
-        if (!model.hasVideoWithContextModel()) return null;
+        if (!model.hasVideoWithContextModel()) {
+            return null;
+        }
         var card = model.getVideoWithContextModel().getVideoWithContextData();
         var video = card.getVideoData();
         String url = video.getDragAndDropUrl();
-        if (!url.startsWith(WATCH_URL_PREFIX)) return null;
+        if (!url.startsWith(WATCH_URL_PREFIX)) {
+            return null;
+        }
 
         // A mix/playlist card can link its first video but show the list's title.
         // Indexed entries identify an individual video; unindexed list links do not.
-        if (url.contains("&list=") && !url.contains("&index=")) return null;
+        if (url.contains("&list=") && !url.contains("&index=")) {
+            return null;
+        }
         String videoId = url.substring(WATCH_URL_PREFIX.length()).split("&", 2)[0];
-        if (!PlaylistQueue.isVideoId(videoId)) return null;
+        if (!PlaylistQueue.isVideoId(videoId)) {
+            return null;
+        }
 
         var metadata = video.getLockupMetadata().getLockupMetadataViewModel();
         String title = metadata.getTitle().getContent();
-        if (title.isEmpty()) return null;
+        if (title.isEmpty()) {
+            return null;
+        }
         List<String> rows = new ArrayList<>();
         for (var row : metadata.getMetadata().getContentMetadataViewModel().getMetadataRowsList()) {
             List<String> parts = new ArrayList<>();
             for (var part : row.getMetadataPartsList()) {
                 String content = part.getText().getContent();
-                if (!content.isEmpty()) parts.add(content);
+                if (!content.isEmpty()) {
+                    parts.add(content);
+                }
             }
 
-            if (!parts.isEmpty()) rows.add(String.join(METADATA_SEPARATOR, parts));
+            if (!parts.isEmpty()) {
+                rows.add(String.join(METADATA_SEPARATOR, parts));
+            }
         }
 
         VideoMetadata result = new VideoMetadata(videoId, title, "", String.join("\n", rows),
@@ -74,26 +90,40 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
         JSONObject contents = response.optJSONObject("contents");
         JSONObject sections = contents == null ? null : contents.optJSONObject("sectionListRenderer");
         var sectionItems = sections == null ? null : sections.optJSONArray("contents");
-        if (sectionItems == null) return null;
+        if (sectionItems == null) {
+            return null;
+        }
         for (int sectionIndex = 0; sectionIndex < sectionItems.length(); sectionIndex++) {
             JSONObject section = sectionItems.optJSONObject(sectionIndex);
             JSONObject itemSection = section == null ? null : section.optJSONObject("itemSectionRenderer");
             var items = itemSection == null ? null : itemSection.optJSONArray("contents");
-            if (items == null) continue;
+            if (items == null) {
+                continue;
+            }
             for (int index = 0; index < items.length(); index++) {
                 JSONObject item = items.optJSONObject(index);
                 JSONObject video = item == null ? null : item.optJSONObject("compactVideoRenderer");
-                if (video == null || !videoId.equals(video.optString("videoId"))) continue;
+                if (video == null || !videoId.equals(video.optString("videoId"))) {
+                    continue;
+                }
                 String title = text(video.optJSONObject("title"));
                 String channel = text(video.optJSONObject("longBylineText"));
                 boolean fullByline = !channel.isEmpty();
-                if (channel.isEmpty()) channel = text(video.optJSONObject("shortBylineText"));
-                if (title.isEmpty() || channel.isEmpty()) continue;
+                if (channel.isEmpty()) {
+                    channel = text(video.optJSONObject("shortBylineText"));
+                }
+                if (title.isEmpty() || channel.isEmpty()) {
+                    continue;
+                }
                 List<String> info = new ArrayList<>();
                 String views = text(video.optJSONObject("shortViewCountText"));
                 String age = text(video.optJSONObject("publishedTimeText"));
-                if (!views.isEmpty()) info.add(views);
-                if (!age.isEmpty()) info.add(age);
+                if (!views.isEmpty()) {
+                    info.add(views);
+                }
+                if (!age.isEmpty()) {
+                    info.add(age);
+                }
                 return new VideoMetadata(videoId, title, channel, String.join(METADATA_SEPARATOR, info),
                         text(video.optJSONObject("lengthText")), fullByline);
             }
@@ -103,15 +133,21 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     }
 
     static String text(JSONObject text) {
-        if (text == null) return "";
+        if (text == null) {
+            return "";
+        }
         String simple = text.optString("simpleText", "");
-        if (!simple.isEmpty()) return simple;
+        if (!simple.isEmpty()) {
+            return simple;
+        }
         var runs = text.optJSONArray("runs");
         StringBuilder result = new StringBuilder();
         if (runs != null) {
             for (int index = 0; index < runs.length(); index++) {
                 JSONObject run = runs.optJSONObject(index);
-                if (run != null) result.append(run.optString("text", ""));
+                if (run != null) {
+                    result.append(run.optString("text", ""));
+                }
             }
         }
 
@@ -127,7 +163,9 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     }
 
     VideoMetadata withCapture(VideoMetadata captured) {
-        if (!fullByline) return captured.withChannelName(channelName);
+        if (!fullByline) {
+            return captured.withChannelName(channelName);
+        }
 
         // Later feed/player captures must not downgrade an authoritative byline.
         return new VideoMetadata(videoId, captured.title().equals(videoId) ? title : captured.title(),
@@ -135,7 +173,9 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     }
 
     VideoMetadata withLookup(VideoMetadata fetched) {
-        if (fullByline && !fetched.fullByline()) return this;
+        if (fullByline && !fetched.fullByline()) {
+            return this;
+        }
 
         // Preserve captured titles and their title-patch processing, but prefer
         // the lookup's native long byline over an uploader-only fallback.
@@ -145,7 +185,9 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     }
 
     private VideoMetadata withChannelLabel(String avatarLabel, String description) {
-        if (avatarLabel.isEmpty() && description.isEmpty()) return this;
+        if (avatarLabel.isEmpty() && description.isEmpty()) {
+            return this;
+        }
 
         // The avatar label names this card's channel. Confirm the longest metadata
         // prefix at its end, or a complete segment of the card's accessibility text.
@@ -157,7 +199,10 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
             while (boundary > 0) {
                 String candidate = videoInfo.substring(0, boundary);
                 if (candidate.length() > name.length() && (avatarLabel.endsWith(candidate)
-                        || description.contains(" - " + candidate + " - "))) name = candidate;
+                        || description.contains(" - " + candidate + " - "))) {
+                    name = candidate;
+                }
+
                 boundary = videoInfo.lastIndexOf(separator, boundary - 1);
             }
         }
@@ -166,7 +211,9 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     }
 
     VideoMetadata withChannelName(String name) {
-        if (fullByline || name.isEmpty() || name.equals(channelName)) return this;
+        if (fullByline || name.isEmpty() || name.equals(channelName)) {
+            return this;
+        }
         if (videoInfo.isEmpty() || videoInfo.equals(name)) {
             return new VideoMetadata(videoId, title, name, "", duration, false, panelMetadata);
         }

@@ -23,6 +23,8 @@ internal fun installRatingCapture(context: BytecodePatchContext) = with(context)
     // The watch next response cast.
     val responseCast = match.instructionMatches[5]
     val responseRegister = match.method.getInstruction<OneRegisterInstruction>(responseCast.index).registerA
-    match.method.addInstruction(responseCast.index + 1,
-        "invoke-static/range {v$responseRegister .. v$responseRegister}, $EXTENSION_CLASS->onWatchNextResponse(Lcom/google/protobuf/MessageLite;)V")
+    match.method.addInstruction(
+        responseCast.index + 1,
+        "invoke-static/range {v$responseRegister .. v$responseRegister}, $EXTENSION_CLASS->onWatchNextResponse(Lcom/google/protobuf/MessageLite;)V"
+    )
 }

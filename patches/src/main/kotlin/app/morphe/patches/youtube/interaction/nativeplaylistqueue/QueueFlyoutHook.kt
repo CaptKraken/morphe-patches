@@ -59,43 +59,60 @@ internal fun installQueueFlyout(context: BytecodePatchContext) = with(context) {
         val free = method.findFreeRegister(read.index + 1, item)
         check(free <= 15) { "Native queue click icon conversion requires a low register" }
         val dismissal = method.getInstruction(click.instructionMatches[1].index)
-        method.addInstructionsAtControlFlowLabel(read.index + 1, """
-            if-eqz v$item, :native_queue_command
-            invoke-static/range {v$item .. v$item}, $iconGetter
-            move-result-object v$free
-            if-eqz v$free, :native_queue_command
-            iget v$free, v$free, $iconField
-            invoke-static/range {v$free .. v$free}, $iconEnum
-            move-result-object v$free
-            invoke-static/range {v$free .. v$free}, $ACTIONS->onStockQueueItemClick(Ljava/lang/Enum;)Z
-            move-result v$free
-            if-nez v$free, :native_queue_dismiss
-            :native_queue_command
-            nop
-        """, ExternalLabel("native_queue_dismiss", dismissal))
+        method.addInstructionsAtControlFlowLabel(
+            read.index + 1,
+            """
+                if-eqz v$item, :native_queue_command
+                invoke-static/range {v$item .. v$item}, $iconGetter
+                move-result-object v$free
+                if-eqz v$free, :native_queue_command
+                iget v$free, v$free, $iconField
+                invoke-static/range {v$free .. v$free}, $iconEnum
+                move-result-object v$free
+                invoke-static/range {v$free .. v$free}, $ACTIONS->onStockQueueItemClick(Ljava/lang/Enum;)Z
+                move-result v$free
+                if-nez v$free, :native_queue_dismiss
+                :native_queue_command
+                nop
+            """,
+            ExternalLabel("native_queue_dismiss", dismissal)
+        )
     }
 
     val menu = mutableClassDefBy(menuType)
     menu.interfaces.add("${ACTIONS.removeSuffix(";")}\$Menu;")
-    menu.addBridgeMethod("patch_parseQueueFlyout", listOf("[B"), MESSAGE, 2, """
-        ${parseProtoInstructions(menuType, bytes = "p1", result = "v0", registry = "v1")}
-        return-object v0
-    """)
+    menu.addBridgeMethod(
+        "patch_parseQueueFlyout",
+        listOf("[B"),
+        MESSAGE,
+        2,
+        """
+            ${parseProtoInstructions(menuType, bytes = "p1", result = "v0", registry = "v1")}
+            return-object v0
+        """
+    )
 
     for (sheet in sheets) {
         val read = sheet.instructionMatches.first()
         val register = (read.instruction as OneRegisterInstruction).registerA
         // Only the local renderer is replaced. The sheet's original model and
         // every unrelated item remain intact; null still follows the native branch.
-        sheet.method.addInstructions(read.index + 1, """
-            invoke-static/range {v$register .. v$register}, $ACTIONS->completeQueueMenu($MESSAGE)$MESSAGE
-            move-result-object v$register
-            check-cast v$register, $menuType
-        """)
+        sheet.method.addInstructions(
+            read.index + 1,
+            """
+                invoke-static/range {v$register .. v$register}, $ACTIONS->completeQueueMenu($MESSAGE)$MESSAGE
+                move-result-object v$register
+                check-cast v$register, $menuType
+            """
+        )
     }
-    popup.method.addInstructions(0, """
-        invoke-static/range {p0 .. p0}, $ACTIONS->completeQueueMenu($MESSAGE)$MESSAGE
-        move-result-object p0
-        check-cast p0, $menuType
-    """)
+
+    popup.method.addInstructions(
+        0,
+        """
+            invoke-static/range {p0 .. p0}, $ACTIONS->completeQueueMenu($MESSAGE)$MESSAGE
+            move-result-object p0
+            check-cast p0, $menuType
+        """
+    )
 }

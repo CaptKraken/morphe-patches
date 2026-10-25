@@ -80,56 +80,92 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
     controller.interfaces.add(CONTROLLER_INTERFACE)
     mutableClassDefBy(modelType).apply {
         interfaces.add(PLAYLIST_MODEL_INTERFACE)
-        addBridgeMethod("patch_getPlaylistId", emptyList(), "Ljava/lang/String;", 1, """
-            iget-object v0, p0, $playlistField
-            return-object v0
-        """)
+        addBridgeMethod(
+            "patch_getPlaylistId",
+            emptyList(),
+            "Ljava/lang/String;",
+            1,
+            """
+                iget-object v0, p0, $playlistField
+                return-object v0
+            """
+        )
     }
 
     // A watch response can omit its video ID. Use the native stale-response guard's
     // active video instead of treating an optional response field as playback state.
-    addBridge("patch_getVideoId", emptyList(), "Ljava/lang/String;", 1, """
-        iget-object v0, p0, $activeVideoField
-        if-nez v0, :done
-        const-string v0, ""
+    addBridge(
+        "patch_getVideoId",
+        emptyList(),
+        "Ljava/lang/String;",
+        1,
+        """
+            iget-object v0, p0, $activeVideoField
+            if-nez v0, :done
+            const-string v0, ""
 
-        :done
-        return-object v0
-    """)
+            :done
+            return-object v0
+        """
+    )
 
-    addBridge("patch_getPlaylistId", emptyList(), "Ljava/lang/String;", 1, """
-        iget-object v0, p0, $modelField
-        if-eqz v0, :empty
-        iget-object v0, v0, $playlistField
-        if-nez v0, :done
+    addBridge(
+        "patch_getPlaylistId",
+        emptyList(),
+        "Ljava/lang/String;",
+        1,
+        """
+            iget-object v0, p0, $modelField
+            if-eqz v0, :empty
+            iget-object v0, v0, $playlistField
+            if-nez v0, :done
 
-        :empty
-        const-string v0, ""
+            :empty
+            const-string v0, ""
 
-        :done
-        return-object v0
-    """)
+            :done
+            return-object v0
+        """
+    )
 
-    addBridge("patch_getModel", emptyList(), "Ljava/lang/Object;", 1, """
-        iget-object v0, p0, $modelField
-        return-object v0
-    """)
+    addBridge(
+        "patch_getModel",
+        emptyList(),
+        "Ljava/lang/Object;",
+        1,
+        """
+            iget-object v0, p0, $modelField
+            return-object v0
+        """
+    )
 
-    addBridge("patch_getPanel", emptyList(), "Ljava/lang/Object;", 1, """
-        iget-object v0, p0, $modelField
-        if-eqz v0, :done
-        iget-object v0, v0, $panelField
+    addBridge(
+        "patch_getPanel",
+        emptyList(),
+        "Ljava/lang/Object;",
+        1,
+        """
+            iget-object v0, p0, $modelField
+            if-eqz v0, :done
+            iget-object v0, v0, $panelField
 
-        :done
-        return-object v0
-    """)
+            :done
+            return-object v0
+        """
+    )
 
-    addBridge("patch_isAttached", emptyList(), "Z", 1, """
-        iget-object v0, p0, $collapsedView
-        invoke-virtual {v0}, Landroid/view/View;->isAttachedToWindow()Z
-        move-result v0
-        return v0
-    """)
+    addBridge(
+        "patch_isAttached",
+        emptyList(),
+        "Z",
+        1,
+        """
+            iget-object v0, p0, $collapsedView
+            invoke-virtual {v0}, Landroid/view/View;->isAttachedToWindow()Z
+            move-result v0
+            return v0
+        """
+    )
 
     val copyArguments = constructorFields.mapIndexed { index, field ->
         when {
@@ -143,31 +179,37 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
     }.joinToString("\n")
 
     // The model arguments use v5-v11. With 12 locals, p0 and p1 remain 4-bit registers.
-    addBridge("patch_updatePanel", listOf("[B"), "Ljava/lang/Object;", 12, """
-        iget-object v0, p0, $modelField
-        if-nez v0, :model_ready
-        invoke-static {}, $modelFactory
-        move-result-object v0
-        invoke-virtual {v0}, $buildModel
-        move-result-object v0
+    addBridge(
+        "patch_updatePanel",
+        listOf("[B"),
+        "Ljava/lang/Object;",
+        12,
+        """
+            iget-object v0, p0, $modelField
+            if-nez v0, :model_ready
+            invoke-static {}, $modelFactory
+            move-result-object v0
+            invoke-virtual {v0}, $buildModel
+            move-result-object v0
 
-        :model_ready
-        ${parseProtoInstructions(panelType, bytes = "p1", result = "v1", registry = "v2")}
-        check-cast v1, $panelType
-        new-instance v4, $modelType
-        $copyArguments
-        invoke-direct/range {v4 .. v11}, ${constructor.originalMethod}
-        invoke-direct {p0, v4}, ${accept.originalMethod}
-        iget-object v0, p0, $modelField
-        if-ne v0, v4, :rejected
-        const-string v1, ""
-        iput-object v1, p0, $activePlaylistField
-        return-object v4
+            :model_ready
+            ${parseProtoInstructions(panelType, bytes = "p1", result = "v1", registry = "v2")}
+            check-cast v1, $panelType
+            new-instance v4, $modelType
+            $copyArguments
+            invoke-direct/range {v4 .. v11}, ${constructor.originalMethod}
+            invoke-direct {p0, v4}, ${accept.originalMethod}
+            iget-object v0, p0, $modelField
+            if-ne v0, v4, :rejected
+            const-string v1, ""
+            iput-object v1, p0, $activePlaylistField
+            return-object v4
 
-        :rejected
-        const/4 v0, 0x0
-        return-object v0
-    """)
+            :rejected
+            const/4 v0, 0x0
+            return-object v0
+        """
+    )
 
     addBridge(
         "patch_restorePanel",
@@ -207,6 +249,7 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
             storeIndex + 1,
             "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onControllerUpdated($CONTROLLER_INTERFACE)V"
         )
+
         addInstructionsAtControlFlowLabel(
             storeIndex,
             """
@@ -229,8 +272,10 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
     // original receiver before adding callbacks at those returns.
     transition.method.cloneParameters().apply {
         findInstructionIndicesReversedOrThrow(Opcode.RETURN_VOID).forEach { index ->
-            addInstructionsAtControlFlowLabel(index,
-                "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onPlaybackTransition($CONTROLLER_INTERFACE)V")
+            addInstructionsAtControlFlowLabel(
+                index,
+                "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onPlaybackTransition($CONTROLLER_INTERFACE)V"
+            )
         }
     }
 }

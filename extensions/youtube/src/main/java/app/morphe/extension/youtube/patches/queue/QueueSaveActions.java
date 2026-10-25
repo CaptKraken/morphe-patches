@@ -36,7 +36,9 @@ public final class QueueSaveActions {
     }
 
     static NavigationEndpoint openPicker(List<String> videoIds) {
-        if (videoIds.isEmpty()) throw new IllegalArgumentException("Empty queue save selection");
+        if (videoIds.isEmpty()) {
+            throw new IllegalArgumentException("Empty queue save selection");
+        }
         return NavigationEndpoint.newBuilder().setAddToPlaylistEndpoint(AddToPlaylistEndpoint.newBuilder()
                 .setVideoId(videoIds.get(0))).addAllQueueSaveVideoIds(videoIds).build();
     }
@@ -53,7 +55,9 @@ public final class QueueSaveActions {
     public static MessageLite onPickerResponse(Picker picker, MessageLite response) {
         try {
             var ids = picker.patch_getQueueSaveVideoIds();
-            if (ids == null) return response;
+            if (ids == null) {
+                return response;
+            }
             return picker.patch_parseQueueSaveResponse(bindResponse(
                     QueueSaveResponse.parseFrom(response.toByteArray()), ids).toByteArray());
         } catch (Exception ex) {
@@ -69,18 +73,26 @@ public final class QueueSaveActions {
         var result = response.toBuilder();
         for (int index = 0; index < response.getContentsCount(); index++) {
             var item = response.getContents(index);
-            if (!item.hasAddToPlaylistRenderer()) continue;
+            if (!item.hasAddToPlaylistRenderer()) {
+                continue;
+            }
             var renderer = item.getAddToPlaylistRenderer();
             var updated = renderer.toBuilder();
             for (int row = 0; row < renderer.getPlaylistsCount(); row++) {
                 var destination = renderer.getPlaylists(row);
-                if (!destination.hasPlaylistAddToOptionRenderer()) continue;
+                if (!destination.hasPlaylistAddToOptionRenderer()) {
+                    continue;
+                }
                 var option = destination.getPlaylistAddToOptionRenderer();
-                if (!option.hasAddEndpoint()) continue;
+                if (!option.hasAddEndpoint()) {
+                    continue;
+                }
                 String title = option.getTitle().getSimpleText();
                 if (title.isEmpty()) {
                     var text = new StringBuilder();
-                    for (var run : option.getTitle().getRunsList()) text.append(run.getText());
+                    for (var run : option.getTitle().getRunsList()) {
+                        text.append(run.getText());
+                    }
                     title = text.toString();
                 }
 
@@ -99,9 +111,13 @@ public final class QueueSaveActions {
 
             for (int row = 0; row < renderer.getHeadersCount(); row++) {
                 var header = renderer.getHeaders(row);
-                if (!header.hasPlaylistAddToHeaderRenderer()) continue;
+                if (!header.hasPlaylistAddToHeaderRenderer()) {
+                    continue;
+                }
                 var content = header.getPlaylistAddToHeaderRenderer();
-                if (!content.getButton().hasButtonRenderer()) continue;
+                if (!content.getButton().hasButtonRenderer()) {
+                    continue;
+                }
                 var button = content.getButton().getButtonRenderer();
 
                 // This native picker header is its New playlist action. Its server
@@ -126,14 +142,18 @@ public final class QueueSaveActions {
             var edit = command.getPlaylistEditEndpoint();
             var additions = new ArrayList<PlaylistEditAction>();
             for (var action : edit.getActionsList()) {
-                if (action.getAction() == 1) additions.add(action);
+                if (action.getAction() == 1) {
+                    additions.add(action);
+                }
             }
 
             if (additions.size() == 1 && additions.get(0).getAddedVideoId().equals(ids.get(0))) {
                 var updated = edit.toBuilder().clearActions();
                 for (var action : edit.getActionsList()) {
                     if (action.getAction() == 1) {
-                        for (String id : ids) updated.addActions(action.toBuilder().setAddedVideoId(id));
+                        for (String id : ids) {
+                            updated.addActions(action.toBuilder().setAddedVideoId(id));
+                        }
                     } else {
                         updated.addActions(action);
                     }
@@ -143,8 +163,12 @@ public final class QueueSaveActions {
             }
 
             var addedIds = new ArrayList<String>();
-            for (var action : additions) addedIds.add(action.getAddedVideoId());
-            if (addedIds.equals(ids)) return command;
+            for (var action : additions) {
+                addedIds.add(action.getAddedVideoId());
+            }
+            if (addedIds.equals(ids)) {
+                return command;
+            }
             throw new IllegalStateException("Native queue save did not supply the complete add selection");
         }
 
@@ -156,10 +180,20 @@ public final class QueueSaveActions {
         try {
             var command = NavigationEndpoint.parseFrom(endpoint.toByteArray());
             if (command.getQueueSaveVideoIdsCount() == 0 || !command.hasPlaylistEditEndpoint()
-                    || !command.hasQueueSavePlaylistTitle()) return;
+                    || !command.hasQueueSavePlaylistTitle()) {
+                return;
+            }
+
             var edit = command.getPlaylistEditEndpoint();
-            if (edit.getActionsCount() == 0) return;
-            for (var action : edit.getActionsList()) if (action.getAction() != 1) return;
+            if (edit.getActionsCount() == 0) {
+                return;
+            }
+            for (var action : edit.getActionsList()) {
+                if (action.getAction() != 1) {
+                    return;
+                }
+            }
+
             callback.patch_setQueueSaveSelection(new QueueSaveFeedback.Selection(edit.getPlaylistId(),
                     command.getQueueSavePlaylistTitle(), command.getQueueSaveVideoIdsList()));
         } catch (Exception ex) {
@@ -171,7 +205,9 @@ public final class QueueSaveActions {
     public static MessageLite onEditResult(QueueSaveFeedback.Callback callback, MessageLite response) {
         try {
             var selection = callback.patch_getQueueSaveSelection();
-            if (selection == null) return response;
+            if (selection == null) {
+                return response;
+            }
             var result = QueueSaveEditResponse.parseFrom(response.toByteArray());
             String message = selection.title().isEmpty() ? str("morphe_native_playlist_queue_saved")
                     : str("morphe_native_playlist_queue_saved_to", selection.title());

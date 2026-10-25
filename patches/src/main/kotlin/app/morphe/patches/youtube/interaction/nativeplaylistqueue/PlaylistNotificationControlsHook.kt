@@ -49,18 +49,30 @@ internal fun installPlaylistNotificationControls(context: BytecodePatchContext, 
         } else null
 
         adapter.interfaces.add(NOTIFICATION_CONTROLS_INTERFACE)
-        adapter.addBridgeMethod("patch_getQueueMediaControls", emptyList(), MEDIA_CONTROLS_INTERFACE, 1, """
-            iget-object v0, p0, $owner
-            return-object v0
-        """)
+        adapter.addBridgeMethod(
+            "patch_getQueueMediaControls",
+            emptyList(),
+            MEDIA_CONTROLS_INTERFACE,
+            1,
+            """
+                iget-object v0, p0, $owner
+                return-object v0
+            """
+        )
 
         // Recompute from the original adapter inputs on every refresh. Releasing
         // the queue therefore restores native capabilities without caching flags.
-        adapter.addBridgeMethod("patch_refreshQueueNotification", emptyList(), "V", 1, """
-            invoke-direct {p0}, $computation
-            ${if (dispatch == null) "" else "move-result v0\ninvoke-direct {p0, v0}, $dispatch"}
-            return-void
-        """)
+        adapter.addBridgeMethod(
+            "patch_refreshQueueNotification",
+            emptyList(),
+            "V",
+            1,
+            """
+                invoke-direct {p0}, $computation
+                ${if (dispatch == null) "" else "move-result v0\ninvoke-direct {p0, v0}, $dispatch"}
+                return-void
+            """
+        )
 
         constructor.method.findInstructionIndicesReversedOrThrow(Opcode.RETURN_VOID).forEach { index ->
             constructor.method.addInstructionsAtControlFlowLabel(
@@ -92,15 +104,18 @@ internal fun installPlaylistNotificationControls(context: BytecodePatchContext, 
         val previous = call.registerD
         val next = call.registerE
         val capabilities = method.findFreeRegister(index)
-        method.addInstructionsAtControlFlowLabel(index, """
-            invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->notificationNavigationAvailability($NOTIFICATION_CONTROLS_INTERFACE)I
-            move-result v$capabilities
-            if-ltz v$capabilities, :native_capabilities
-            and-int/lit8 v$previous, v$capabilities, 0x1
-            ushr-int/lit8 v$next, v$capabilities, 0x1
+        method.addInstructionsAtControlFlowLabel(
+            index,
+            """
+                invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->notificationNavigationAvailability($NOTIFICATION_CONTROLS_INTERFACE)I
+                move-result v$capabilities
+                if-ltz v$capabilities, :native_capabilities
+                and-int/lit8 v$previous, v$capabilities, 0x1
+                ushr-int/lit8 v$next, v$capabilities, 0x1
 
-            :native_capabilities
-            nop
-        """)
+                :native_capabilities
+                nop
+            """
+        )
     }
 }

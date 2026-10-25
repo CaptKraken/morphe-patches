@@ -40,35 +40,50 @@ internal fun installFullscreenPlaylist(context: BytecodePatchContext) = with(con
     ).matchSingle().originalMethod
     val controller = mutableClassDefBy(controllerType)
     controller.interfaces.add(FULLSCREEN_CONTROLLER_INTERFACE)
-    controller.addBridgeMethod("patch_parseQuickActions", listOf("[B"), "Ljava/lang/Object;", 2, """
-        ${parseProtoInstructions(modelType, bytes = "p1", result = "v0", registry = "v1")}
-        return-object v0
-    """)
+    controller.addBridgeMethod(
+        "patch_parseQuickActions",
+        listOf("[B"),
+        "Ljava/lang/Object;",
+        2,
+        """
+            ${parseProtoInstructions(modelType, bytes = "p1", result = "v0", registry = "v1")}
+            return-object v0
+        """
+    )
 
-    controller.addBridgeMethod("patch_refreshQuickActions", listOf("Ljava/lang/Object;"), "V", 2, """
-        const/4 v0, 0x0
-        # The native reset also releases the presenter's cached component tree.
-        # Merely resetting the rendered flag reuses the previous button layout.
-        # Its lifecycle argument is unused; null is safe for this UI-only reset.
-        invoke-virtual {p0, v0}, ${reset.originalMethod}
-        check-cast p1, $modelType
-        invoke-virtual {p0, p1}, $setter
-        iget-object v0, p0, $dimensions
-        invoke-virtual {v0}, $currentDimensions
-        move-result-object v1
-        if-eqz v1, :done
-        invoke-virtual {v0, v1}, $emit
+    controller.addBridgeMethod(
+        "patch_refreshQuickActions",
+        listOf("Ljava/lang/Object;"),
+        "V",
+        2,
+        """
+            const/4 v0, 0x0
+            # The native reset also releases the presenter's cached component tree.
+            # Merely resetting the rendered flag reuses the previous button layout.
+            # Its lifecycle argument is unused; null is safe for this UI-only reset.
+            invoke-virtual {p0, v0}, ${reset.originalMethod}
+            check-cast p1, $modelType
+            invoke-virtual {p0, p1}, $setter
+            iget-object v0, p0, $dimensions
+            invoke-virtual {v0}, $currentDimensions
+            move-result-object v1
+            if-eqz v1, :done
+            invoke-virtual {v0, v1}, $emit
 
-        :done
-        return-void
-    """)
+            :done
+            return-void
+        """
+    )
 
     // The setter's original null handling, visibility policy and other action bindings
     // all remain in place. Only our local queue can supply the additional button.
     Fingerprint(definingClass = controllerType, name = setter.name,
-        parameters = listOf(modelType), returnType = "V").matchSingle().method.addInstructionsWithLabels(0, """
-        invoke-static/range {p0 .. p1}, $FULLSCREEN_ACTIONS_CLASS->onModelLoaded(${FULLSCREEN_CONTROLLER_INTERFACE}Ljava/lang/Object;)Ljava/lang/Object;
-        move-result-object p1
-        check-cast p1, $modelType
-    """)
+        parameters = listOf(modelType), returnType = "V").matchSingle().method.addInstructionsWithLabels(
+            0,
+            """
+                invoke-static/range {p0 .. p1}, $FULLSCREEN_ACTIONS_CLASS->onModelLoaded(${FULLSCREEN_CONTROLLER_INTERFACE}Ljava/lang/Object;)Ljava/lang/Object;
+                move-result-object p1
+                check-cast p1, $modelType
+            """
+        )
 }

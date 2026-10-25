@@ -61,7 +61,9 @@ final class PlaylistMetadataRequest {
         } catch (Exception exception) {
             Logger.printException(() -> "Could not parse native playlist card metadata", exception);
         } finally {
-            if (connection != null) connection.disconnect();
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
 
         return null;

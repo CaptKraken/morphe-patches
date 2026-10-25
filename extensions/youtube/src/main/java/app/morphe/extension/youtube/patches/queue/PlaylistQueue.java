@@ -58,12 +58,16 @@ public final class PlaylistQueue {
     }
 
     public PlaylistQueue withRepeatMode(int mode) {
-        if (mode < REPEAT_OFF || mode > REPEAT_ONE) throw new IllegalArgumentException("Invalid repeat mode");
+        if (mode < REPEAT_OFF || mode > REPEAT_ONE) {
+            throw new IllegalArgumentException("Invalid repeat mode");
+        }
         return mode == repeatMode ? this : new PlaylistQueue(entries, selectedIndex, mode);
     }
 
     public PlaylistQueue select(int index) {
-        if (index < 0 || index >= entries.size()) throw new IndexOutOfBoundsException(index);
+        if (index < 0 || index >= entries.size()) {
+            throw new IndexOutOfBoundsException(index);
+        }
         return new PlaylistQueue(entries, index, repeatMode);
     }
 
@@ -88,6 +92,7 @@ public final class PlaylistQueue {
             requireVideoId(entry.videoId());
             updated.add(entry);
         }
+
         return new PlaylistQueue(updated, selectedIndex, repeatMode);
     }
 
@@ -97,8 +102,12 @@ public final class PlaylistQueue {
     }
 
     public PlaylistQueue remove(int index) {
-        if (index < 0 || index >= entries.size()) throw new IndexOutOfBoundsException(index);
-        if (index == selectedIndex) return this;
+        if (index < 0 || index >= entries.size()) {
+            throw new IndexOutOfBoundsException(index);
+        }
+        if (index == selectedIndex) {
+            return this;
+        }
         var updated = new ArrayList<>(entries);
         updated.remove(index);
         return new PlaylistQueue(updated, selectedIndex - (index < selectedIndex ? 1 : 0), repeatMode);
@@ -106,23 +115,35 @@ public final class PlaylistQueue {
 
     /** Move an entry with the native adapter's remove-then-insert semantics. */
     public PlaylistQueue move(int from, int to) {
-        if (from < 0 || from >= entries.size()) throw new IndexOutOfBoundsException(from);
-        if (to < 0 || to >= entries.size()) throw new IndexOutOfBoundsException(to);
-        if (from == to) return this;
+        if (from < 0 || from >= entries.size()) {
+            throw new IndexOutOfBoundsException(from);
+        }
+        if (to < 0 || to >= entries.size()) {
+            throw new IndexOutOfBoundsException(to);
+        }
+        if (from == to) {
+            return this;
+        }
         var updated = new ArrayList<>(entries);
         updated.add(to, updated.remove(from));
 
         // Entry identity also distinguishes duplicate videos in the same queue.
         int selection = selectedIndex;
-        if (from == selection) selection = to;
-        else if (from < selection && to >= selection) selection--;
-        else if (from > selection && to <= selection) selection++;
+        if (from == selection) {
+            selection = to;
+        } else if (from < selection && to >= selection) {
+            selection--;
+        } else if (from > selection && to <= selection) {
+            selection++;
+        }
         return new PlaylistQueue(updated, selection, repeatMode);
     }
 
     /** Shuffle is a command: the displayed order also becomes the playback order. */
     public PlaylistQueue shuffle() {
-        if (entries.size() < 2) return this;
+        if (entries.size() < 2) {
+            return this;
+        }
         var updated = new ArrayList<>(entries);
         Entry playing = updated.remove(selectedIndex);
 

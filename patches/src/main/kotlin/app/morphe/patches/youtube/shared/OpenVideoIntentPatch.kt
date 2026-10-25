@@ -91,30 +91,39 @@ val openVideoIntentPatch = bytecodePatch(
         // Insert entry transforms only after all consumers have used that index.
         val method = videoPlaybackIntentMethod.get()!!
         videoIntentContextHooks.asReversed().forEach { (classDescriptor, methodName) ->
-            method.addInstructionsAtControlFlowLabel(0, """
-                invoke-static/range {p1 .. p2}, $classDescriptor->$methodName(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Ljava/util/Map;
-                move-result-object p2
-            """)
+            method.addInstructionsAtControlFlowLabel(
+                0,
+                """
+                    invoke-static/range {p1 .. p2}, $classDescriptor->$methodName(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Ljava/util/Map;
+                    move-result-object p2
+                """
+            )
         }
         videoIntentInterceptors.asReversed().forEach { (classDescriptor, methodName) ->
             val consumed = method.findFreeRegister(0)
-            method.addInstructionsAtControlFlowLabel(0, """
-                invoke-static/range {p1 .. p2}, $classDescriptor->$methodName(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Z
-                move-result v$consumed
-                if-eqz v$consumed, :continue_video_intent
-                return-void
-                :continue_video_intent
-                nop
-            """)
+            method.addInstructionsAtControlFlowLabel(
+                0,
+                """
+                    invoke-static/range {p1 .. p2}, $classDescriptor->$methodName(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Z
+                    move-result v$consumed
+                    if-eqz v$consumed, :continue_video_intent
+                    return-void
+                    :continue_video_intent
+                    nop
+                """
+            )
         }
         // Normalize the immutable command before context hooks or the native
         // descriptor can observe its original playlist. Retain its native type.
         videoIntentCommandTransforms.asReversed().forEach { (classDescriptor, methodName) ->
-            method.addInstructionsAtControlFlowLabel(0, """
-                invoke-static/range {p1 .. p2}, $classDescriptor->$methodName(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;
-                move-result-object p1
-                check-cast p1, ${method.parameterTypes.first()}
-            """)
+            method.addInstructionsAtControlFlowLabel(
+                0,
+                """
+                    invoke-static/range {p1 .. p2}, $classDescriptor->$methodName(Lcom/google/protobuf/MessageLite;Ljava/util/Map;)Lcom/google/protobuf/MessageLite;
+                    move-result-object p1
+                    check-cast p1, ${method.parameterTypes.first()}
+                """
+            )
         }
     }
 }

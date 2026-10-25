@@ -44,10 +44,16 @@ internal fun installPlaylistPlayerControls(
         .instruction.getReference<FieldReference>()!!
 
     controls.interfaces.add(PLAYER_CONTROLS_INTERFACE)
-    controls.addBridgeMethod("patch_getNavigator", emptyList(), "Ljava/lang/Object;", 1, """
-        iget-object v0, p0, $navigatorField
-        return-object v0
-    """)
+    controls.addBridgeMethod(
+        "patch_getNavigator",
+        emptyList(),
+        "Ljava/lang/Object;",
+        1,
+        """
+            iget-object v0, p0, $navigatorField
+            return-object v0
+        """
+    )
 
     // Recompute both cached enablement values, even when native history delegates are present.
     controls.addBridgeMethod(
@@ -79,11 +85,14 @@ internal fun installPlaylistPlayerControls(
         val originalRegister = if (compare.registerA == cached.registerA) compare.registerB else compare.registerA
         val insertIndex = cachedMatch.index
         val freeRegister = method.findFreeRegister(insertIndex)
-        method.addInstructionsAtControlFlowLabel(insertIndex, """
-            const/4 v$freeRegister, ${if (direction == 0) 1 else 0}
-            invoke-static {p0, v$freeRegister, v$originalRegister}, $EXTENSION_CLASS->playerControlAvailability(${PLAYER_CONTROLS_INTERFACE}ZZ)Z
-            move-result v$originalRegister
-        """)
+        method.addInstructionsAtControlFlowLabel(
+            insertIndex,
+            """
+                const/4 v$freeRegister, ${if (direction == 0) 1 else 0}
+                invoke-static {p0, v$freeRegister, v$originalRegister}, $EXTENSION_CLASS->playerControlAvailability(${PLAYER_CONTROLS_INTERFACE}ZZ)Z
+                move-result v$originalRegister
+            """
+        )
 
         // The delegate read joins both paths of the optional native logging callback.
         // Intercept here so logging runs, but a local queue cannot fall into history/restart.
@@ -97,14 +106,17 @@ internal fun installPlaylistPlayerControls(
         val pressIndex = press.instructionMatches[1].index
         val resultRegister = press.method.findFreeRegister(pressIndex)
         val callback = if (direction == 0) "onNextPressed" else "onPreviousPressed"
-        press.method.addInstructionsAtControlFlowLabel(pressIndex, """
-            invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->$callback($PLAYER_CONTROLS_INTERFACE)Z
-            move-result v$resultRegister
-            if-eqz v$resultRegister, :native_press
-            return-void
+        press.method.addInstructionsAtControlFlowLabel(
+            pressIndex,
+            """
+                invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->$callback($PLAYER_CONTROLS_INTERFACE)Z
+                move-result v$resultRegister
+                if-eqz v$resultRegister, :native_press
+                return-void
 
-            :native_press
-            nop
-        """)
+                :native_press
+                nop
+            """
+        )
     }
 }

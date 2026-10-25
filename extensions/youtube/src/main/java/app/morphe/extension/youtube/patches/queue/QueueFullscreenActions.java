@@ -41,14 +41,20 @@ public final class QueueFullscreenActions {
             controllerRef = new WeakReference<>(controller);
             originalModel = model;
             renderedWithQueue = NativePlaylistQueuePatch.ownsFullscreenPlaylist();
-            if (model == null || !renderedWithQueue) return model;
+            if (model == null || !renderedWithQueue) {
+                return model;
+            }
             var renderer = QueueFullscreenRenderer.Renderer.parseFrom(((MessageLite) model).toByteArray());
             var component = renderer.getNewElement().getType().getComponent();
-            if (!component.getModel().hasQuickActions()) return model;
+            if (!component.getModel().hasQuickActions()) {
+                return model;
+            }
             var actions = component.getModel().getQuickActions();
 
             // An account playlist already supplies its own action; leave it intact.
-            if (actions.hasPlaylistButton()) return model;
+            if (actions.hasPlaylistButton()) {
+                return model;
+            }
             var button = QueueFullscreenRenderer.PlaylistButton.newBuilder().setStyle(2).setButton(
                     QueueFullscreenRenderer.Button.newBuilder()
                             .setIcon("yt_outline_list_play_arrow_black_24")
@@ -73,7 +79,10 @@ public final class QueueFullscreenActions {
         Controller controller = controllerRef.get();
         Object model = originalModel;
         if (controller == null || model == null
-                || renderedWithQueue == NativePlaylistQueuePatch.ownsFullscreenPlaylist()) return;
+                || renderedWithQueue == NativePlaylistQueuePatch.ownsFullscreenPlaylist()) {
+            return;
+        }
+
         try {
             controller.patch_refreshQuickActions(model);
         } catch (Exception ex) {

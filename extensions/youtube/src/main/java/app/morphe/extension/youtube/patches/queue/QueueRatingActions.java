@@ -36,8 +36,12 @@ record QueueRatingActions(String videoId, String entityKey, int initialStatus,
         NextResponseOuterClass.DislikeButtonViewModel dislike = null;
         for (var action : buttons) {
             var button = action.getPrimaryButtonViewModel();
-            if (button.hasLikeButtonViewModel()) like = button.getLikeButtonViewModel();
-            if (button.hasDislikeButtonViewModel()) dislike = button.getDislikeButtonViewModel();
+            if (button.hasLikeButtonViewModel()) {
+                like = button.getLikeButtonViewModel();
+            }
+            if (button.hasDislikeButtonViewModel()) {
+                dislike = button.getDislikeButtonViewModel();
+            }
             if (button.hasSegmentedLikeDislikeButtonViewModel()) {
                 var segmented = button.getSegmentedLikeDislikeButtonViewModel();
                 like = segmented.getLikeButtonViewModel().getLikeButtonViewModel();
@@ -46,7 +50,10 @@ record QueueRatingActions(String videoId, String entityKey, int initialStatus,
         }
 
         if (like == null || dislike == null || like.getLikeStatusEntityKey().isEmpty()
-                || !like.getLikeStatusEntityKey().equals(dislike.getDislikeEntityKey())) return null;
+                || !like.getLikeStatusEntityKey().equals(dislike.getDislikeEntityKey())) {
+            return null;
+        }
+
         var likeToggle = like.getToggleButtonViewModel().getToggleButtonViewModel();
         var dislikeToggle = dislike.getToggleButtonViewModel().getToggleButtonViewModel();
         ByteString likeEndpoint = endpoint(likeToggle.getDefaultButtonViewModel().getButtonViewModel().getOnTap());
@@ -56,7 +63,10 @@ record QueueRatingActions(String videoId, String entityKey, int initialStatus,
         String videoId = target(likeEndpoint, Status.LIKE);
         if (!PlaylistQueue.isVideoId(videoId) || !videoId.equals(target(unlikeEndpoint, Status.INDIFFERENT))
                 || !videoId.equals(target(dislikeEndpoint, Status.DISLIKE))
-                || !videoId.equals(target(undislikeEndpoint, Status.INDIFFERENT))) return null;
+                || !videoId.equals(target(undislikeEndpoint, Status.INDIFFERENT))) {
+            return null;
+        }
+
         int initialStatus = like.hasLikeStatusEntity()
                 ? like.getLikeStatusEntity().getLikeStatus() : Status.INDIFFERENT_VALUE;
         return new QueueRatingActions(videoId, like.getLikeStatusEntityKey(), initialStatus,
@@ -64,10 +74,14 @@ record QueueRatingActions(String videoId, String entityKey, int initialStatus,
     }
 
     private static ByteString endpoint(Commands commands) {
-        if (!commands.getInnertubeCommand().isEmpty()) return commands.getInnertubeCommand();
+        if (!commands.getInnertubeCommand().isEmpty()) {
+            return commands.getInnertubeCommand();
+        }
         for (var command : commands.getSerialCommand().getCommandsList()) {
             ByteString endpoint = endpoint(command);
-            if (!endpoint.isEmpty()) return endpoint;
+            if (!endpoint.isEmpty()) {
+                return endpoint;
+            }
         }
 
         return ByteString.EMPTY;

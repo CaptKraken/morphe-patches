@@ -42,10 +42,16 @@ public final class QueueUndoActions {
     /** A snackbar capability owns its action independently of the enclosing row's context. */
     static boolean dispatchUndo(MessageLite endpoint, String expectedToken, Runnable undo)
             throws InvalidProtocolBufferException {
-        if (endpoint == null) return false;
+        if (endpoint == null) {
+            return false;
+        }
         var command = NavigationEndpoint.parseFrom(endpoint.toByteArray());
-        if (!command.hasQueueUndoToken()) return false;
-        if (command.getQueueUndoToken().equals(expectedToken)) undo.run();
+        if (!command.hasQueueUndoToken()) {
+            return false;
+        }
+        if (command.getQueueUndoToken().equals(expectedToken)) {
+            undo.run();
+        }
 
         // Expired/replaced local capabilities must not reach native service dispatch.
         return true;

@@ -116,147 +116,217 @@ internal fun installNativeQueueEngine(
     fun bridge(type: String, name: String, parameters: List<String>, result: String, locals: Int, body: String) =
         mutableClassDefBy(type).addBridgeMethod(name, parameters, result, locals, body)
 
-    bridge(wrapperType, "patch_isLocalQueue", emptyList(), "Z", 1, """
-        iget-boolean v0, p0, $localFlag
-        return v0
-    """)
+    bridge(
+        wrapperType,
+        "patch_isLocalQueue",
+        emptyList(),
+        "Z",
+        1,
+        """
+            iget-boolean v0, p0, $localFlag
+            return v0
+        """
+    )
 
     // Copy the response envelope. Other native consumers retain the untouched server model.
-    bridge(wrapperType, "patch_localPanel", listOf("[B"), responseType, 4, """
-        iget-object v1, p0, $response
-        if-eqz v1, :missing
-        iget-object v1, v1, $sourceResponse
-        new-instance v0, $responseType
-        invoke-direct {v0, v1}, $responseConstructor
-        ${parseProtoInstructions(panelType, bytes = "p1", result = "v1", registry = "v2")}
-        check-cast v1, $panelType
-        iput-object v1, v0, $responsePanel
-        return-object v0
+    bridge(
+        wrapperType,
+        "patch_localPanel",
+        listOf("[B"),
+        responseType,
+        4,
+        """
+            iget-object v1, p0, $response
+            if-eqz v1, :missing
+            iget-object v1, v1, $sourceResponse
+            new-instance v0, $responseType
+            invoke-direct {v0, v1}, $responseConstructor
+            ${parseProtoInstructions(panelType, bytes = "p1", result = "v1", registry = "v2")}
+            check-cast v1, $panelType
+            iput-object v1, v0, $responsePanel
+            return-object v0
 
-        :missing
-        const/4 v0, 0x0
-        return-object v0
-    """)
+            :missing
+            const/4 v0, 0x0
+            return-object v0
+        """
+    )
 
-    bridge(wrapperType, "patch_restoreQueueRepeat", listOf("I"), "V", 1, """
-        iget-boolean v0, p0, $localFlag
-        if-eqz v0, :done
-        iget-object v0, p0, $nativeNavigator
-        invoke-interface {v0, p1}, $repeatSetter
+    bridge(
+        wrapperType,
+        "patch_restoreQueueRepeat",
+        listOf("I"),
+        "V",
+        1,
+        """
+            iget-boolean v0, p0, $localFlag
+            if-eqz v0, :done
+            iget-object v0, p0, $nativeNavigator
+            invoke-interface {v0, p1}, $repeatSetter
 
-        :done
-        return-void
-    """)
+            :done
+            return-void
+        """
+    )
 
     // Disable only the mutable shuffler, without publishing an intermediate mode.
     // The old index links cannot be used while the accepted rows are replaced.
-    bridge(mutableType, "patch_clearShuffleOrder", emptyList(), "V", 1, """
-        const/4 v0, 0x0
-        invoke-virtual {p0, v0}, $shuffleSetter
-        iput-object v0, p0, ${shuffleLinks[0]}
-        iput-object v0, p0, ${shuffleLinks[1]}
-        return-void
-    """)
+    bridge(
+        mutableType,
+        "patch_clearShuffleOrder",
+        emptyList(),
+        "V",
+        1,
+        """
+            const/4 v0, 0x0
+            invoke-virtual {p0, v0}, $shuffleSetter
+            iput-object v0, p0, ${shuffleLinks[0]}
+            iput-object v0, p0, ${shuffleLinks[1]}
+            return-void
+        """
+    )
 
-    bridge(wrapperType, "patch_attachQueue", listOf("[B", "[B"), "Z", 7, """
-        invoke-virtual {p0, p1}, $wrapperType->patch_localPanel([B)$responseType
-        move-result-object v0
-        if-eqz v0, :missing
-        iget-object v1, p0, $nativeNavigator
-        invoke-interface {v1}, $repeatGetter
-        move-result v6
-        # Reuse an existing playlist queue before constructing an INSERT request.
-        # Its acceptance transaction suppresses selected-item playback callbacks.
-        instance-of v3, v1, $queueType
-        if-nez v3, :existing
-        new-instance v2, ${builderConstructor.definingClass}
-        invoke-direct {v2}, $builderConstructor
-        ${parseProtoInstructions(watchCommand.type, bytes = "p2", result = "v3", registry = "v4")}
-        check-cast v3, ${watchCommand.type}
-        iput-object v3, v2, $commandField
-        invoke-virtual {v2}, $buildDescriptor
-        move-result-object v2
-        invoke-virtual {v2}, $playlistId
-        move-result-object v3
-        invoke-virtual {v3}, Ljava/lang/String;->isEmpty()Z
-        move-result v3
-        if-eqz v3, :missing
-        iget-object v3, p0, $container
-        invoke-virtual {v3, v2}, $containerFactory
-        move-result-object v3
-        goto :populate
+    bridge(
+        wrapperType,
+        "patch_attachQueue",
+        listOf("[B", "[B"),
+        "Z",
+        7,
+        """
+            invoke-virtual {p0, p1}, $wrapperType->patch_localPanel([B)$responseType
+            move-result-object v0
+            if-eqz v0, :missing
+            iget-object v1, p0, $nativeNavigator
+            invoke-interface {v1}, $repeatGetter
+            move-result v6
+            # Reuse an existing playlist queue before constructing an INSERT request.
+            # Its acceptance transaction suppresses selected-item playback callbacks.
+            instance-of v3, v1, $queueType
+            if-nez v3, :existing
+            new-instance v2, ${builderConstructor.definingClass}
+            invoke-direct {v2}, $builderConstructor
+            ${parseProtoInstructions(watchCommand.type, bytes = "p2", result = "v3", registry = "v4")}
+            check-cast v3, ${watchCommand.type}
+            iput-object v3, v2, $commandField
+            invoke-virtual {v2}, $buildDescriptor
+            move-result-object v2
+            invoke-virtual {v2}, $playlistId
+            move-result-object v3
+            invoke-virtual {v3}, Ljava/lang/String;->isEmpty()Z
+            move-result v3
+            if-eqz v3, :missing
+            iget-object v3, p0, $container
+            invoke-virtual {v3, v2}, $containerFactory
+            move-result-object v3
+            goto :populate
 
-        :existing
-        move-object v3, v1
+            :existing
+            move-object v3, v1
 
-        :populate
-        check-cast v3, $queueType
-        iget-object v4, v3, $queueOwner
-        instance-of v5, v4, $mutableType
-        if-eqz v5, :missing
-        check-cast v4, $mutableType
-        invoke-virtual {v4}, $mutableType->patch_clearShuffleOrder()V
-        invoke-virtual {v3, v0}, $accept
-        const/4 v5, 0x1
-        iput-boolean v5, v4, $localItemsFlag
-        invoke-direct {p0, v1, v3}, $switchNavigator
-        iput-boolean v5, p0, $wrapperFlag
-        iput-boolean v5, p0, $localFlag
-        invoke-interface {v3, v6}, $repeatSetter
-        invoke-virtual {v3, v5}, $refresh
-        return v5
+            :populate
+            check-cast v3, $queueType
+            iget-object v4, v3, $queueOwner
+            instance-of v5, v4, $mutableType
+            if-eqz v5, :missing
+            check-cast v4, $mutableType
+            invoke-virtual {v4}, $mutableType->patch_clearShuffleOrder()V
+            invoke-virtual {v3, v0}, $accept
+            const/4 v5, 0x1
+            iput-boolean v5, v4, $localItemsFlag
+            invoke-direct {p0, v1, v3}, $switchNavigator
+            iput-boolean v5, p0, $wrapperFlag
+            iput-boolean v5, p0, $localFlag
+            invoke-interface {v3, v6}, $repeatSetter
+            invoke-virtual {v3, v5}, $refresh
+            return v5
 
-        :missing
-        const/4 v0, 0x0
-        return v0
-    """)
+            :missing
+            const/4 v0, 0x0
+            return v0
+        """
+    )
 
-    bridge(wrapperType, "patch_updateSnapshot", listOf("[B"), "V", 2, """
-        iget-boolean v0, p0, $localFlag
-        if-eqz v0, :done
-        invoke-virtual {p0, p1}, $wrapperType->patch_localPanel([B)$responseType
-        move-result-object v0
-        iget-object v1, p0, $nativeNavigator
-        check-cast v1, $queueType
-        invoke-virtual {v1, v0}, $queueType->patch_updateSnapshot($responseType)V
+    bridge(
+        wrapperType,
+        "patch_updateSnapshot",
+        listOf("[B"),
+        "V",
+        2,
+        """
+            iget-boolean v0, p0, $localFlag
+            if-eqz v0, :done
+            invoke-virtual {p0, p1}, $wrapperType->patch_localPanel([B)$responseType
+            move-result-object v0
+            iget-object v1, p0, $nativeNavigator
+            check-cast v1, $queueType
+            invoke-virtual {v1, v0}, $queueType->patch_updateSnapshot($responseType)V
 
-        :done
-        return-void
-    """)
+            :done
+            return-void
+        """
+    )
 
-    bridge(queueType, "patch_updateSnapshot", listOf(responseType), "V", 0, """
-        iput-object p1, p0, $storedResponse
-        return-void
-    """)
+    bridge(
+        queueType,
+        "patch_updateSnapshot",
+        listOf(responseType),
+        "V",
+        0,
+        """
+            iput-object p1, p0, $storedResponse
+            return-void
+        """
+    )
 
-    bridge(wrapperType, "patch_getSelectedIndex", emptyList(), "I", 1, """
-        iget-object v0, p0, $nativeNavigator
-        check-cast v0, $queueType
-        iget-object v0, v0, $queueOwner
-        invoke-interface {v0}, ${queueOwner.type}->${position.name}()I
-        move-result v0
-        return v0
-    """)
+    bridge(
+        wrapperType,
+        "patch_getSelectedIndex",
+        emptyList(),
+        "I",
+        1,
+        """
+            iget-object v0, p0, $nativeNavigator
+            check-cast v0, $queueType
+            iget-object v0, v0, $queueOwner
+            invoke-interface {v0}, ${queueOwner.type}->${position.name}()I
+            move-result v0
+            return v0
+        """
+    )
 
-    bridge(wrapperType, "patch_getRepeatMode", emptyList(), "I", 1, """
-        iget-object v0, p0, $nativeNavigator
-        check-cast v0, $queueType
-        invoke-interface {v0}, $repeatGetter
-        move-result v0
-        return v0
-    """)
+    bridge(
+        wrapperType,
+        "patch_getRepeatMode",
+        emptyList(),
+        "I",
+        1,
+        """
+            iget-object v0, p0, $nativeNavigator
+            check-cast v0, $queueType
+            invoke-interface {v0}, $repeatGetter
+            move-result v0
+            return v0
+        """
+    )
 
-    bridge(wrapperType, "patch_ignorePlaylistResponse", listOf(responseType), "Z", 1, """
-        if-eqz p1, :missing
-        iget-object p1, p1, $watchCommand
-        invoke-static/range {p0 .. p1}, $EXTENSION_CLASS->shouldIgnorePlaylistResponse(${NATIVE_PLAYBACK_INTERFACE}Lcom/google/protobuf/MessageLite;)Z
-        move-result v0
-        return v0
+    bridge(
+        wrapperType,
+        "patch_ignorePlaylistResponse",
+        listOf(responseType),
+        "Z",
+        1,
+        """
+            if-eqz p1, :missing
+            iget-object p1, p1, $watchCommand
+            invoke-static/range {p0 .. p1}, $EXTENSION_CLASS->shouldIgnorePlaylistResponse(${NATIVE_PLAYBACK_INTERFACE}Lcom/google/protobuf/MessageLite;)Z
+            move-result v0
+            return v0
 
-        :missing
-        const/4 v0, 0x0
-        return v0
-    """)
+            :missing
+            const/4 v0, 0x0
+            return v0
+        """
+    )
 
     // Required native response feed, separate from the engagement-panel presentation feed.
     // The native parser reuses its receiver register for the delegated navigator.
@@ -270,21 +340,24 @@ internal fun installNativeQueueEngine(
     }
 
     val receiveRegister = receiveMethod.findFreeRegister(0)
-    receiveMethod.addInstructionsWithLabels(0, """
-        invoke-virtual/range {p0 .. p1}, $wrapperType->patch_ignorePlaylistResponse($responseType)Z
-        move-result v$receiveRegister
-        if-eqz v$receiveRegister, :current_response
-        return-void
+    receiveMethod.addInstructionsWithLabels(
+        0,
+        """
+            invoke-virtual/range {p0 .. p1}, $wrapperType->patch_ignorePlaylistResponse($responseType)Z
+            move-result v$receiveRegister
+            if-eqz v$receiveRegister, :current_response
+            return-void
 
-        :current_response
-        iget-boolean v$receiveRegister, p0, $localFlag
-        if-eqz v$receiveRegister, :server_queue
-        iput-object p1, p0, $response
-        return-void
+            :current_response
+            iget-boolean v$receiveRegister, p0, $localFlag
+            if-eqz v$receiveRegister, :server_queue
+            iput-object p1, p0, $response
+            return-void
 
-        :server_queue
-        nop
-    """)
+            :server_queue
+            nop
+        """
+    )
 
     // Server autoplay replaces the navigator. Remember its last state for Clear.
     val autoplay = nativeQueueAutoplayFingerprint(nativeNavigator, switchNavigator).matchSingle()
@@ -299,110 +372,134 @@ internal fun installNativeQueueEngine(
     var autoplayMethod = autoplay.method
     if (autoplayMethod.implementation!!.registerCount <= 2) autoplayMethod = autoplayMethod.cloneParameters()
     val autoplayRegister = autoplayMethod.findFreeRegister(0)
-    autoplayMethod.addInstructionsWithLabels(0, """
-        iput-object p1, p0, $savedAutoplay
-        iget-boolean v$autoplayRegister, p0, $localFlag
-        if-eqz v$autoplayRegister, :server_autoplay
-        return-void
+    autoplayMethod.addInstructionsWithLabels(
+        0,
+        """
+            iput-object p1, p0, $savedAutoplay
+            iget-boolean v$autoplayRegister, p0, $localFlag
+            if-eqz v$autoplayRegister, :server_autoplay
+            return-void
 
-        :server_autoplay
-        nop
-    """)
+            :server_autoplay
+            nop
+        """
+    )
 
     // Queue storage also owns the selected-item listener that loads/unloads playback.
     // Reuse the native transaction guard (used by accept/commit) while disposing;
     // removing the last item must not send that listener a null current video.
-    bridge(queueType, "patch_disposeWithoutPlayback", emptyList(), "V", 3, """
-        invoke-direct {p0}, $beginQueueChange
-        move-result-object v0
-        iget-object v1, p0, $changeGuard
-        invoke-virtual {p0}, $queueDispose
-        invoke-virtual {v1, v0}, $releaseChange
-        return-void
+    bridge(
+        queueType,
+        "patch_disposeWithoutPlayback",
+        emptyList(),
+        "V",
+        3,
+        """
+            invoke-direct {p0}, $beginQueueChange
+            move-result-object v0
+            iget-object v1, p0, $changeGuard
+            invoke-virtual {p0}, $queueDispose
+            invoke-virtual {v1, v0}, $releaseChange
+            return-void
 
-        move-exception v2
-        invoke-virtual {v1, v0}, $releaseChange
-        throw v2
-    """).implementation!!.apply {
+            move-exception v2
+            invoke-virtual {v1, v0}, $releaseChange
+            throw v2
+        """
+    ).implementation!!.apply {
         // Guard the dispose call (instruction 3) with the handler at instruction 6.
         addCatch(newLabelForIndex(3), newLabelForIndex(4), newLabelForIndex(6))
     }
 
     // Reuse the ordinary autoplay navigator's initialization and response handling.
     // This detaches the local sequence without loading/seeking/stopping the player.
-    bridge(wrapperType, "patch_clearQueue", emptyList(), "Z", 6, """
-        iget-boolean v0, p0, $localFlag
-        if-eqz v0, :missing
-        iget-object v1, p0, $response
-        if-eqz v1, :missing
-        iget-object v2, p0, $nativeNavigator
-        instance-of v0, v2, $queueType
-        if-eqz v0, :missing
-        new-instance v4, ${builderConstructor.definingClass}
-        invoke-direct {v4}, $builderConstructor
-        iget-object v0, v1, $watchCommand
-        iput-object v0, v4, $commandField
-        invoke-virtual {v4}, $buildDescriptor
-        move-result-object v4
-        invoke-virtual {v4}, $playlistId
-        move-result-object v4
-        invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
-        move-result v0
-        if-nez v0, :ordinary_autoplay
-        # A replaced playlist must not return through its old next/previous sets.
-        # Copy the response, leaving the running descriptor and server data untouched.
-        iget-object v0, v1, $sourceResponse
-        new-instance v1, $responseType
-        invoke-direct {v1, v0}, $responseConstructor
-        const/4 v0, 0x0
-        iput-object v0, v1, $responseNavigation
-        const/4 v3, 0x0
-        const/4 v5, 0x0
-        goto :create_autoplay
+    bridge(
+        wrapperType,
+        "patch_clearQueue",
+        emptyList(),
+        "Z",
+        6,
+        """
+            iget-boolean v0, p0, $localFlag
+            if-eqz v0, :missing
+            iget-object v1, p0, $response
+            if-eqz v1, :missing
+            iget-object v2, p0, $nativeNavigator
+            instance-of v0, v2, $queueType
+            if-eqz v0, :missing
+            new-instance v4, ${builderConstructor.definingClass}
+            invoke-direct {v4}, $builderConstructor
+            iget-object v0, v1, $watchCommand
+            iput-object v0, v4, $commandField
+            invoke-virtual {v4}, $buildDescriptor
+            move-result-object v4
+            invoke-virtual {v4}, $playlistId
+            move-result-object v4
+            invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
+            move-result v0
+            if-nez v0, :ordinary_autoplay
+            # A replaced playlist must not return through its old next/previous sets.
+            # Copy the response, leaving the running descriptor and server data untouched.
+            iget-object v0, v1, $sourceResponse
+            new-instance v1, $responseType
+            invoke-direct {v1, v0}, $responseConstructor
+            const/4 v0, 0x0
+            iput-object v0, v1, $responseNavigation
+            const/4 v3, 0x0
+            const/4 v5, 0x0
+            goto :create_autoplay
 
-        :ordinary_autoplay
-        iget-object v3, p0, $savedAutoplay
-        move-object v5, v3
-        if-nez v3, :autoplay_ready
+            :ordinary_autoplay
+            iget-object v3, p0, $savedAutoplay
+            move-object v5, v3
+            if-nez v3, :autoplay_ready
 
-        :create_autoplay
-        invoke-static {}, $optionalType->empty()$optionalType
-        move-result-object v4
-        new-instance v3, $autoplayType
-        invoke-direct {v3, v4, v4, v4}, $autoplayConstructor
+            :create_autoplay
+            invoke-static {}, $optionalType->empty()$optionalType
+            move-result-object v4
+            new-instance v3, $autoplayType
+            invoke-direct {v3, v4, v4, v4}, $autoplayConstructor
 
-        :autoplay_ready
-        const/4 v0, 0x0
-        iput-boolean v0, p0, $localFlag
-        invoke-virtual {p0, v3}, ${autoplay.originalMethod}
-        iput-object v5, p0, $savedAutoplay
-        iget-object v4, p0, $nativeNavigator
-        invoke-interface {v4, v1}, $nativeReceive
-        if-eqz v5, :dispose_queue
-        invoke-virtual {p0, v5}, ${autoplay.originalMethod}
+            :autoplay_ready
+            const/4 v0, 0x0
+            iput-boolean v0, p0, $localFlag
+            invoke-virtual {p0, v3}, ${autoplay.originalMethod}
+            iput-object v5, p0, $savedAutoplay
+            iget-object v4, p0, $nativeNavigator
+            invoke-interface {v4, v1}, $nativeReceive
+            if-eqz v5, :dispose_queue
+            invoke-virtual {p0, v5}, ${autoplay.originalMethod}
 
-        :dispose_queue
-        check-cast v2, $queueType
-        invoke-virtual {v2}, $queueType->patch_disposeWithoutPlayback()V
-        const/4 v0, 0x1
-        return v0
+            :dispose_queue
+            check-cast v2, $queueType
+            invoke-virtual {v2}, $queueType->patch_disposeWithoutPlayback()V
+            const/4 v0, 0x1
+            return v0
 
-        :missing
-        const/4 v0, 0x0
-        return v0
-    """)
+            :missing
+            const/4 v0, 0x0
+            return v0
+        """
+    )
 
-    bridge(queueType, "patch_releaseLocalQueue", emptyList(), "V", 2, """
-        iget-object v0, p0, $queueOwner
-        instance-of v1, v0, $mutableType
-        if-eqz v1, :done
-        check-cast v0, $mutableType
-        const/4 v1, 0x0
-        iput-boolean v1, v0, $localItemsFlag
+    bridge(
+        queueType,
+        "patch_releaseLocalQueue",
+        emptyList(),
+        "V",
+        2,
+        """
+            iget-object v0, p0, $queueOwner
+            instance-of v1, v0, $mutableType
+            if-eqz v1, :done
+            check-cast v0, $mutableType
+            const/4 v1, 0x0
+            iput-boolean v1, v0, $localItemsFlag
 
-        :done
-        return-void
-    """)
+            :done
+            return-void
+        """
+    )
 
     queueDisposeMatch.method.addInstruction(
         0,
@@ -411,11 +508,14 @@ internal fun installNativeQueueEngine(
 
     val wrapperDispose = nativeQueueWrapperDisposeFingerprint(nativeNavigator, queueDispose.name).matchSingle()
     val disposeRegister = wrapperDispose.method.findFreeRegister(0)
-    wrapperDispose.method.addInstructionsWithLabels(0, """
-        const/4 v$disposeRegister, 0x0
-        iput-boolean v$disposeRegister, p0, $localFlag
-        iput-object v$disposeRegister, p0, $savedAutoplay
-    """)
+    wrapperDispose.method.addInstructionsWithLabels(
+        0,
+        """
+            const/4 v$disposeRegister, 0x0
+            iput-boolean v$disposeRegister, p0, $localFlag
+            iput-object v$disposeRegister, p0, $savedAutoplay
+        """
+    )
 
     // Local row loads must be JUMP within the native queue, rather than new ordinary playback.
     val requestConstructor = playlistNavigationRequestFingerprint(enumType).matchSingle().originalMethod
@@ -439,16 +539,19 @@ internal fun installNativeQueueEngine(
     val insertMethod = localLoad.method.cloneParameters()
     val insertRegister = insertMethod.findFreeRegister(0)
     val loadParameters = localLoad.originalMethod.parameterTypes.joinToString("")
-    insertMethod.addInstructionsWithLabels(0, """
-        iget-boolean v$insertRegister, p0, $localItemsFlag
-        if-eqz v$insertRegister, :account_insert
-        invoke-virtual {p0, p1, p2}, $mutableType->patch_localJump($loadParameters)$requestType
-        move-result-object v$insertRegister
-        return-object v$insertRegister
+    insertMethod.addInstructionsWithLabels(
+        0,
+        """
+            iget-boolean v$insertRegister, p0, $localItemsFlag
+            if-eqz v$insertRegister, :account_insert
+            invoke-virtual {p0, p1, p2}, $mutableType->patch_localJump($loadParameters)$requestType
+            move-result-object v$insertRegister
+            return-object v$insertRegister
 
-        :account_insert
-        nop
-    """)
+            :account_insert
+            nop
+        """
+    )
 
     // The playback service holds the active sequencer, which holds the wrapper.
     val loader = nativeQueueLoaderFingerprint(serviceType).matchSingle()
@@ -459,21 +562,28 @@ internal fun installNativeQueueEngine(
     val sequencerField = nativeQueueSequencerNavigatorFingerprint(sequencerType, navigatorType).matchSingle()
         .instructionMatches.single().instruction.getReference<FieldReference>()!!
 
-    bridge(serviceType, "patch_getQueuePlayback", emptyList(), NATIVE_PLAYBACK_INTERFACE, 1, """
-        iget-object v0, p0, $sequencerOwner
-        iget-object v0, v0, $sequencer
-        if-eqz v0, :missing
-        check-cast v0, $sequencerType
-        iget-object v0, v0, $sequencerField
-        instance-of p0, v0, $wrapperType
-        if-eqz p0, :missing
-        check-cast v0, $wrapperType
-        return-object v0
+    bridge(
+        serviceType,
+        "patch_getQueuePlayback",
+        emptyList(),
+        NATIVE_PLAYBACK_INTERFACE,
+        1,
+        """
+            iget-object v0, p0, $sequencerOwner
+            iget-object v0, v0, $sequencer
+            if-eqz v0, :missing
+            check-cast v0, $sequencerType
+            iget-object v0, v0, $sequencerField
+            instance-of p0, v0, $wrapperType
+            if-eqz p0, :missing
+            check-cast v0, $wrapperType
+            return-object v0
 
-        :missing
-        const/4 v0, 0x0
-        return-object v0
-    """)
+            :missing
+            const/4 v0, 0x0
+            return-object v0
+        """
+    )
 
     // Selection can commit after the shared video-ID event. Observe native completion
     // without passing a receiver register that the native method may have reused.

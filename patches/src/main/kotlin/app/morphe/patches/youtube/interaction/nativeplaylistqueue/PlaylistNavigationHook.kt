@@ -42,25 +42,37 @@ internal fun installPlaylistNavigation(
         val controls = mutableClassDefBy(constructor.originalClassDef.type)
 
         controls.interfaces.add(NAVIGATOR_OWNER_INTERFACE)
-        controls.addBridgeMethod("patch_getNavigator", emptyList(), "Ljava/lang/Object;", 1, """
-            iget-object v0, p0, $navigatorField
-            return-object v0
-        """)
+        controls.addBridgeMethod(
+            "patch_getNavigator",
+            emptyList(),
+            "Ljava/lang/Object;",
+            1,
+            """
+                iget-object v0, p0, $navigatorField
+                return-object v0
+            """
+        )
     }
 
-    mutableClassDefBy(controllerType).addBridgeMethod("patch_getNavigator", emptyList(), "Ljava/lang/Object;", 2, """
-        iget-object v0, p0, $controlsField
-        instance-of v1, v0, $NAVIGATOR_OWNER_INTERFACE
-        if-eqz v1, :missing
-        check-cast v0, $NAVIGATOR_OWNER_INTERFACE
-        invoke-interface {v0}, $NAVIGATOR_OWNER_INTERFACE->patch_getNavigator()Ljava/lang/Object;
-        move-result-object v0
-        return-object v0
+    mutableClassDefBy(controllerType).addBridgeMethod(
+        "patch_getNavigator",
+        emptyList(),
+        "Ljava/lang/Object;",
+        2,
+        """
+            iget-object v0, p0, $controlsField
+            instance-of v1, v0, $NAVIGATOR_OWNER_INTERFACE
+            if-eqz v1, :missing
+            check-cast v0, $NAVIGATOR_OWNER_INTERFACE
+            invoke-interface {v0}, $NAVIGATOR_OWNER_INTERFACE->patch_getNavigator()Ljava/lang/Object;
+            move-result-object v0
+            return-object v0
 
-        :missing
-        const/4 v0, 0x0
-        return-object v0
-    """)
+            :missing
+            const/4 v0, 0x0
+            return-object v0
+        """
+    )
 
     installPlaylistNotification(context, wrapperType, enumType)
     installPlaylistRepeat(context, navigatorType)

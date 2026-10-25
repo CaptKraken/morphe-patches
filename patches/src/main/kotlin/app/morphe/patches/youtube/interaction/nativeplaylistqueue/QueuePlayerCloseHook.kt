@@ -34,6 +34,7 @@ internal fun installQueuePlayerClose(
         else queuePlayerCloseFlingLegacyFingerprint(dismiss),
         queuePlayerCloseTouchFingerprint(dismiss)
     )
+
     closes.forEach { fingerprint ->
         val match = fingerprint.matchSingle()
 
@@ -51,13 +52,19 @@ internal fun installQueuePlayerClose(
     val dispatcher = playlistControllerDispatcherFingerprint(controllerType, dispatch.definingClass)
         .matchSingle().instructionMatches.first().instruction.getReference<FieldReference>()!!
 
-    mutableClassDefBy(controllerType).addBridgeMethod("patch_showQueueFeedback", listOf("[B"), "V", 3, """
-        ${parseProtoInstructions(endpointType, bytes = "p1", result = "v0", registry = "v1")}
-        check-cast v0, $endpointType
-        iget-object v1, p0, $dispatcher
-        invoke-static {}, Ljava/util/Collections;->emptyMap()Ljava/util/Map;
-        move-result-object v2
-        invoke-interface {v1, v0, v2}, $dispatch
-        return-void
-    """)
+    mutableClassDefBy(controllerType).addBridgeMethod(
+        "patch_showQueueFeedback",
+        listOf("[B"),
+        "V",
+        3,
+        """
+            ${parseProtoInstructions(endpointType, bytes = "p1", result = "v0", registry = "v1")}
+            check-cast v0, $endpointType
+            iget-object v1, p0, $dispatcher
+            invoke-static {}, Ljava/util/Collections;->emptyMap()Ljava/util/Map;
+            move-result-object v2
+            invoke-interface {v1, v0, v2}, $dispatch
+            return-void
+        """
+    )
 }

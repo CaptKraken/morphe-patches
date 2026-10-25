@@ -48,7 +48,9 @@ public final class QueueSaveFeedback {
     public static int confirmationDuration(MessageLite renderer) {
         try {
             var toast = QueueToastRenderer.parseFrom(renderer.toByteArray());
-            if (toast.getQueueSaveConfirmation()) return CONFIRMATION_DURATION_MILLISECONDS;
+            if (toast.getQueueSaveConfirmation()) {
+                return CONFIRMATION_DURATION_MILLISECONDS;
+            }
             String undoToken = toast.getActionButton().getButtonRenderer().getServiceEndpoint().getQueueUndoToken();
             return undoToken.isEmpty() ? 0 : NativePlaylistQueuePatch.queueUndoDuration(undoToken);
         } catch (Exception ex) {
@@ -60,8 +62,15 @@ public final class QueueSaveFeedback {
     static QueueSaveEditResponse decorate(QueueSaveEditResponse response, Selection selection,
                                          String message, String undoLabel) {
         // Native PlaylistEditResponse status: 0 unknown, 1 succeeded.
-        if (response.getStatus() != 1) return response;
-        for (var action : response.getActionsList()) if (action.hasAddToToastAction()) return response;
+        if (response.getStatus() != 1) {
+            return response;
+        }
+        for (var action : response.getActionsList()) {
+            if (action.hasAddToToastAction()) {
+                return response;
+            }
+        }
+
         var toast = QueueToastRenderer.newBuilder().setQueueSaveConfirmation(true)
                 .setResponseText(Text.newBuilder().setSimpleText(message));
         var requestedIds = new HashSet<>(selection.videoIds());

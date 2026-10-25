@@ -52,8 +52,11 @@ final class MixPlaylistRequest {
         } catch (Exception exception) {
             Logger.printException(() -> "Could not parse Mix for native queue", exception);
         } finally {
-            if (connection != null) connection.disconnect();
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
+
         return null;
     }
 
@@ -63,23 +66,34 @@ final class MixPlaylistRequest {
         var next = contents == null ? null : contents.optJSONObject("singleColumnWatchNextResults");
         var wrapper = next == null ? null : next.optJSONObject("playlist");
         var playlist = wrapper == null ? null : wrapper.optJSONObject("playlist");
-        if (playlist == null || !playlistId.equals(playlist.optString("playlistId"))) return null;
+        if (playlist == null || !playlistId.equals(playlist.optString("playlistId"))) {
+            return null;
+        }
         var rows = playlist.optJSONArray("contents");
-        if (rows == null) return null;
+        if (rows == null) {
+            return null;
+        }
         List<VideoMetadata> result = new ArrayList<>();
         for (int index = 0; index < rows.length(); index++) {
             var item = rows.optJSONObject(index);
             var video = item == null ? null : item.optJSONObject("playlistPanelVideoRenderer");
-            if (video == null || video.has("unplayableText")) continue;
+            if (video == null || video.has("unplayableText")) {
+                continue;
+            }
             String id = video.optString("videoId");
-            if (!PlaylistQueue.isVideoId(id)) return null;
+            if (!PlaylistQueue.isVideoId(id)) {
+                return null;
+            }
             String channel = VideoMetadata.text(video.optJSONObject("longBylineText"));
             boolean fullByline = !channel.isEmpty();
-            if (channel.isEmpty()) channel = VideoMetadata.text(video.optJSONObject("shortBylineText"));
+            if (channel.isEmpty()) {
+                channel = VideoMetadata.text(video.optJSONObject("shortBylineText"));
+            }
             result.add(new VideoMetadata(id, VideoMetadata.text(video.optJSONObject("title")), channel,
                     VideoMetadata.text(video.optJSONObject("videoInfo")),
                     VideoMetadata.text(video.optJSONObject("lengthText")), fullByline, true));
         }
+
         // A Mix is generated dynamically. Append its initial batch, without
         // following its indefinite continuation or claiming to import a saved list.
         return result.isEmpty() ? null : List.copyOf(result);

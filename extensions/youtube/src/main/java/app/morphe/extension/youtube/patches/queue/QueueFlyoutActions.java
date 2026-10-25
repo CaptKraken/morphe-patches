@@ -42,7 +42,9 @@ public final class QueueFlyoutActions {
             MenuRenderer completed = completeMenu(menu,
                     NativePlaylistQueuePatch.canShowFlyoutLast(),
                     str("morphe_native_playlist_queue_next"), str("morphe_native_playlist_queue_last"));
-            if (completed == menu) return original;
+            if (completed == menu) {
+                return original;
+            }
             return ((Menu) original).patch_parseQueueFlyout(completed.toByteArray());
         } catch (Exception exception) {
             Logger.printException(() -> "completeQueueMenu failure", exception);
@@ -60,12 +62,20 @@ public final class QueueFlyoutActions {
         MenuItem next = null;
         MenuItem last = null;
         for (MenuItem item : menu.getItemsList()) {
-            if (!isLocalItem(item)) continue;
+            if (!isLocalItem(item)) {
+                continue;
+            }
             YTIconType icon = icon(item);
-            if (icon == YTIconType.QUEUE_PLAY_NEXT && next == null) next = item;
-            else if (icon == YTIconType.QUEUE_PLAY_LAST && last == null) last = item;
+            if (icon == YTIconType.QUEUE_PLAY_NEXT && next == null) {
+                next = item;
+            } else if (icon == YTIconType.QUEUE_PLAY_LAST && last == null) {
+                last = item;
+            }
         }
-        if (next == null && last == null) return menu;
+
+        if (next == null && last == null) {
+            return menu;
+        }
         next = prepareLocalItem(next == null ? queueItem(YTIconType.QUEUE_PLAY_NEXT, nextLabel) : next);
         if (allowLast) {
             last = prepareLocalItem(last == null ? queueItem(YTIconType.QUEUE_PLAY_LAST, lastLabel) : last);
@@ -77,11 +87,16 @@ public final class QueueFlyoutActions {
             if (isLocalItem(item) && (icon == YTIconType.QUEUE_PLAY_NEXT || icon == YTIconType.QUEUE_PLAY_LAST)) {
                 if (!added) {
                     completed.addItems(next);
-                    if (allowLast) completed.addItems(last);
+                    if (allowLast) {
+                        completed.addItems(last);
+                    }
                     added = true;
                 }
-            } else completed.addItems(item);
+            } else {
+                completed.addItems(item);
+            }
         }
+
         MenuRenderer result = completed.build();
         return result.equals(menu) ? menu : result;
     }
@@ -119,18 +134,22 @@ public final class QueueFlyoutActions {
                     item.getMenuConditionalServiceItemRenderer().toBuilder()
                             .setVisibility(MDX_DISCONNECTED).clearSecondaryIcon()).build();
         }
+
         if (item.hasMenuConditionalNavigationItemRenderer()) {
             return item.toBuilder().setMenuConditionalNavigationItemRenderer(
                     item.getMenuConditionalNavigationItemRenderer().toBuilder().setVisibility(MDX_DISCONNECTED)).build();
         }
+
         if (item.hasMenuServiceItemRenderer()) {
             return item.toBuilder().setMenuServiceItemRenderer(
                     item.getMenuServiceItemRenderer().toBuilder().clearSecondaryIcon()).build();
         }
+
         if (item.hasMenuNavigationItemRenderer()) {
             return item.toBuilder().setMenuNavigationItemRenderer(
                     item.getMenuNavigationItemRenderer().toBuilder().clearSecondaryIcon()).build();
         }
+
         return item;
     }
 
