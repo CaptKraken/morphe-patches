@@ -22,9 +22,9 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 
 /** Publish queue capabilities before native notification actions and playback state are built. */
 internal fun installPlaylistNotificationControls(context: BytecodePatchContext, ownerType: String) = with(context) {
-    val modelType = NotificationSkipActionsFingerprint.matchSingle()
+    val modelType = NotificationSkipActionsFingerprint
         .instructionMatches.first().instruction.getReference<FieldReference>()!!.type
-    val setter = notificationCapabilitiesSetterFingerprint(modelType).matchSingle().originalMethod
+    val setter = notificationCapabilitiesSetterFingerprint(modelType).originalMethod
 
     // The original adapter returns V. The newer adapter returns its change flags.
     val adapters = notificationCapabilitiesFingerprint(setter).matchAll()
@@ -34,7 +34,7 @@ internal fun installPlaylistNotificationControls(context: BytecodePatchContext, 
 
     val playbackState = notificationPlaybackStateFingerprint(
         adapters.single { it.originalMethod.returnType == "V" }.originalClassDef.type
-    ).matchSingle().originalMethod
+    ).originalMethod
 
     adapters.forEach { match ->
         val adapterType = match.originalClassDef.type

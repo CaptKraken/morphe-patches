@@ -10,7 +10,6 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import app.morphe.patcher.util.proxy.mutableTypes.MutableField.Companion.toMutable
 import app.morphe.patches.youtube.layout.originaltitles.PlaylistPanelVideoBindFingerprint
 import com.android.tools.smali.dexlib2.AccessFlags
@@ -38,7 +37,7 @@ internal fun installPlaylistRowPlayback(
     val videoIdField = videoIdFields.single()
     val videoType = videoIdField.definingClass
 
-    val rowMenu = playlistRowMenuOpenFingerprint(videoType).matchSingle()
+    val rowMenu = playlistRowMenuOpenFingerprint(videoType).match()
 
     installPlaylistMenuDispatch(context, rowMenu.originalMethod.parameterTypes[1].toString())
 
@@ -53,18 +52,18 @@ internal fun installPlaylistRowPlayback(
 
     // The native veto predicate runs before logging decorates the bound endpoint.
     // Observe its original identity after the veto, never the decorated copy.
-    val click = PlaylistRowClickFingerprint.matchSingle()
+    val click = PlaylistRowClickFingerprint.match()
     val listenerType = click.originalClassDef.type
     val endpointRead = click.instructionMatches[4]
     val listenerEndpoint = endpointRead.instruction.getReference<FieldReference>()!!
     val endpointType = listenerEndpoint.type
-    val rowEndpoint = playlistRowEndpointFingerprint(listenerType, videoType, endpointType).matchSingle()
+    val rowEndpoint = playlistRowEndpointFingerprint(listenerType, videoType, endpointType).match()
     val rowListener = rowEndpoint.instructionMatches.first().instruction.getReference<FieldReference>()!!
     val videoEndpoint = rowEndpoint.instructionMatches.last().instruction.getReference<FieldReference>()!!
 
-    val factory = playlistItemFactoryFingerprint(videoType).matchSingle()
+    val factory = playlistItemFactoryFingerprint(videoType).match()
     val itemVideo = factory.instructionMatches.single().instruction.getReference<FieldReference>()!!
-    val contents = playlistContentsFingerprint(panelField.type, factory.originalMethod).matchSingle()
+    val contents = playlistContentsFingerprint(panelField.type, factory.originalMethod).match()
         .instructionMatches.first().instruction.getReference<FieldReference>()!!
 
     val controller = mutableClassDefBy(modelField.definingClass)
@@ -218,7 +217,7 @@ internal fun installPlaylistRowPlayback(
         playlistEndpointBindFingerprint(listenerEndpoint),
         playlistEndpointUnbindFingerprint(listenerEndpoint)
     ).forEach { fingerprint ->
-        val match = fingerprint.matchSingle()
+        val match = fingerprint.match()
         val store = match.instructionMatches.single()
         val registers = store.getInstruction<TwoRegisterInstruction>()
         match.method.addInstruction(

@@ -10,7 +10,6 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
@@ -20,7 +19,7 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 
 /** Retain native button validation and dispatch every unrelated command unchanged. */
 internal fun installPlaylistRemoval(context: BytecodePatchContext) = with(context) {
-    val dispatch = NativeButtonDispatchFingerprint.matchSingle()
+    val dispatch = NativeButtonDispatchFingerprint.match()
     val serviceCall = dispatch.instructionMatches.single()
     val registers = serviceCall.instruction as FiveRegisterInstruction
     val callback = serviceCall.instruction.getReference<MethodReference>()!!
@@ -46,7 +45,7 @@ internal fun installPlaylistRemoval(context: BytecodePatchContext) = with(contex
 
 /** Preserve native swipe drawing when an attached playing row becomes removable. */
 internal fun installPlaylistSwipeBackground(context: BytecodePatchContext, listener: FieldReference) = with(context) {
-    val attached = PlaylistSwipeAttachedFingerprint.matchSingle()
+    val attached = PlaylistSwipeAttachedFingerprint
     val foregroundStore = attached.instructionMatches.first()
     val backgroundRead = attached.instructionMatches[1].instruction as FiveRegisterInstruction
     val backgroundStore = attached.instructionMatches.last()
@@ -81,9 +80,9 @@ internal fun installPlaylistSwipeBackground(context: BytecodePatchContext, liste
         """
     )
 
-    val update = PlaylistRowBackgroundFingerprint.matchSingle()
+    val update = PlaylistRowBackgroundFingerprint
     val holder = mutableClassDefBy(update.originalClassDef.type)
-    val swipeField = PlaylistRowSwipeLayoutFingerprint.matchSingle()
+    val swipeField = PlaylistRowSwipeLayoutFingerprint
         .instructionMatches.single().instruction.getReference<FieldReference>()!!
     val bridge = holder.addBridgeMethod(
         "patch_refreshQueueSwipeBackground",

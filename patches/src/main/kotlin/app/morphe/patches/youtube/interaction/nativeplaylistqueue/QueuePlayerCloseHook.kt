@@ -22,7 +22,7 @@ internal fun installQueuePlayerClose(
     endpointType: String,
     dispatch: MethodReference
 ) = with(context) {
-    val dismiss = MiniAppOpenYtContentCommandEndpointFingerprint.matchSingle()
+    val dismiss = MiniAppOpenYtContentCommandEndpointFingerprint
         .instructionMatches.last().instruction.getReference<MethodReference>()!!
 
     // Before 21.32 the fling has a second accepted-dismiss branch. Hook every user
@@ -48,9 +48,9 @@ internal fun installQueuePlayerClose(
 
     // This dispatcher belongs to the activity, not the disposed playback backend.
     // Reading it remains valid after the watch view detaches. No listener is replaced.
-    val controllerType = PlaylistControllerConstructorFingerprint.matchSingle().originalClassDef.type
+    val controllerType = PlaylistControllerConstructorFingerprint.originalClassDef.type
     val dispatcher = playlistControllerDispatcherFingerprint(controllerType, dispatch.definingClass)
-        .matchSingle().instructionMatches.first().instruction.getReference<FieldReference>()!!
+        .instructionMatches.first().instruction.getReference<FieldReference>()!!
 
     mutableClassDefBy(controllerType).addBridgeMethod(
         "patch_showQueueFeedback",

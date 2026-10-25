@@ -10,7 +10,6 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import app.morphe.patcher.util.proxy.mutableTypes.MutableClass
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
@@ -50,7 +49,7 @@ internal fun BytecodePatchContext.parseProtoInstructions(
     result: String,
     registry: String
 ): String {
-    val defaultInstance = protoDefaultInstanceFingerprint(messageType).matchSingle()
+    val defaultInstance = protoDefaultInstanceFingerprint(messageType)
         .instructionMatches.single().instruction.getReference<FieldReference>()!!
 
     // Generated messages share the static parseFrom of the protobuf runtime's message class.

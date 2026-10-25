@@ -831,10 +831,11 @@ internal fun playlistControlsCreationFingerprint(controllerType: String) = Finge
         opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
         opcode(Opcode.CHECK_CAST, location = MatchAfterWithin(1)),
         methodCall(name = "<init>", opcode = Opcode.INVOKE_DIRECT_RANGE),
+        // 21.43+ restores the view register before the store.
         fieldAccess(
             definingClass = controllerType,
             opcode = Opcode.IPUT_OBJECT,
-            location = MatchAfterImmediately()
+            location = MatchAfterWithin(1)
         )
     )
 )

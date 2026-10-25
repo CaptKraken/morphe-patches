@@ -24,9 +24,11 @@ private const val LIST = "Ljava/util/List;"
 internal fun installQueueSavePicker(context: BytecodePatchContext, endpointType: String) = with(context) {
     installQueueSaveFeedback(context, endpointType)
 
-    val request = QueueSaveRequestFingerprint.matchSingle().originalClassDef
-    val picker = queueSavePickerFingerprint(request.type).matchSingle()
-    val factory = queueSavePickerFactoryFingerprint(picker.originalClassDef.type, endpointType).matchSingle()
+    val request = QueueSaveRequestFingerprint.originalClassDef
+    val picker = queueSavePickerFingerprint(request.type).match()
+    val factory = queueSavePickerFactoryFingerprint(
+        picker.originalClassDef.type, endpointType
+    ).match()
 
     val serialize = factory.instructionMatches[1]
     val serializeCall = serialize.getInstruction<FiveRegisterInstruction>()

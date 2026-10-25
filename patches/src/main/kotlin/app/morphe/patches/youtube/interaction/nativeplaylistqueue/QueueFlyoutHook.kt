@@ -12,7 +12,6 @@ import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.findFreeRegister
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import app.morphe.patcher.util.smali.ExternalLabel
 import app.morphe.patches.youtube.layout.flyout.FeedFlyoutButtonsInitializerFingerprint
 import app.morphe.util.addInstructionsAtControlFlowLabel
@@ -35,8 +34,8 @@ internal fun installQueueFlyout(context: BytecodePatchContext) = with(context) {
         it.instructionMatches[1].instruction.getReference<FieldReference>()!!
     }.distinctBy { it.toString() }
     check(itemFields.size == 1) { "Native queue menus must share their item list" }
-    val resolverType = QueueFlyoutResolverFingerprint.matchSingle().originalClassDef.type
-    val popup = queueFlyoutPopupFingerprint(resolverType, menuType, itemFields.single()).matchSingle()
+    val resolverType = QueueFlyoutResolverFingerprint.originalClassDef.type
+    val popup = queueFlyoutPopupFingerprint(resolverType, menuType, itemFields.single()).match()
 
     // The shared factory exposes native icon conversion and the button's model
     // type. Direct sheet clicks can bypass its Runnable, so intercept both native
@@ -48,11 +47,11 @@ internal fun installQueueFlyout(context: BytecodePatchContext) = with(context) {
     val itemType = iconGetter.parameterTypes.single().toString()
     val buttonType = queueFlyoutButtonConstructorFingerprint(
         FeedFlyoutButtonsInitializerFingerprint.originalMethod, itemType
-    ).matchSingle().instructionMatches.single().instruction.getReference<MethodReference>()!!.definingClass
+    ).instructionMatches.single().instruction.getReference<MethodReference>()!!.definingClass
     for (sheet in sheets) {
         val click = queueFlyoutClickFingerprint(
             sheet.originalClassDef.type, buttonType, itemType
-        ).matchSingle()
+        ).match()
         val read = click.instructionMatches.first()
         val item = (read.instruction as OneRegisterInstruction).registerA
         val method = click.method

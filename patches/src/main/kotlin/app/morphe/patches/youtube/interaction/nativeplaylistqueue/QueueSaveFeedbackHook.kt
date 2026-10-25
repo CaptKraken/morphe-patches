@@ -11,7 +11,6 @@ import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.cloneParameters
 import app.morphe.patcher.util.findFreeRegister
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import app.morphe.patcher.util.p0Register
 import app.morphe.patcher.util.proxy.mutableTypes.MutableField.Companion.toMutable
 import app.morphe.util.addInstructionsAtControlFlowLabel
@@ -24,9 +23,9 @@ import com.android.tools.smali.dexlib2.immutable.ImmutableField
 
 /** Add a native response action only for the callback created by an owned queue save. */
 internal fun installQueueSaveFeedback(context: BytecodePatchContext, endpointType: String) = with(context) {
-    val callbackType = QueueSaveEditErrorFingerprint.matchSingle().originalClassDef.type
-    val creation = queueSaveEditCreationFingerprint(callbackType, endpointType).matchSingle()
-    val success = queueSaveEditSuccessFingerprint(callbackType).matchSingle()
+    val callbackType = QueueSaveEditErrorFingerprint.originalClassDef.type
+    val creation = queueSaveEditCreationFingerprint(callbackType, endpointType).match()
+    val success = queueSaveEditSuccessFingerprint(callbackType).match()
     val responseType = success.originalMethod.parameterTypes.single().toString()
     val callback = mutableClassDefBy(callbackType)
     callback.interfaces.add(SAVE_CALLBACK_INTERFACE)
@@ -100,13 +99,13 @@ internal fun installQueueSaveFeedback(context: BytecodePatchContext, endpointTyp
 /** Use the native builder and scheduler for owned Save and queue-clear confirmations. */
 internal fun installQueueSaveConfirmationDuration(context: BytecodePatchContext) = with(context) {
     val builderType = QueueSnackbarModernFactoryFingerprint.originalMethod.returnType
-    val durationSetter = queueSnackbarDurationFingerprint(builderType).matchSingle()
+    val durationSetter = queueSnackbarDurationFingerprint(builderType).match()
         .instructionMatches[4].instruction.getReference<MethodReference>()!!
 
     // Keep the input renderer even when the native factory reuses its parameters.
     QueueSnackbarModernFactoryFingerprint.method.cloneParameters()
     QueueSnackbarModernFactoryFingerprint.clearMatch()
-    val factory = QueueSnackbarModernFactoryFingerprint.matchSingle()
+    val factory = QueueSnackbarModernFactoryFingerprint.match()
 
     val exit = factory.instructionMatches.last()
     val builder = exit.getInstruction<OneRegisterInstruction>().registerA

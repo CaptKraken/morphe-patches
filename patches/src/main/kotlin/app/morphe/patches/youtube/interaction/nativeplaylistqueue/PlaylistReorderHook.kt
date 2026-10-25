@@ -10,7 +10,6 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import app.morphe.patcher.util.p0Register
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
@@ -18,9 +17,9 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 
 /** Observe the existing drag transaction; retain native animation and accessibility. */
 internal fun installPlaylistReordering(context: BytecodePatchContext, videoType: String) = with(context) {
-    val holderType = PlaylistDragBinderFingerprint.matchSingle().originalMethod.definingClass
-    val start = playlistDragStartFingerprint(holderType).matchSingle()
-    val end = playlistDragEndFingerprint(holderType).matchSingle()
+    val holderType = PlaylistDragBinderFingerprint.originalMethod.definingClass
+    val start = playlistDragStartFingerprint(holderType)
+    val end = playlistDragEndFingerprint(holderType)
     check(start.originalMethod.parameterTypes.take(2) == end.originalMethod.parameterTypes.take(2)) {
         "Native playlist queue: drag callbacks disagree about their holder/adapter types"
     }
@@ -38,7 +37,7 @@ internal fun installPlaylistReordering(context: BytecodePatchContext, videoType:
     // Native edit events inspect the adapter's wrapper through this row interface.
     // The native server-edit branch additionally requires playlistSetVideoId; our
     // renderer omits it, so normal account edits need no interception or replacement.
-    val rowGetter = playlistEditEventsFingerprint(videoType).matchSingle()
+    val rowGetter = playlistEditEventsFingerprint(videoType)
         .instructionMatches.single().instruction.getReference<MethodReference>()!!
 
     val adapter = mutableClassDefBy(adapterType)
@@ -88,7 +87,7 @@ internal fun installPlaylistReordering(context: BytecodePatchContext, videoType:
         "invoke-static/range {p1 .. p4}, $EXTENSION_CLASS->onReorderEnded(Ljava/lang/Object;${REORDER_ITEMS_INTERFACE}II)V"
     )
 
-    playlistDragUnbindFingerprint(holderType).matchSingle().method.addInstruction(
+    playlistDragUnbindFingerprint(holderType).method.addInstruction(
         0,
         "invoke-static/range {p0 .. p0}, $EXTENSION_CLASS->onReorderHolderUnbound(Ljava/lang/Object;)V"
     )

@@ -10,7 +10,6 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.findFreeRegister
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
@@ -22,51 +21,57 @@ internal fun installPlaylistNotification(
     wrapperType: String,
     enumType: String
 ) = with(context) {
-    val next = playlistNavigationIntentFingerprint(enumType, "NEXT").matchSingle()
+    val next = playlistNavigationIntentFingerprint(enumType, "NEXT")
         .instructionMatches.last().instruction.getReference<FieldReference>()!!
-    val nextRequest = playlistNavigationSingletonFingerprint(wrapperType, next).matchSingle()
+    val nextRequest = playlistNavigationSingletonFingerprint(wrapperType, next)
         .instructionMatches.last().instruction.getReference<FieldReference>()!!
 
     // The media owner's Next dispatch, after logging and before the optional foreground callback.
-    val notification = notificationNextDispatchFingerprint(nextRequest).matchSingle()
+    val notification = notificationNextDispatchFingerprint(nextRequest).match()
     val owner = notification.originalClassDef.type
 
     // The media session callback delegates its skips to the media owner.
-    val callback = notificationSkipCallbackFingerprint("onSkipToNext").matchSingle().instructionMatches.last()
-        .instruction.getReference<MethodReference>()!!
-    val callbackDelegate = notificationDelegateFingerprint(callback, owner, notification.originalMethod.name)
-        .matchSingle()
+    val callback = notificationSkipCallbackFingerprint("onSkipToNext")
+        .instructionMatches.last().instruction.getReference<MethodReference>()!!
+    val callbackDelegate = notificationDelegateFingerprint(
+        callback, owner, notification.originalMethod.name
+    ).match()
 
     // The foreground callback that handles Next while a watch screen is open.
-    val foregroundCallback = notification.instructionMatches.first().instruction.getReference<FieldReference>()!!
-    val foregroundType = notificationForegroundSkipFingerprint(foregroundCallback.type, nextRequest).matchSingle()
-        .originalClassDef.type
+    val foregroundCallback = notification.instructionMatches.first().instruction
+        .getReference<FieldReference>()!!
+    val foregroundType = notificationForegroundSkipFingerprint(
+        foregroundCallback.type, nextRequest
+    ).originalClassDef.type
 
     // The same paths for Previous.
-    val previousCallback = notificationSkipCallbackFingerprint("onSkipToPrevious").matchSingle()
+    val previousCallback = notificationSkipCallbackFingerprint("onSkipToPrevious")
         .instructionMatches.last().instruction.getReference<MethodReference>()!!
     val previousDelegate = notificationDelegateFingerprint(
         previousCallback,
         owner,
         delegateType = callbackDelegate.originalClassDef.type
-    ).matchSingle().instructionMatches[1].instruction.getReference<MethodReference>()!!
-    val previous = notificationPreviousDispatchFingerprint(previousDelegate).matchSingle()
+    ).instructionMatches[1].instruction.getReference<MethodReference>()!!
+    val previous = notificationPreviousDispatchFingerprint(previousDelegate).match()
     val previousForeground = previous.instructionMatches.first().instruction.getReference<FieldReference>()!!
-    val previousIntent = playlistNavigationIntentFingerprint(enumType, "PREVIOUS").matchSingle()
+    val previousIntent = playlistNavigationIntentFingerprint(enumType, "PREVIOUS")
         .instructionMatches.last().instruction.getReference<FieldReference>()!!
-    val previousRequest = playlistNavigationSingletonFingerprint(wrapperType, previousIntent).matchSingle()
+    val previousRequest = playlistNavigationSingletonFingerprint(wrapperType, previousIntent)
         .instructionMatches.last().instruction.getReference<FieldReference>()!!
-    val previousForegroundType = notificationForegroundSkipFingerprint(previousForeground.type, previousRequest)
-        .matchSingle().originalClassDef.type
+    val previousForegroundType = notificationForegroundSkipFingerprint(
+        previousForeground.type, previousRequest
+    ).originalClassDef.type
 
     // The playback service that loads the queue's next and previous videos.
     val provider = notification.instructionMatches[2].instruction.getReference<FieldReference>()!!
     val getProvider = notification.instructionMatches[3].instruction.getReference<MethodReference>()!!
     val serviceType = notification.instructionMatches[5].instruction.getReference<TypeReference>()!!.type
 
-    val service = playlistServiceNavigatorFingerprint(wrapperType).matchSingle()
+    val service = playlistServiceNavigatorFingerprint(wrapperType).match()
     val navigatorType = service.originalClassDef.type
-    val playerFields = service.instructionMatches.take(3).map { it.instruction.getReference<FieldReference>()!! }
+    val playerFields = service.instructionMatches.take(3).map {
+        it.instruction.getReference<FieldReference>()!!
+    }
     val videoId = service.instructionMatches[4].instruction.getReference<MethodReference>()!!
     check(playerFields.first().definingClass == navigatorType &&
             playerFields.zipWithNext().all { (parent, child) -> parent.type == child.definingClass }) {
@@ -102,7 +107,9 @@ internal fun installPlaylistNotification(
         """
     )
 
-    val canNavigate = playlistServiceCanNavigateFingerprint(navigatorType, wrapperType).matchSingle().originalMethod
+    val canNavigate = playlistServiceCanNavigateFingerprint(
+        navigatorType, wrapperType
+    ).originalMethod
     for ((name, resultType, target) in listOf(
         Triple("patch_navigateQueue", "V", service.originalMethod),
         Triple("patch_canNavigateQueue", "Z", canNavigate)

@@ -11,22 +11,21 @@ import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.iface.instruction.Instruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 
 internal fun installFullscreenPlaylist(context: BytecodePatchContext) = with(context) {
-    val container = QuickActionsContainerFingerprint.matchSingle()
+    val container = QuickActionsContainerFingerprint
         .instructionMatches.last().instruction.getReference<FieldReference>()!!
     val controllerType = container.definingClass
-    val callback = quickActionsModelCallbackFingerprint(controllerType).matchSingle()
+    val callback = quickActionsModelCallbackFingerprint(controllerType).match()
     val setter = callback.instructionMatches.last().getInstruction<Instruction>()
         .getReference<MethodReference>()!!
     val modelType = setter.parameterTypes.single().toString()
-    val reset = quickActionsResetFingerprint(controllerType, setter).matchSingle()
-    val size = quickActionsSizeFingerprint(controllerType).matchSingle()
+    val reset = quickActionsResetFingerprint(controllerType, setter).match()
+    val size = quickActionsSizeFingerprint(controllerType).match()
     val dimensions = size.instructionMatches[1].getInstruction<Instruction>().getReference<FieldReference>()!!
     val emit = size.instructionMatches[2].getInstruction<Instruction>().getReference<MethodReference>()!!
 
@@ -37,7 +36,7 @@ internal fun installFullscreenPlaylist(context: BytecodePatchContext) = with(con
         parameters = emptyList(),
         returnType = "Ljava/lang/Object;",
         accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL)
-    ).matchSingle().originalMethod
+    ).originalMethod
     val controller = mutableClassDefBy(controllerType)
     controller.interfaces.add(FULLSCREEN_CONTROLLER_INTERFACE)
     controller.addBridgeMethod(
@@ -78,7 +77,7 @@ internal fun installFullscreenPlaylist(context: BytecodePatchContext) = with(con
     // The setter's original null handling, visibility policy and other action bindings
     // all remain in place. Only our local queue can supply the additional button.
     Fingerprint(definingClass = controllerType, name = setter.name,
-        parameters = listOf(modelType), returnType = "V").matchSingle().method.addInstructionsWithLabels(
+        parameters = listOf(modelType), returnType = "V").method.addInstructionsWithLabels(
             0,
             """
                 invoke-static/range {p0 .. p1}, $FULLSCREEN_ACTIONS_CLASS->onModelLoaded(${FULLSCREEN_CONTROLLER_INTERFACE}Ljava/lang/Object;)Ljava/lang/Object;

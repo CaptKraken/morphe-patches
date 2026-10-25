@@ -9,7 +9,6 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import app.morphe.patches.youtube.layout.playlistautoplay.NavigationIntentEnumFingerprint
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
@@ -20,11 +19,11 @@ internal fun installPlaylistNavigation(
     context: BytecodePatchContext,
     controllerType: String
 ) = with(context) {
-    val enumType = NavigationIntentEnumFingerprint.matchSingle().originalClassDef.type
-    val wrapperType = playlistNavigationRequestFingerprint(enumType).matchSingle().originalClassDef.type
+    val enumType = NavigationIntentEnumFingerprint.originalClassDef.type
+    val wrapperType = playlistNavigationRequestFingerprint(enumType).originalClassDef.type
 
     // The playlist controls are created with the playlist's own navigator.
-    val creation = playlistControlsCreationFingerprint(controllerType).matchSingle()
+    val creation = playlistControlsCreationFingerprint(controllerType).match()
     val navigatorType = creation.instructionMatches[4].instruction.getReference<TypeReference>()!!.type
     val controlsField = creation.instructionMatches.last().instruction.getReference<FieldReference>()!!
 
@@ -32,7 +31,7 @@ internal fun installPlaylistNavigation(
     val controlsImplementations = if (AccessFlags.INTERFACE.isSet(classDefBy(controlsField.type).accessFlags)) {
         playlistControlsImplementationFingerprint(navigatorType, controlsField.type).matchAll()
     } else {
-        listOf(playlistControlsConstructorFingerprint(navigatorType, controlsField.type).matchSingle())
+        listOf(playlistControlsConstructorFingerprint(navigatorType, controlsField.type).match())
     }
 
     check(controlsImplementations.isNotEmpty()) { "Native playlist queue: playlist controls are missing" }

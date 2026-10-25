@@ -12,7 +12,6 @@ import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.cloneParameters
 import app.morphe.patcher.util.findFreeRegister
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import app.morphe.util.findInstructionIndicesReversedOrThrow
 import com.android.tools.smali.dexlib2.Opcode
@@ -27,11 +26,11 @@ internal fun installPlaylistPlayerControls(
     wrapperType: String
 ) = with(context) {
     val availability = listOf("NEXT", "PREVIOUS").map { intent ->
-        val enumField = playlistNavigationIntentFingerprint(enumType, intent).matchSingle()
+        val enumField = playlistNavigationIntentFingerprint(enumType, intent)
             .instructionMatches.last().instruction.getReference<FieldReference>()!!
-        val request = playlistNavigationSingletonFingerprint(wrapperType, enumField).matchSingle()
+        val request = playlistNavigationSingletonFingerprint(wrapperType, enumField)
             .instructionMatches.last().instruction.getReference<FieldReference>()!!
-        request to playlistControlAvailabilityFingerprint(navigatorType, request).matchSingle()
+        request to playlistControlAvailabilityFingerprint(navigatorType, request)
     }
 
     val controlsType = availability.first().second.originalClassDef.type
@@ -65,7 +64,7 @@ internal fun installPlaylistPlayerControls(
                 "\nreturn-void"
     )
 
-    val constructor = playlistPlayerControlsConstructorFingerprint(controlsType, navigatorType).matchSingle().method
+    val constructor = playlistPlayerControlsConstructorFingerprint(controlsType, navigatorType).method
     constructor.findInstructionIndicesReversedOrThrow(Opcode.RETURN_VOID).forEach { index ->
         constructor.addInstruction(
             index,
@@ -97,10 +96,10 @@ internal fun installPlaylistPlayerControls(
         // The delegate read joins both paths of the optional native logging callback.
         // Intercept here so logging runs, but a local queue cannot fall into history/restart.
         val delegateField = match.instructionMatches.first().instruction.getReference<FieldReference>()!!
-        var press = playlistControlPressFingerprint(controlsType, delegateField, request).matchSingle()
+        var press = playlistControlPressFingerprint(controlsType, delegateField, request)
         if (press.method.implementation!!.registerCount <= 1) {
             press.method.cloneParameters()
-            press = playlistControlPressFingerprint(controlsType, delegateField, request).matchSingle()
+            press = playlistControlPressFingerprint(controlsType, delegateField, request)
         }
 
         val pressIndex = press.instructionMatches[1].index

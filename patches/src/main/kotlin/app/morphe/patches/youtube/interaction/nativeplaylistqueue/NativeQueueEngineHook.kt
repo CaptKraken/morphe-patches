@@ -13,7 +13,6 @@ import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.cloneParameters
 import app.morphe.patcher.util.findFreeRegister
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import app.morphe.patcher.util.proxy.mutableTypes.MutableField.Companion.toMutable
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import app.morphe.util.findFieldFromToString
@@ -32,7 +31,7 @@ internal fun installNativeQueueEngine(
     enumType: String
 ) = with(context) {
     // The native playback queue, its navigator and the transaction around its edits.
-    val queueMatch = NativeQueueDescriptorFingerprint.matchSingle()
+    val queueMatch = NativeQueueDescriptorFingerprint.match()
     val queueType = queueMatch.originalClassDef.type
     val requestType = queueMatch.originalMethod.parameterTypes.single().toString()
     val descriptorType = queueMatch.originalMethod.returnType
@@ -40,20 +39,20 @@ internal fun installNativeQueueEngine(
     val queueOwner = queueMatch.instructionMatches[2].instruction.getReference<FieldReference>()!!
     val endQueueChange = queueMatch.instructionMatches[5].instruction.getReference<MethodReference>()!!
 
-    val queueChangeEnd = nativeQueueChangeEndFingerprint(endQueueChange).matchSingle()
+    val queueChangeEnd = nativeQueueChangeEndFingerprint(endQueueChange)
     val changeGuard = queueChangeEnd.instructionMatches[0].instruction.getReference<FieldReference>()!!
     val releaseChange = queueChangeEnd.instructionMatches[1].instruction.getReference<MethodReference>()!!
     val refresh = queueChangeEnd.instructionMatches[2].instruction.getReference<MethodReference>()!!
 
-    val queueDisposeMatch = nativeQueueDisposeFingerprint(queueType).matchSingle()
+    val queueDisposeMatch = nativeQueueDisposeFingerprint(queueType)
     val queueDispose = queueDisposeMatch.originalMethod
 
     // The wrapper switches between the server's navigator and the local queue.
-    val wrapperFlag = nativeQueueWrapperConstructorFingerprint(queueType).matchSingle()
+    val wrapperFlag = nativeQueueWrapperConstructorFingerprint(queueType)
         .instructionMatches.last().instruction.getReference<FieldReference>()!!
     val wrapperType = wrapperFlag.definingClass
 
-    val receive = nativeQueueReceiveFingerprint(wrapperFlag).matchSingle()
+    val receive = nativeQueueReceiveFingerprint(wrapperFlag)
     fun receiveField(index: Int) = receive.instructionMatches[index].instruction.getReference<FieldReference>()!!
     fun receiveMethod(index: Int) = receive.instructionMatches[index].instruction.getReference<MethodReference>()!!
     val responseType = receive.originalMethod.parameterTypes.single().toString()
@@ -71,27 +70,27 @@ internal fun installNativeQueueEngine(
     val navigatorType = nativeNavigator.type
     val panelType = responsePanel.type
 
-    val acceptMatch = nativeQueueAcceptFingerprint(queueType, responseType, beginQueueChange).matchSingle()
+    val acceptMatch = nativeQueueAcceptFingerprint(queueType, responseType, beginQueueChange)
     val accept = acceptMatch.originalMethod
     val storedResponse = acceptMatch.instructionMatches.last().instruction.getReference<FieldReference>()!!
 
-    val repeatSetter = nativeQueueRepeatSetterFingerprint(wrapperType).matchSingle()
+    val repeatSetter = nativeQueueRepeatSetterFingerprint(wrapperType)
         .instructionMatches.last().instruction.getReference<MethodReference>()!!
-    val repeatGetter = nativeQueueRepeatGetterFingerprint(wrapperType).matchSingle()
+    val repeatGetter = nativeQueueRepeatGetterFingerprint(wrapperType)
         .instructionMatches.last().instruction.getReference<MethodReference>()!!
 
-    val responseConstructor = nativeQueueResponseConstructorFingerprint(responseType).matchSingle().originalMethod
+    val responseConstructor = nativeQueueResponseConstructorFingerprint(responseType).originalMethod
     val sourceResponse = nativeQueueResponseSourceFingerprint(
         responseType,
         responseConstructor.parameterTypes.single().toString()
-    ).matchSingle().instructionMatches.single().instruction.getReference<FieldReference>()!!
-    val navigationType = PlaylistModelDescriptionFingerprint.matchSingle().originalMethod
+    ).instructionMatches.single().instruction.getReference<FieldReference>()!!
+    val navigationType = PlaylistModelDescriptionFingerprint.originalMethod
         .findFieldFromToString(", navigationSets=").type
-    val responseNavigation = nativeQueueResponseNavigationFingerprint(responseType, navigationType).matchSingle()
+    val responseNavigation = nativeQueueResponseNavigationFingerprint(responseType, navigationType)
         .instructionMatches.single().instruction.getReference<FieldReference>()!!
 
     // The mutable queue holds local rows and builds the shuffle order.
-    val shuffle = NativeQueueShuffleFingerprint.matchSingle()
+    val shuffle = NativeQueueShuffleFingerprint
     val mutableType = shuffle.originalClassDef.type
     val shuffleSetter = shuffle.originalMethod
     val position = shuffle.instructionMatches[2].instruction.getReference<MethodReference>()!!
@@ -100,7 +99,7 @@ internal fun installNativeQueueEngine(
         shuffle.instructionMatches[7].instruction.getReference<FieldReference>()!!
     )
 
-    val localLoad = nativeQueueLocalLoadFingerprint(mutableType, descriptorType, requestType).matchSingle()
+    val localLoad = nativeQueueLocalLoadFingerprint(mutableType, descriptorType, requestType)
     val playlistId = localLoad.instructionMatches.first().instruction.getReference<MethodReference>()!!
 
     val localFlag = ImmutableField(
@@ -360,9 +359,9 @@ internal fun installNativeQueueEngine(
     )
 
     // Server autoplay replaces the navigator. Remember its last state for Clear.
-    val autoplay = nativeQueueAutoplayFingerprint(nativeNavigator, switchNavigator).matchSingle()
+    val autoplay = nativeQueueAutoplayFingerprint(nativeNavigator, switchNavigator)
     val autoplayType = autoplay.originalMethod.parameterTypes.single().toString()
-    val autoplayConstructor = nativeQueueAutoplayConstructorFingerprint(autoplayType).matchSingle().originalMethod
+    val autoplayConstructor = nativeQueueAutoplayConstructorFingerprint(autoplayType).originalMethod
     val optionalType = autoplayConstructor.parameterTypes.first().toString()
     val savedAutoplay = ImmutableField(
         wrapperType, "patch_lastAutoplay", autoplayType, AccessFlags.PRIVATE.value, null, null, null
@@ -506,7 +505,7 @@ internal fun installNativeQueueEngine(
         "invoke-virtual/range {p0 .. p0}, $queueType->patch_releaseLocalQueue()V"
     )
 
-    val wrapperDispose = nativeQueueWrapperDisposeFingerprint(nativeNavigator, queueDispose.name).matchSingle()
+    val wrapperDispose = nativeQueueWrapperDisposeFingerprint(nativeNavigator, queueDispose.name)
     val disposeRegister = wrapperDispose.method.findFreeRegister(0)
     wrapperDispose.method.addInstructionsWithLabels(
         0,
@@ -518,8 +517,8 @@ internal fun installNativeQueueEngine(
     )
 
     // Local row loads must be JUMP within the native queue, rather than new ordinary playback.
-    val requestConstructor = playlistNavigationRequestFingerprint(enumType).matchSingle().originalMethod
-    val jump = playlistNavigationIntentFingerprint(enumType, "JUMP").matchSingle()
+    val requestConstructor = playlistNavigationRequestFingerprint(enumType).originalMethod
+    val jump = playlistNavigationIntentFingerprint(enumType, "JUMP")
         .instructionMatches.last().instruction.getReference<FieldReference>()!!
     bridge(
         mutableType,
@@ -554,12 +553,12 @@ internal fun installNativeQueueEngine(
     )
 
     // The playback service holds the active sequencer, which holds the wrapper.
-    val loader = nativeQueueLoaderFingerprint(serviceType).matchSingle()
+    val loader = nativeQueueLoaderFingerprint(serviceType)
     val sequencer = loader.instructionMatches[0].instruction.getReference<FieldReference>()!!
     val sequencerType = loader.instructionMatches[2].instruction.getReference<TypeReference>()!!.type
-    val sequencerOwner = nativeQueueSequencerOwnerFingerprint(serviceType, sequencer.definingClass).matchSingle()
+    val sequencerOwner = nativeQueueSequencerOwnerFingerprint(serviceType, sequencer.definingClass)
         .instructionMatches.first().instruction.getReference<FieldReference>()!!
-    val sequencerField = nativeQueueSequencerNavigatorFingerprint(sequencerType, navigatorType).matchSingle()
+    val sequencerField = nativeQueueSequencerNavigatorFingerprint(sequencerType, navigatorType)
         .instructionMatches.single().instruction.getReference<FieldReference>()!!
 
     bridge(

@@ -12,7 +12,6 @@ import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.cloneParameters
 import app.morphe.patcher.util.findFreeRegister
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import app.morphe.patcher.util.numberOfParameterRegistersLogical
 import app.morphe.patcher.util.p0Register
 import app.morphe.util.addInstructionsAtControlFlowLabel
@@ -29,19 +28,19 @@ private const val DEFAULT_QUEUE_MODE = 1
 
 /** Bridge the accepted watch model; the playback engine is attached separately at runtime. */
 internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context) {
-    val description = PlaylistModelDescriptionFingerprint.matchSingle().originalMethod
+    val description = PlaylistModelDescriptionFingerprint.originalMethod
     val modelType = description.definingClass
     val responseVideoField = description.findFieldFromToString("{videoId=")
     val playlistField = description.findFieldFromToString(", playlistId=")
     val panelField = description.findFieldFromToString(", playlistPanel=")
     val navigationField = description.findFieldFromToString(", navigationSets=")
     val panelType = panelField.type
-    val controllerType = PlaylistControllerConstructorFingerprint.matchSingle().originalClassDef.type
+    val controllerType = PlaylistControllerConstructorFingerprint.originalClassDef.type
     val controller = mutableClassDefBy(controllerType)
 
-    val accept = acceptedPlaylistModelFingerprint(controllerType, modelType, responseVideoField).matchSingle()
+    val accept = acceptedPlaylistModelFingerprint(controllerType, modelType, responseVideoField)
     val modelField = accept.instructionMatches.last().instruction.getReference<FieldReference>()!!
-    val activePlaylistField = playlistControllerIdentityFingerprint(accept.originalMethod).matchSingle()
+    val activePlaylistField = playlistControllerIdentityFingerprint(accept.originalMethod)
         .instructionMatches.first().instruction.getReference<FieldReference>()!!
     val activeVideoMatch = accept.instructionMatches[2]
     val activeVideoField = activeVideoMatch.instruction.getReference<FieldReference>()!!
@@ -50,20 +49,20 @@ internal fun installPlaylistPanel(context: BytecodePatchContext) = with(context)
     }
 
     // The collapsed panel view, whose click opens the playlist.
-    val collapsedView = playlistControlsCreationFingerprint(controllerType).matchSingle()
+    val collapsedView = playlistControlsCreationFingerprint(controllerType)
         .instructionMatches.first().instruction.getReference<FieldReference>()!!
 
-    val render = playlistPanelRenderFingerprint(modelField).matchSingle()
-    val transition = playlistVideoTransitionFingerprint(activeVideoField).matchSingle()
+    val render = playlistPanelRenderFingerprint(modelField)
+    val transition = playlistVideoTransitionFingerprint(activeVideoField)
 
     // Ordinary videos can have no playlist model at all. Use the native builder's
     // defaults, including required tracking parameters, rather than inventing them.
-    val buildModel = playlistModelBuildFingerprint(modelType).matchSingle().originalMethod
-    val modelFactory = playlistModelFactoryFingerprint(modelType, buildModel.definingClass).matchSingle()
+    val buildModel = playlistModelBuildFingerprint(modelType).originalMethod
+    val modelFactory = playlistModelFactoryFingerprint(modelType, buildModel.definingClass)
         .originalMethod
 
     // Constructor parameter positions are derived from the actual field stores.
-    val constructor = playlistModelConstructorFingerprint(modelType).matchSingle()
+    val constructor = playlistModelConstructorFingerprint(modelType)
     val constructorRegisters = constructor.originalMethod.p0Register
     val constructorFields = constructor.instructionMatches.sortedBy {
         it.getInstruction<TwoRegisterInstruction>().registerA

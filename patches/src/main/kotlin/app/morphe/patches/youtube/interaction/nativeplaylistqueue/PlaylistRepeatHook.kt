@@ -11,7 +11,6 @@ import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.cloneParameters
 import app.morphe.patcher.util.findFreeRegister
 import app.morphe.patcher.util.getReference
-import app.morphe.patcher.util.matchSingle
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import app.morphe.util.findInstructionIndicesReversedOrThrow
 import com.android.tools.smali.dexlib2.Opcode
@@ -23,22 +22,22 @@ internal fun installPlaylistRepeat(
     context: BytecodePatchContext,
     navigatorType: String
 ) = with(context) {
-    val binding = PlaylistRepeatBindingFingerprint.matchSingle()
+    val binding = PlaylistRepeatBindingFingerprint.match()
     val headerType = binding.originalClassDef.type
     val header = mutableClassDefBy(headerType)
-    val navigator = playlistHeaderNavigatorFingerprint(navigatorType).matchSingle()
+    val navigator = playlistHeaderNavigatorFingerprint(navigatorType)
         .instructionMatches.single().instruction.getReference<FieldReference>()!!
-    val panel = playlistHeaderPanelFingerprint(binding.originalMethod).matchSingle()
+    val panel = playlistHeaderPanelFingerprint(binding.originalMethod)
         .instructionMatches.single().instruction.getReference<FieldReference>()!!
-    val repeatView = PlaylistHeaderRepeatViewFingerprint.matchSingle()
+    val repeatView = PlaylistHeaderRepeatViewFingerprint
         .instructionMatches.last().instruction.getReference<FieldReference>()!!
-    val shuffleMatch = PlaylistShuffleViewFingerprint.matchSingle()
+    val shuffleMatch = PlaylistShuffleViewFingerprint
     val shuffleView = shuffleMatch.instructionMatches.last().instruction.getReference<FieldReference>()!!
     check(shuffleView.definingClass == headerType) {
         "Native playlist queue: shuffle and repeat must share the native header"
     }
 
-    val capabilities = PlaylistRepeatCapabilitiesFingerprint.matchSingle()
+    val capabilities = PlaylistRepeatCapabilitiesFingerprint
     check(capabilities.originalMethod == binding.originalMethod) {
         "Native playlist queue: repeat capabilities and state must share their native binder"
     }
@@ -103,7 +102,7 @@ internal fun installPlaylistRepeat(
 
     // Preserve the original listener and account-playlist command branch. Only a
     // header bound to our exact local panel consumes this fallback toggle.
-    val shufflePress = playlistShufflePressFingerprint(navigator, shuffleView).matchSingle()
+    val shufflePress = playlistShufflePressFingerprint(navigator, shuffleView)
     val pressIndex = shufflePress.instructionMatches.first().index
     val headerRegister = (shufflePress.instructionMatches.first().instruction as TwoRegisterInstruction).registerB
     val press = shufflePress.method
