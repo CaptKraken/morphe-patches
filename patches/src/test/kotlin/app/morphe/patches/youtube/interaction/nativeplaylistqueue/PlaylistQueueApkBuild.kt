@@ -569,12 +569,75 @@ private fun verifyNativeServiceDelegates(classes: List<ClassDef>, selected: Bool
     println("Native playback service and ${delegates.size} forwarding navigator(s) verified")
 }
 
+/** Verify repeat operands and the existing shuffle view/listener, not just an enabled flag. */
+private fun verifyNativeQueueHeader(classes: List<ClassDef>, selected: Boolean) {
+    val headers = classes.filter { REPEAT_HEADER_INTERFACE in it.interfaces }
+    check(headers.size == if (selected) 1 else 0) { "Unexpected native queue header bridge" }
+    if (!selected) return
+    val header = headers.single()
+    val repeat = header.methods.single { it.name == "patch_enableRepeat" }.implementation!!.instructions.toList()
+    val repeatView = repeat.mapNotNull { (it as? ReferenceInstruction)?.reference as? FieldReference }
+        .single { it.type == "Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;" }
+    val enabled = "Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;->setEnabled(Z)V"
+    val binder = header.methods.single { method -> method.name != "patch_enableRepeat" &&
+            method.implementation?.instructions?.any { (it as? ReferenceInstruction)?.reference?.toString() == enabled } == true }
+        .implementation!!.instructions.toList()
+    val call = binder.indexOfFirst { (it as? ReferenceInstruction)?.reference?.toString() == enabled }
+    val view = (0 until call).last { (binder[it] as? ReferenceInstruction)?.reference == repeatView }
+    val nativeFlags = binder.subList(view + 1, call).mapNotNull {
+        ((it as? ReferenceInstruction)?.reference as? FieldReference)?.takeIf { field -> field.type == "Z" }
+    }.toSet()
+    val writtenFlags = repeat.filter { it.opcode == Opcode.IPUT_BOOLEAN }.map {
+        (it as ReferenceInstruction).reference as FieldReference
+    }.toSet()
+    check(nativeFlags.size == 2 && writtenFlags == nativeFlags) {
+        "Queue repeat must update the repeat button's operands, never the shuffle/hide flags"
+    }
+    val render = header.methods.single { it.name == "patch_setRepeatMode" }.implementation!!.instructions
+        .mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }.single()
+    val nativeRender = header.methods.single { it.toString() == render.toString() }.implementation!!.instructions
+        .mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }.toList()
+    check(render.parameterTypes == listOf("I", "Z") && render.returnType == "V" &&
+            nativeRender.any { it.definingClass == repeatView.type && it.name == "setSelected" } &&
+            nativeRender.any { it.definingClass == repeatView.type && it.name == "refreshDrawableState" }) {
+        "Queue repeat rendering must retain native selected and repeat-one drawable states"
+    }
+    val shuffle = header.methods.single { it.name == "patch_setShuffleAvailable" }
+        .implementation!!.instructions.toList()
+    val visibility = shuffle.indexOfFirst { (it as? ReferenceInstruction)?.reference?.toString() ==
+            "Landroid/widget/ImageView;->setVisibility(I)V" }
+    check(visibility > 0 && shuffle[visibility - 1].opcode == Opcode.CONST_4 &&
+            (shuffle[visibility - 1] as NarrowLiteralInstruction).narrowLiteral == 0) {
+        "Owned queue shuffle must be visible even when the native binder hides unsupported shuffle"
+    }
+    val listenerCall = "Landroid/widget/ImageView;->setOnClickListener(Landroid/view/View\$OnClickListener;)V"
+    val listenerFields = header.fields.filter { it.type == "Landroid/view/View\$OnClickListener;" }
+    if (listenerFields.isNotEmpty()) {
+        val listener = shuffle.mapNotNull { (it as? ReferenceInstruction)?.reference as? FieldReference }
+            .single { it.type == "Landroid/view/View\$OnClickListener;" }
+        check(shuffle.any { (it as? ReferenceInstruction)?.reference?.toString() == listenerCall } &&
+                binder.indices.any { index -> (binder[index] as? ReferenceInstruction)?.reference == listener &&
+                        (binder.getOrNull(index + 1) as? ReferenceInstruction)?.reference?.toString() == listenerCall }) {
+            "Owned queue shuffle must restore the binder's stored native listener"
+        }
+    } else {
+        // The oldest supported header installs its native listener once in the constructor.
+        check(header.methods.single { it.name == "<init>" }.implementation!!.instructions.any {
+            (it as? ReferenceInstruction)?.reference?.toString() == listenerCall
+        } && shuffle.none { (it as? ReferenceInstruction)?.reference?.toString() == listenerCall }) {
+            "Owned queue shuffle must retain the constructor's native listener"
+        }
+    }
+    println("Native queue repeat flags and shuffle visibility/listener restoration verified")
+}
+
 /** SDK structural checks do not catch a base protobuf value stored in a concrete panel field. */
 private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
     val dexFiles = directory.listFiles()!!.filter { it.extension == "dex" }.map { file ->
         file.inputStream().buffered().use { DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it) }
     }
     verifyNativeServiceDelegates(dexFiles.flatMap { it.classes }, selected)
+    verifyNativeQueueHeader(dexFiles.flatMap { it.classes }, selected)
     val playbackInterface = EXTENSION_CLASS.removeSuffix(";") + "\$NativePlayback;"
     val owners = dexFiles.flatMap { it.classes }.filter { playbackInterface in it.interfaces }
     check(owners.size == if (selected) 1 else 0) { "Unexpected native playback bridge inclusion" }

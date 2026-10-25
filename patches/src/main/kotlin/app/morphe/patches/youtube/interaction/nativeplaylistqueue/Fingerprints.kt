@@ -1002,11 +1002,43 @@ internal object PlaylistRepeatCapabilitiesFingerprint : Fingerprint(
     returnType = "V",
     parameters = listOf("L", "L", "I"),
     filters = listOf(
-        fieldAccess(type = "Z", opcode = Opcode.IGET_BOOLEAN),
+        // Tie the flags to the repeat button. Newer binders contain a similar
+        // boolean pair for shuffle visibility before this repeat section.
+        fieldAccess(
+            type = "Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;",
+            opcode = Opcode.IGET_OBJECT
+        ),
+        fieldAccess(type = "Z", opcode = Opcode.IGET_BOOLEAN, location = MatchAfterImmediately()),
         opcode(Opcode.IF_NEZ, location = MatchAfterImmediately()),
         fieldAccess(type = "Z", opcode = Opcode.IGET_BOOLEAN, location = MatchAfterImmediately()),
-        opcode(Opcode.IF_EQZ, location = MatchAfterImmediately()),
-        methodCall("Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;->setEnabled(Z)V")
+        // Both branch shapes compute the short-circuit OR of these two flags.
+        methodCall(
+            "Lcom/google/android/apps/youtube/app/watch/panel/ui/PlaylistLoopButtonView;->setEnabled(Z)V",
+            location = MatchAfterWithin(6)
+        )
+    )
+)
+
+/** The binder restores this stored native listener when its shuffle view is shown. */
+internal fun playlistShuffleListenerFingerprint(binder: Method, shuffleView: FieldReference) = Fingerprint(
+    definingClass = binder.definingClass,
+    name = binder.name,
+    parameters = binder.parameterTypes.map { it.toString() },
+    returnType = binder.returnType,
+    filters = listOf(
+        fieldAccess(reference = shuffleView, opcode = Opcode.IGET_OBJECT),
+        // Older binders first set enabled from the native shuffle capability.
+        methodCall("Landroid/widget/ImageView;->setVisibility(I)V", location = MatchAfterWithin(3)),
+        fieldAccess(
+            definingClass = "this",
+            type = "Landroid/view/View\$OnClickListener;",
+            opcode = Opcode.IGET_OBJECT,
+            location = MatchAfterImmediately()
+        ),
+        methodCall(
+            "Landroid/widget/ImageView;->setOnClickListener(Landroid/view/View\$OnClickListener;)V",
+            location = MatchAfterImmediately()
+        )
     )
 )
 
