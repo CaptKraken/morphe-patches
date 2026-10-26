@@ -22,11 +22,71 @@ import app.morphe.patcher.opcode
 import app.morphe.patcher.resource.ResourceType
 import app.morphe.patcher.resourceLiteral
 import app.morphe.patcher.string
+import app.morphe.patcher.util.getReference
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
+import com.android.tools.smali.dexlib2.iface.reference.TypeReference
+
+/** Named arguments in the native watch request serializer. */
+internal fun playlistPageRequestFieldFingerprint(requestType: String, serializer: String, label: String) = Fingerprint(
+    definingClass = requestType,
+    name = serializer,
+    filters = listOf(
+        string(label),
+        fieldAccess(definingClass = requestType, type = "Ljava/lang/String;", opcode = Opcode.IGET_OBJECT,
+            location = MatchAfterWithin(3))
+    )
+)
+
+internal fun playlistPageIndexFingerprint(requestType: String, serializer: String) = Fingerprint(
+    definingClass = requestType,
+    name = serializer,
+    filters = listOf(
+        fieldAccess(definingClass = requestType, type = "I", opcode = Opcode.IGET),
+        string("playlistIndex", location = MatchAfterWithin(3))
+    )
+)
+
+internal fun playlistPageFactoryFingerprint(requestType: String) = Fingerprint(
+    parameters = listOf("Ljava/lang/String;"),
+    returnType = requestType,
+    custom = { method, _ ->
+        method.implementation?.instructions?.any {
+            it.opcode == Opcode.NEW_INSTANCE && it.getReference<TypeReference>()?.type == requestType
+        } == true
+    }
+)
+
+/** Native preparation supplies the per-occurrence entry ID as well as index and params. */
+internal fun playlistPagePreparationFingerprint(requestType: String, factory: MethodReference,
+                                               paramsSetter: MethodReference) = Fingerprint(
+    returnType = requestType,
+    filters = listOf(
+        methodCall(factory),
+        fieldAccess(definingClass = requestType, type = "Ljava/lang/String;", opcode = Opcode.IPUT_OBJECT),
+        fieldAccess(definingClass = requestType, type = "I", opcode = Opcode.IPUT),
+        fieldAccess(definingClass = requestType, type = "Ljava/lang/String;", opcode = Opcode.IPUT_OBJECT),
+        methodCall(paramsSetter)
+    )
+)
+
+internal fun playlistPageServiceFingerprint(requestType: String, factoryType: String,
+                                          isResponse: (String) -> Boolean) = Fingerprint(
+    parameters = listOf(requestType),
+    returnType = "L",
+    custom = { method, owner -> owner.fields.any { it.type == factoryType } && isResponse(method.returnType) }
+)
+
+/** Default set delegates to the native selector with shuffle and both repeat modes off. */
+internal fun playlistPageDefaultNavigationFingerprint(navigationType: String) = Fingerprint(
+    definingClass = navigationType,
+    parameters = emptyList(),
+    returnType = "L",
+    filters = listOf(methodCall(definingClass = navigationType, parameters = listOf("Z", "Z", "Z", "Z")))
+)
 
 /** A generated protobuf message creates its default instance in its static initializer. */
 internal fun protoDefaultInstanceFingerprint(messageType: String) = Fingerprint(
@@ -131,6 +191,20 @@ internal object NativeQueueDescriptorFingerprint : Fingerprint(
         // 21.16 concatenates this diagnostic; 21.20+ formats it in one string.
         string("getNavigationDescriptor for ", StringComparisonType.STARTS_WITH)
     )
+)
+
+internal fun playlistQueueCommitFingerprint(queueType: String, requestType: String, descriptorType: String) = Fingerprint(
+    definingClass = queueType,
+    parameters = listOf(requestType),
+    returnType = descriptorType,
+    filters = listOf(string("commitIntentToNavigate for ", StringComparisonType.STARTS_WITH))
+)
+
+internal fun playlistQueueAvailabilityFingerprint(queueType: String, requestType: String) = Fingerprint(
+    definingClass = queueType,
+    parameters = listOf(requestType),
+    returnType = "I",
+    filters = listOf(methodCall(opcode = Opcode.INVOKE_INTERFACE, parameters = listOf(requestType), returnType = "I"))
 )
 
 /** Ends a queue change: releases the change guard, then refreshes the queue state. */
@@ -1173,8 +1247,10 @@ internal fun directQueueBackendAvailabilityFingerprint(backend: FieldReference, 
 internal fun queueNavigationIntentFieldFingerprint(requestType: String, enumType: String) = Fingerprint(
     definingClass = requestType,
     name = "<init>",
-    parameters = listOf(enumType, "L", "L"),
-    filters = listOf(fieldAccess(definingClass = "this", type = enumType, opcode = Opcode.IPUT_OBJECT))
+    // Some releases move initialization into an overload with an unused trailing argument.
+    // Match the actual enum store rather than a forwarding constructor's arity.
+    filters = listOf(fieldAccess(definingClass = "this", type = enumType, opcode = Opcode.IPUT_OBJECT)),
+    custom = { method, _ -> method.parameterTypes.firstOrNull() == enumType }
 )
 
 /**
@@ -1450,4 +1526,41 @@ internal fun queueFlyoutButtonConstructorFingerprint(factory: MethodReference, i
         parameters = listOf("Ljava/lang/String;", itemType),
         returnType = "V"
     ))
+)
+
+internal const val PLAYLIST_LOADING_FRAME =
+    "Lcom/google/android/libraries/youtube/rendering/ui/widget/loadingframe/LoadingFrameLayout;"
+
+/** Clearing the native playlist list switches its existing frame to progress. */
+internal fun playlistLoadingStartFingerprint(controllerType: String) = Fingerprint(
+    definingClass = controllerType,
+    parameters = emptyList(),
+    returnType = "V",
+    filters = listOf(
+        fieldAccess(type = PLAYLIST_LOADING_FRAME, opcode = Opcode.IGET_OBJECT),
+        methodCall(
+            definingClass = PLAYLIST_LOADING_FRAME,
+            parameters = emptyList(),
+            returnType = "V",
+            location = MatchAfterImmediately()
+        ),
+        methodCall(name = "clear", parameters = emptyList(), returnType = "V")
+    )
+)
+
+/** The list's normal bind restores content after rebuilding its row index. */
+internal fun playlistLoadingContentFingerprint(frame: FieldReference) = Fingerprint(
+    definingClass = frame.definingClass,
+    parameters = listOf("L"),
+    returnType = "V",
+    filters = listOf(
+        methodCall(name = "clear", parameters = emptyList(), returnType = "V"),
+        fieldAccess(reference = frame, opcode = Opcode.IGET_OBJECT),
+        methodCall(
+            definingClass = PLAYLIST_LOADING_FRAME,
+            parameters = emptyList(),
+            returnType = "V",
+            location = MatchAfterImmediately()
+        )
+    )
 )

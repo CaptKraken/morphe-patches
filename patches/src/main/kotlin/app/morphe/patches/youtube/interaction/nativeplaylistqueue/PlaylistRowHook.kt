@@ -142,6 +142,16 @@ internal fun installPlaylistRowPlayback(
         """
     )
 
+    PlaylistPanelVideoBindFingerprint.clearMatch()
+    PlaylistPanelVideoBindFingerprint.matchAll().forEach { binder ->
+        val read = binder.instructionMatches[2]
+        val receiver = read.getInstruction<TwoRegisterInstruction>().registerB
+        binder.method.addInstruction(
+            read.index,
+            "invoke-static/range {v$receiver .. v$receiver}, $EXTENSION_CLASS->onPlaylistRowBound($QUEUE_ROW_INTERFACE)V"
+        )
+    }
+
     // Retain ownership on old header models too, so a stale Clear action is consumed
     // instead of falling through to YouTube's ordinary Hide command.
     val panel = mutableClassDefBy(panelField.type)

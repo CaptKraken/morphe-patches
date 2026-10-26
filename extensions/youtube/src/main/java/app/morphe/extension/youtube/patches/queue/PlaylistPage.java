@@ -1,0 +1,164 @@
+/*
+ * Copyright 2026 Morphe.
+ * https://github.com/MorpheApp/morphe-patches
+ *
+ * See the included NOTICE file for GPLv3 Section 7 terms that apply to this code.
+ */
+
+package app.morphe.extension.youtube.patches.queue;
+
+import androidx.annotation.Nullable;
+
+import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.MessageLite;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
+
+/** An authenticated native watch window; advertised totals can include hidden videos. */
+public record PlaylistPage(List<Row> rows, int selectedIndex, int totalCount) {
+    /** Stable account identity only. No credentials or native objects are retained. */
+    public record Account(String id, boolean incognito) {}
+
+    /** Full native command inputs, including the identity of a duplicate occurrence. */
+    record Anchor(String playlistId, String videoId, int index, String entryId,
+                  String params, ByteString tracking) {
+        String key() {
+            return entryId.isEmpty() ? "index:" + index + ":" + videoId : "entry:" + entryId;
+        }
+    }
+
+    record Row(PlaylistQueue.Entry entry, VideoMetadata metadata, Anchor anchor) {}
+
+    public PlaylistPage {
+        rows = List.copyOf(rows);
+    }
+
+    @Nullable
+    static PlaylistPage fromPanel(MessageLite source, String playlistId) throws InvalidProtocolBufferException {
+        var panel = PlaylistQueueRenderer.Panel.parseFrom(source.toByteArray());
+        if (!playlistId.equals(panel.getPlaylistId())) {
+            return null;
+        }
+        List<Row> rows = new ArrayList<>();
+        int selected = -1;
+        int lastIndex = -1;
+        for (var item : panel.getItemsList()) {
+            if (!item.hasVideo()) {
+                continue;
+            }
+            var video = item.getVideo();
+            if (video.hasUnplayableText()) {
+                // Native queue population skips these before reading a command.
+                // Deleted/private placeholders can omit both video ID and endpoint.
+                if (video.getSelected()) {
+                    return null;
+                }
+                continue;
+            }
+            Anchor anchor = anchor(video.getNavigationEndpoint());
+            if (anchor == null || !playlistId.equals(anchor.playlistId())
+                    || !video.getVideoId().equals(anchor.videoId()) || anchor.index() <= lastIndex) {
+                return null;
+            }
+            lastIndex = anchor.index();
+            if (video.getSelected()) {
+                if (selected >= 0) {
+                    return null;
+                }
+                selected = rows.size();
+            }
+            VideoMetadata metadata = VideoMetadata.fromPanelVideo(video);
+            rows.add(new Row(new PlaylistQueue.Entry(metadata.videoId(), metadata.title()), metadata, anchor));
+        }
+        return rows.isEmpty() ? null : new PlaylistPage(rows, selected, panel.getVideoCount());
+    }
+
+    @Nullable
+    static Anchor anchor(PlaylistQueueRenderer.NavigationEndpoint endpoint) {
+        String list;
+        String video;
+        String entry = "";
+        String params = "";
+        int index;
+        if (endpoint.hasWatchEndpoint()) {
+            var watch = endpoint.getWatchEndpoint();
+            if (!watch.hasIndex()) {
+                return null;
+            }
+            list = watch.getPlaylistId();
+            video = watch.getVideoId();
+            index = watch.getIndex();
+            entry = watch.getPlaylistSetVideoId();
+            params = watch.getParams();
+        } else if (endpoint.hasAlternateWatchEndpoint()) {
+            var watch = endpoint.getAlternateWatchEndpoint();
+            if (!watch.hasIndex()) {
+                return null;
+            }
+            list = watch.getPlaylistId();
+            video = watch.getVideoId();
+            index = watch.getIndex();
+        } else {
+            return null;
+        }
+        return list.isEmpty() || !PlaylistQueue.isVideoId(video) || index < 0 ? null
+                : new Anchor(list, video, index, entry, params, endpoint.getClickTrackingParams());
+    }
+
+    /** Reject missing/ambiguous or shifted anchors rather than stitching another window. */
+    int find(Anchor anchor) {
+        int result = -1;
+        for (int index = 0; index < rows.size(); index++) {
+            Anchor candidate = rows.get(index).anchor();
+            if (candidate.key().equals(anchor.key())) {
+                if (result >= 0 || !candidate.playlistId().equals(anchor.playlistId())
+                        || !candidate.videoId().equals(anchor.videoId()) || candidate.index() != anchor.index()) {
+                    return -1;
+                }
+                result = index;
+            }
+        }
+        return result;
+    }
+
+    /** Null means an unrecognized native navigation variant, not end of playlist. */
+    @Nullable
+    static PlaylistQueueRenderer.NavigationEndpoint target(PlaylistQueueRenderer.PlaylistNavigation navigation,
+                                                           boolean next) {
+        if (next ? navigation.hasNext() : navigation.hasPrevious()) {
+            return next ? navigation.getNext() : navigation.getPrevious();
+        }
+        var target = next ? navigation.getNextTarget() : navigation.getPreviousTarget();
+        if (target.hasWatch()) {
+            return target.getWatch().getCommand();
+        }
+        if (target.hasAutoplay()) {
+            return target.getAutoplay().getCommand();
+        }
+        if (target.hasContinuation()) {
+            return target.getContinuation().getCommand();
+        }
+        return target.toByteArray().length == 0
+                ? PlaylistQueueRenderer.NavigationEndpoint.getDefaultInstance() : null;
+    }
+
+    static boolean endsSource(PlaylistQueueRenderer.NavigationEndpoint target, String playlistId) {
+        if (target.hasWatchEndpoint()) {
+            return !playlistId.equals(target.getWatchEndpoint().getPlaylistId());
+        }
+        if (target.hasAlternateWatchEndpoint()) {
+            return !playlistId.equals(target.getAlternateWatchEndpoint().getPlaylistId());
+        }
+        if (target.hasWatchPlaylistEndpoint()) {
+            return !playlistId.equals(target.getWatchPlaylistEndpoint().getPlaylistId());
+        }
+        if (target.toByteArray().length == 0) {
+            return true;
+        }
+        throw new IllegalArgumentException("Unrecognized source navigation command");
+    }
+}

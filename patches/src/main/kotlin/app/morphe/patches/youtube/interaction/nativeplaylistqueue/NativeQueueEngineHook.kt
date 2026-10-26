@@ -594,5 +594,6 @@ internal fun installNativeQueueEngine(
         )
     }
 
+    installPlaylistPagingSequence(context, wrapperType, nativeNavigator, queueType, requestType, descriptorType, enumType)
     wrapperType
 }
