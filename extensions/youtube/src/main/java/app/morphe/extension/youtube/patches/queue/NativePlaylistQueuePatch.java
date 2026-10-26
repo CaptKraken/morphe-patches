@@ -239,7 +239,7 @@ public final class NativePlaylistQueuePatch {
                                        WeakReference<NativePlayback> playback) {}
     private static PlaylistPreparation playlistPreparation;
     /** Immutable worker output; publication must still own the exact input snapshot. */
-    private record PreparedPanel(PlaylistQueue snapshot, PlaylistQueue candidate, String playingVideoId,
+    private record PreparedPanel(@Nullable PlaylistQueue snapshot, PlaylistQueue candidate, String playingVideoId,
                                  @Nullable QueueRatingActions ratings, byte[] panel) {}
     private static WeakReference<PlaylistLoadingView> playlistLoadingView = new WeakReference<>(null);
     private static WeakReference<PlaylistController> playlistLoadingController = new WeakReference<>(null);
@@ -252,6 +252,13 @@ public final class NativePlaylistQueuePatch {
                              WeakReference<NativePlayback> playback, Map<String, String> headers, Locale locale) {}
     private static MixChoice pendingMixChoice;
     private static volatile MixChoice pendingMixAddition;
+    private record PlaylistAddition(long epoch, PlaylistQueue.Source source,
+                                    WeakReference<PlaylistPages.Source> transport,
+                                    WeakReference<PlaylistController> controller,
+                                    WeakReference<NativePlayback> playback, WeakReference<Object> model,
+                                    @Nullable PlaylistQueue base, @Nullable PlaylistQueue originalQueue,
+                                    String videoId, String playingPlaylistId, boolean playLast) {}
+    private static volatile PlaylistAddition pendingPlaylistAddition;
     private static volatile WeakReference<NativePlayback> nativePlaybackRef = new WeakReference<>(null);
     private static Object originalModel;
     private static Object publishedModel;
@@ -1466,7 +1473,7 @@ public final class NativePlaylistQueuePatch {
         }
     }
 
-    private static PreparedPanel preparePanel(PlaylistQueue snapshot, PlaylistQueue candidate) {
+    private static PreparedPanel preparePanel(@Nullable PlaylistQueue snapshot, PlaylistQueue candidate) {
         Utils.verifyOffMainThread();
         candidate = candidate.withAvailableMetadata(metadataCache);
         String playingVideoId = VideoInformation.getVideoId();
@@ -1723,6 +1730,7 @@ public final class NativePlaylistQueuePatch {
 
     private static void cancelPlaylistLoading() {
         playlistEpoch++;
+        pendingPlaylistAddition = null;
         pageLoad = null;
         playlistPreparation = null;
         failedPage = null;
@@ -2372,6 +2380,217 @@ public final class NativePlaylistQueuePatch {
         return AddToQueuePatch.isNativeQueueEnabled() && PlaylistQueue.isVideoId(videoId);
     }
 
+    /** Collection actions can create a queue as well as insert into one. */
+    @Nullable
+    public static Runnable getPlaylistQueueAction(String playlistId, boolean playLast) {
+        if (!AddToQueuePatch.isNativeQueueEnabled() || !PlaylistCardSource.isPlaylistId(playlistId)) {
+            return null;
+        }
+        return () -> addPlaylistToQueue(playlistId, playLast);
+    }
+
+    @Nullable
+    private static PlaylistQueue capturePlayingPlaylist(PlaylistController controller) throws Exception {
+        String list = controller.patch_getPlaylistId();
+        String current = controller.patch_getVideoId();
+        PlaylistSnapshot snapshot = PlaylistSnapshot.fromPanel(controller.patch_getPanel(), list, current);
+        if (snapshot != null) {
+            for (var value : snapshot.metadata()) {
+                metadataCache.putIfAbsent(value.videoId(), value);
+            }
+            return snapshot.queue();
+        }
+        PlaylistPages.Source source = PlaylistPages.current();
+        var account = source == null ? null : source.patch_getPlaylistAccount();
+        var panel = controller.patch_getPanel();
+        var page = panel instanceof MessageLite message ? PlaylistPage.fromPanel(message, list) : null;
+        if (account == null || page == null || !current.equals(page.rows().get(page.selectedIndex()).entry().videoId())) {
+            return null;
+        }
+        for (var row : page.rows()) {
+            metadataCache.putIfAbsent(row.metadata().videoId(), row.metadata());
+        }
+        return PlaylistQueue.fromPage(page, new PlaylistQueue.Source(list, account));
+    }
+
+    private static void addPlaylistToQueue(String playlistId, boolean playLast) {
+        if (!AddToQueuePatch.isNativeQueueEnabled() || publishing || dragSession != null
+                || pendingSelection != null || playlistOperation != null || ShortsPlayerState.isOpen()) {
+            return;
+        }
+        try {
+            PlaylistPages.Source transport = PlaylistPages.current();
+            var account = transport == null ? null : transport.patch_getPlaylistAccount();
+            PlaylistController controller = controllerRef.get();
+            NativePlayback playback = null;
+            PlaylistQueue base = queue;
+            if (canStartQueue()) {
+                controller = null;
+            } else {
+                if (controller == null || !controller.patch_isAttached()
+                        || PlayerType.getCurrent().isNoneOrHidden()
+                        || !controller.patch_getVideoId().equals(VideoInformation.getVideoId())) {
+                    Utils.showToastShort(str("morphe_native_playlist_queue_not_ready"));
+                    return;
+                }
+                playback = playbackFor(controller);
+                if (playback == null || queue != null && !isQueuePlayback(controller, playback)) {
+                    Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+                    return;
+                }
+                syncNativeSelection(VideoInformation.getVideoId());
+                base = queue != null ? queue : hasPlaylist(controller) ? capturePlayingPlaylist(controller)
+                        : new PlaylistQueue(controller.patch_getVideoId(), VideoInformation.getVideoTitle());
+                if (base == null) {
+                    Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+                    return;
+                }
+                base = base.withRepeatMode(playback.patch_getRepeatMode());
+            }
+            if (account == null) {
+                Utils.showToastShort(str("morphe_queue_manager_fetch_failed_add"));
+                return;
+            }
+            var addition = new PlaylistAddition(playlistEpoch, new PlaylistQueue.Source(playlistId, account),
+                    new WeakReference<>(transport), new WeakReference<>(controller), new WeakReference<>(playback),
+                    new WeakReference<>(controller == null ? null : controller.patch_getModel()), base, queue,
+                    VideoInformation.getVideoId(), controller == null ? "" : controller.patch_getPlaylistId(), playLast);
+            pendingPlaylistAddition = addition;
+            FlyoutUtils.dismissFlyout();
+            Utils.showToastShort(str("morphe_native_playlist_queue_loading_playlist"));
+            Utils.runOnBackgroundThread(() -> {
+                PlaylistQueue fetched = null;
+                PreparedPanel prepared = null;
+                Exception failure = null;
+                try {
+                    fetched = PlaylistPages.first(transport, addition.source());
+                    // A new player can start from the first native page and use the
+                    // existing lazy source. An insertion is one atomic ordered batch.
+                    while (addition.base() != null && !fetched.isComplete()) {
+                        if (pendingPlaylistAddition != addition) {
+                            return;
+                        }
+                        var gap = fetched.firstGap();
+                        var page = PlaylistPages.load(transport, addition.source(), gap);
+                        fetched = fetched.extend(gap, page.page(), page.end());
+                    }
+                    if (pendingPlaylistAddition != addition) {
+                        return;
+                    }
+                    prepared = preparePanel(addition.originalQueue(), addition.base() == null ? fetched
+                            : addition.base().insertPlaylist(fetched, addition.playLast()));
+                } catch (Exception ex) {
+                    failure = ex;
+                }
+                PlaylistQueue result = fetched;
+                PreparedPanel panel = prepared;
+                Exception error = failure;
+                Utils.runOnMainThread(() -> completePlaylistAddition(addition, result, panel, error));
+            });
+        } catch (Exception ex) {
+            Logger.printException(() -> "Could not start native playlist addition", ex);
+            Utils.showToastShort(str("morphe_queue_manager_fetch_failed_add"));
+        }
+    }
+
+    private static void completePlaylistAddition(PlaylistAddition addition, @Nullable PlaylistQueue fetched,
+                                                 @Nullable PreparedPanel prepared, @Nullable Exception failure) {
+        if (pendingPlaylistAddition != addition || addition.epoch() != playlistEpoch) {
+            return;
+        }
+        PlaylistPages.Source transport = addition.transport().get();
+        PlaylistController controller = addition.controller().get();
+        NativePlayback playback = addition.playback().get();
+        if (!AddToQueuePatch.isNativeQueueEnabled() || isQueueSuspended() || ShortsPlayerState.isOpen()
+                || transport == null
+                || transport != PlaylistPages.current()
+                || !addition.source().account().equals(transport.patch_getPlaylistAccount())) {
+            pendingPlaylistAddition = null;
+            return;
+        }
+        if (addition.base() == null) {
+            if (!canStartQueue() || !addition.videoId().equals(VideoInformation.getVideoId())) {
+                pendingPlaylistAddition = null;
+                return;
+            }
+        } else {
+            if (controller == null || controller != controllerRef.get() || !controller.patch_isAttached()
+                    || playback == null || playbackFor(controller) != playback) {
+                pendingPlaylistAddition = null;
+                return;
+            }
+            if (addition.originalQueue() == null) {
+                PlayerType type = PlayerType.getCurrent();
+                if (queue != null || type.isNoneOrHidden() || type == PlayerType.INLINE_MINIMAL
+                        || controller.patch_getModel() != addition.model().get()
+                        || !addition.videoId().equals(VideoInformation.getVideoId())) {
+                    pendingPlaylistAddition = null;
+                    return;
+                }
+            } else if (queue == null || !isQueuePlayback(controller, playback)) {
+                pendingPlaylistAddition = null;
+                return;
+            }
+        }
+        if (publishing || dragSession != null || pendingSelection != null || playlistOperation != null) {
+            Utils.runOnMainThreadDelayed(() -> completePlaylistAddition(addition, fetched, prepared, failure), 100);
+            return;
+        }
+        try {
+            if (failure != null) {
+                throw failure;
+            }
+            if (fetched == null || prepared == null) {
+                throw new IllegalStateException("Missing native playlist addition");
+            }
+            syncNativeSelection(VideoInformation.getVideoId());
+            if (queue != null && (playback.patch_getSelectedIndex() != queue.selectedIndex()
+                    || !queue.currentEntry().videoId().equals(VideoInformation.getVideoId()))) {
+                Utils.runOnMainThreadDelayed(() -> completePlaylistAddition(addition, fetched, prepared, null), 100);
+                return;
+            }
+            if (!isCurrentPreparation(prepared)) {
+                PlaylistQueue snapshot = queue;
+                PlaylistQueue base = snapshot == null ? addition.base() : snapshot;
+                Utils.runOnBackgroundThread(() -> {
+                    PreparedPanel replacement = null;
+                    Exception error = null;
+                    try {
+                        replacement = preparePanel(snapshot, base == null ? fetched
+                                : base.insertPlaylist(fetched, addition.playLast()));
+                    } catch (Exception ex) {
+                        error = ex;
+                    }
+                    PreparedPanel panel = replacement;
+                    Exception problem = error;
+                    Utils.runOnMainThread(() -> completePlaylistAddition(addition, fetched, panel, problem));
+                });
+                return;
+            }
+            pendingPlaylistAddition = null;
+            if (addition.base() == null) {
+                startQueue(new QueueStart(prepared.candidate(), addition.videoId()));
+            } else {
+                if (queue == null) {
+                    originalModel = controller.patch_getModel();
+                }
+                if (!publish(controller, prepared.candidate(), true, prepared.panel())) {
+                    return;
+                }
+                if (!addition.playingPlaylistId().isEmpty() && addition.originalQueue() == null) {
+                    convertedPlaylist = new ConvertedPlaylist(addition.videoId(), addition.playingPlaylistId(),
+                            new WeakReference<>(playback));
+                    originalModel = null;
+                }
+            }
+            Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));
+        } catch (Exception ex) {
+            pendingPlaylistAddition = null;
+            Logger.printException(() -> "Could not add native playlist to queue", ex);
+            Utils.showToastShort(str("morphe_queue_manager_fetch_failed_add"));
+        }
+    }
+
     /** Only our Native queue makes Last available; account playlists and Mixes do not. */
     public static boolean canShowFlyoutLast() {
         return queue != null;
@@ -2528,32 +2747,10 @@ public final class NativePlaylistQueuePatch {
 
                 String currentId = playlist.patch_getVideoId();
                 String sourcePlaylistId = playlist.patch_getPlaylistId();
-                PlaylistSnapshot snapshot = PlaylistSnapshot.fromPanel(
-                        playlist.patch_getPanel(), sourcePlaylistId, currentId);
-                PlaylistQueue candidate;
-                List<VideoMetadata> captured;
-                if (snapshot != null) {
-                    candidate = snapshot.queue();
-                    captured = snapshot.metadata();
-                } else {
-                    var source = PlaylistPages.current();
-                    var account = source == null ? null : source.patch_getPlaylistAccount();
-                    var panel = playlist.patch_getPanel();
-                    var page = panel instanceof MessageLite message
-                            ? PlaylistPage.fromPanel(message, sourcePlaylistId) : null;
-                    if (account == null || page == null || page.selectedIndex() < 0
-                            || !currentId.equals(page.rows().get(page.selectedIndex()).entry().videoId())) {
-                        Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
-                        return;
-                    }
-                    candidate = PlaylistQueue.fromPage(page, new PlaylistQueue.Source(sourcePlaylistId, account));
-                    captured = new ArrayList<>();
-                    for (var row : page.rows()) {
-                        captured.add(row.metadata());
-                    }
-                }
-                for (VideoMetadata metadata : captured) {
-                    metadataCache.putIfAbsent(metadata.videoId(), metadata);
+                PlaylistQueue candidate = capturePlayingPlaylist(playlist);
+                if (candidate == null) {
+                    Utils.showToastShort(str("morphe_native_playlist_queue_unavailable"));
+                    return;
                 }
                 String currentTitle = VideoInformation.getVideoTitle();
                 String title = ChannelIdRequest.getVideoTitleIfAvailable(videoId);
@@ -2842,6 +3039,14 @@ public final class NativePlaylistQueuePatch {
         boolean intercepted = false;
         try {
             var command = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray());
+            if (command.hasQueuePlaylistId()) {
+                intercepted = true;
+                Runnable action = getPlaylistQueueAction(command.getQueuePlaylistId(), command.getQueuePlaylistLast());
+                if (action != null) {
+                    action.run();
+                }
+                return true;
+            }
             if (!command.hasWatchEndpoint()) {
                 return false;
             }
@@ -2994,6 +3199,7 @@ public final class NativePlaylistQueuePatch {
             // A deliberate new watch supersedes Clear/close/reload Undo, even for
             // the same video. This hook runs on dispatch, not on prefetch.
             if (command.hasWatchEndpoint()) {
+                pendingPlaylistAddition = null;
                 pendingUndo = null;
                 PendingReload reload = pendingReload;
                 if (reload != null) {

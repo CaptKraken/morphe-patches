@@ -158,4 +158,33 @@ public class QueueFlyoutActionsTest {
                 active.getItems(1).getMenuConditionalServiceItemRenderer().getServiceEndpoint());
     }
 
+    @Test public void collectionTargetsSurviveNativeItemCopiesWithoutChangingCastOrOtherActions() throws Exception {
+        var remote = conditional(251, 1);
+        var next = conditional(251, 2);
+        var other = conditional(YTIconType.OFFLINE_DOWNLOAD.getNumber(), 2);
+        var menu = MenuRenderer.newBuilder().addItems(remote).addItems(next).addItems(other).build();
+        var completed = QueueFlyoutActions.completeMenu(menu, true, "Next", "Last", "WL");
+        assertArrayEquals(remote.toByteArray(), completed.getItems(0).toByteArray());
+        assertArrayEquals(other.toByteArray(), completed.getItems(3).toByteArray());
+        var copied = MenuRenderer.parseFrom(completed.toByteArray());
+        var addNext = copied.getItems(1).getMenuConditionalServiceItemRenderer().getServiceEndpoint();
+        var addLast = copied.getItems(2).getMenuConditionalServiceItemRenderer().getServiceEndpoint();
+        assertEquals("WL", addNext.getQueuePlaylistId());
+        assertEquals("WL", addLast.getQueuePlaylistId());
+        assertFalse(addNext.getQueuePlaylistLast());
+        org.junit.Assert.assertTrue(addLast.getQueuePlaylistLast());
+        assertEquals("", addNext.getWatchEndpoint().getVideoId());
+        assertEquals("WL", addNext.getWatchEndpoint().getPlaylistId());
+    }
+
+    @Test public void aKnownPrivateCollectionCanSupplyMissingQueueRowsWithoutChangingAnUnrelatedMenu() throws Exception {
+        var other = conditional(YTIconType.SHARE.getNumber(), 2);
+        var menu = MenuRenderer.newBuilder().addItems(other).build();
+        assertSame(menu, QueueFlyoutActions.completeMenu(menu, true, "Next", "Last"));
+        var completed = QueueFlyoutActions.completeMenu(menu, true, "Next", "Last", "LL");
+        assertEquals(3, completed.getItemsCount());
+        assertEquals("LL", completed.getItems(0).getMenuConditionalServiceItemRenderer().getServiceEndpoint().getQueuePlaylistId());
+        assertArrayEquals(other.toByteArray(), completed.getItems(2).toByteArray());
+    }
+
 }
