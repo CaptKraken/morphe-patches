@@ -143,6 +143,7 @@ internal fun installPlaylistNotification(
         navigatorType, wrapperType
     ).originalMethod
     installNavigationBridges(navigatorType, service.originalMethod, canNavigate)
+    installPlaylistPagingNavigation(context, navigatorType, wrapperType, enumType, service.originalMethod)
 
     // Earlier versions expose the service directly. Newer watch navigators can
     // wrap it while forwarding navigation and capability checks unchanged.
@@ -209,6 +210,7 @@ internal fun installPlaylistNotification(
         directNavigate,
         directCanNavigate
     )
+    installPlaylistPagingNavigation(context, directType, wrapperType, enumType, directNavigate)
     if (is_21_42_or_greater) {
         installNativeQueueWindow(context, backend, enumType, directNavigate, directCanNavigate)
     }
