@@ -69,7 +69,7 @@ public final class PlaylistPages {
         var anchor = gap.anchor();
         Object response = request(owner, expected, anchor.videoId(), anchor.index(),
                 anchor.params(), anchor.entryId(), anchor.tracking().toByteArray());
-        PlaylistPage page = page(owner, expected, response);
+        PlaylistPage page = page(owner, expected, response, "anchor " + anchor.index());
         int position = position(page, anchor);
         boolean advanced = gap.next() ? position + 1 < page.rows().size() : position > 0;
         if (advanced) {
@@ -104,7 +104,7 @@ public final class PlaylistPages {
             // One read-only request is enough: do not loop on an unchanged command.
             Object following = request(owner, expected, null, watch.getIndex(), watch.getParams(), "",
                     target.getClickTrackingParams().toByteArray());
-            PlaylistPage continued = page(owner, expected, following);
+            PlaylistPage continued = page(owner, expected, following, "position " + watch.getIndex());
             int boundary = position(continued, anchor);
             if (boundary + 1 < continued.rows().size()) {
                 return new Result(continued, false);
@@ -146,13 +146,17 @@ public final class PlaylistPages {
         return response;
     }
 
-    private static PlaylistPage page(Source owner, PlaylistQueue.Source expected, Object response) throws Exception {
+    private static PlaylistPage page(Source owner, PlaylistQueue.Source expected, Object response, String request)
+            throws Exception {
         MessageLite panel = owner.patch_getPlaylistPage(response);
-        PlaylistPage page = panel == null ? null : PlaylistPage.fromPanel(panel, expected.playlistId());
-        if (page == null) {
-            throw new LoadFailure("response", "Playlist page could not be parsed for its source");
+        if (panel == null) {
+            throw new LoadFailure("no-panel", request);
         }
-        return page;
+        try {
+            return PlaylistPage.readPanel(panel, expected.playlistId());
+        } catch (PlaylistPage.InvalidPanel ex) {
+            throw new LoadFailure(ex.reason, request + "; " + ex.getMessage());
+        }
     }
 
     private static int position(PlaylistPage page, PlaylistPage.Anchor anchor) throws LoadFailure {
