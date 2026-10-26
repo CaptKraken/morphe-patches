@@ -207,4 +207,23 @@ public class PlaylistPagingTest {
         panel.setItems(1, unavailable.setVideo(unavailable.getVideo().toBuilder().setSelected(true)));
         assertNull(PlaylistPage.fromPanel(panel.build(), "PL-public"));
     }
+
+    @Test public void omittedPanelIdStillRequiresEveryPlayableCommandToIdentifyTheSource() throws Exception {
+        var command = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setWatchEndpoint(
+                PlaylistQueueRenderer.WatchEndpoint.newBuilder().setVideoId(A).setPlaylistId("WL").setIndex(0));
+        var video = PlaylistQueueRenderer.Video.newBuilder().setVideoId(A).setSelected(true)
+                .setNavigationEndpoint(command);
+        var panel = PlaylistQueueRenderer.Panel.newBuilder().addItems(
+                PlaylistQueueRenderer.Item.newBuilder().setVideo(video));
+        var page = PlaylistPage.fromPanel(panel.build(), "WL");
+        assertNotNull(page);
+        assertEquals(A, page.rows().get(0).entry().videoId());
+        assertEquals("WL", page.rows().get(0).anchor().playlistId());
+        assertNull(PlaylistPage.fromPanel(panel.clone().setPlaylistId("PL-other").build(), "WL"));
+        video.setNavigationEndpoint(command.setWatchEndpoint(command.getWatchEndpoint().toBuilder()
+                .setPlaylistId("PL-other")));
+        panel.setItems(0, panel.getItems(0).toBuilder().setVideo(video));
+        assertNull(PlaylistPage.fromPanel(panel.build(), "WL"));
+        assertThrows(PlaylistPage.InvalidPanel.class, () -> PlaylistPage.readPanel(panel.build(), "WL"));
+    }
 }

@@ -114,12 +114,30 @@ class QueueRuntimeBoundaryTest {
         withFixture("playlistLoadingShuffle")
 
     @Test
+    fun `large shuffle prepares rows off main and binds the hidden list once`() = withFixture("largePlaylistShuffle")
+
+    @Test
+    fun `prepared pages and final shuffle cannot replace later edits or survive Clear`() =
+        withFixture("playlistPreparationLifetime")
+
+    @Test
+    fun `failed full-list loading restores the last accepted native rows`() = withFixture("playlistLoadingPartialFailure")
+
+    @Test
     fun `whole-list progress handles rebind failure clear and reuse by another playlist`() =
         withFixture("playlistLoadingLifecycle")
 
     @Test
     fun `read-only page progress does not require the server to change its highlighted video`() =
         withFixture("lazyPlaylistResponseSelection")
+
+    @Test
+    fun `unavailable response selection permits source progress but cannot prove completion`() =
+        withFixture("unavailablePageSelection")
+
+    @Test
+    fun `page rejection identifies missing envelopes and invalid rows without exposing identifiers`() =
+        withFixture("playlistPageRejection")
 
     @Test
     fun `playlist position command follows native index params and tracking without a video ID`() =
@@ -416,10 +434,23 @@ class QueueRuntimeBoundaryTest {
                     }
                 }
             """,
+            "PlaylistMetadataRequest" to """
+                package app.morphe.extension.youtube.patches.queue;
+                class PlaylistMetadataRequest {
+                    static VideoMetadata fetch(String id, String title, java.util.Locale locale) {
+                        app.morphe.extension.shared.Utils.verifyOffMainThread();
+                        return null;
+                    }
+                }
+            """,
             "RestoreOriginalTitlesPatch" to """
                 package app.morphe.extension.youtube.patches.originaltitles;
                 public class RestoreOriginalTitlesPatch {
-                    public static String getTitle(String id, String title) { return title; }
+                    public static int mainCalls, backgroundCalls;
+                    public static String getTitle(String id, String title) {
+                        if (app.morphe.extension.shared.Utils.mainThread) mainCalls++; else backgroundCalls++;
+                        return title;
+                    }
                 }
             """,
             "ChannelIdRequest" to """
@@ -490,7 +521,8 @@ class QueueRuntimeBoundaryTest {
                     public interface LogMessage { String buildMessageString(); }
                     public static int errors;
                     public static void printDebug(LogMessage message) { message.buildMessageString(); }
-                    public static void printException(LogMessage message) { message.buildMessageString(); errors++; }
+                    public static String lastError;
+                    public static void printException(LogMessage message) { lastError = message.buildMessageString(); errors++; }
                     public static void printException(LogMessage message, Throwable e) { printException(message); }
                 }
             """,
@@ -545,6 +577,7 @@ class QueueRuntimeBoundaryTest {
                 import android.content.SharedPreferences;
                 import app.morphe.extension.shared.*;
                 import app.morphe.extension.youtube.patches.*;
+                import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
                 import app.morphe.extension.youtube.patches.AddToQueuePatch.QueueType;
                 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
                 import app.morphe.extension.youtube.innertube.IconOuterClass;
@@ -787,7 +820,7 @@ class QueueRuntimeBoundaryTest {
                         installOwned(controller);
                         var page = PlaylistPage.fromPanel(page(List.of("abcdefghijk", "ZYXWVUTSRQP"), 0), PAGE_LIST);
                         var queue = PlaylistQueue.fromPage(page, new PlaylistQueue.Source(PAGE_LIST, source.account))
-                            .playNext("LMNOPQRSTUV").playLast("0123456789_");
+                            .playNext("LMNOPQRSTUV").playLast("0123456789_").withRepeatMode(controller.playback.repeat);
                         field("queue").set(null, queue);
                         PlaylistPages.attach(source);
                         return controller;
@@ -819,6 +852,8 @@ class QueueRuntimeBoundaryTest {
                         require(consumed == null && controller.feedbacks == 0,
                             "Do not open the picker with a partial selection");
                         require(controller.loading.active, "Save all shows native progress while finishing the source");
+                        Utils.drainBackground(); Utils.drain();
+                        require(controller.loading.active, "Keep progress while the worker prepares the complete selection");
                         Utils.drainBackground(); Utils.drain();
                         queue = (PlaylistQueue) field("queue").get(null);
                         var saved = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(controller.feedback);
@@ -861,6 +896,48 @@ class QueueRuntimeBoundaryTest {
                         require(controller.playback.attaches == 1 && LoadVideoPatch.opens == 0 && source.requests == 1,
                             "Read-only page fetching retains current playback and does not request another watch");
                     }
+                    public static void unavailablePageSelection() throws Exception {
+                        var source = new PageSource(); var controller = lazyController(source);
+                        var before = (PlaylistQueue) field("queue").get(null);
+                        var rows = page(List.of("abcdefghijk", "ZYXWVUTSRQP", "ABCDEFGHIJK"), -1);
+                        var unavailable = PlaylistQueueRenderer.Item.newBuilder().setVideo(
+                            PlaylistQueueRenderer.Video.newBuilder().setSelected(true).setUnplayableText(
+                                PlaylistQueueRenderer.Text.newBuilder().setSimpleText("Unavailable"))).build();
+                        var response = rows.toBuilder().clearItems().addItems(rows.getItems(0)).addItems(rows.getItems(1))
+                            .addItems(unavailable).addItems(rows.getItems(2)).setSelectedIndex(2).setLocalSelectedIndex(2);
+                        require(PlaylistPage.fromPanel(response.build(), PAGE_LIST) == null,
+                            "Initial conversion cannot replace an unavailable playing occurrence");
+                        source.reply = response.build(); startPage(); Utils.drainBackground(); Utils.drain();
+                        var after = (PlaylistQueue) field("queue").get(null);
+                        require(after.entries().size() == before.entries().size() + 1
+                                && after.currentEntry() == before.currentEntry() && after.selectedIndex() == 0
+                                && !after.isComplete() && LoadVideoPatch.opens == 0,
+                            "Validated read-only rows extend the queue even when the response highlights an unavailable video");
+                        source.reply = response.build();
+                        startPage(); Utils.drainBackground(); Utils.drain();
+                        require(field("queue").get(null) == after && !after.isComplete()
+                                && Logger.lastError.contains("[selection]"),
+                            "An unavailable highlight cannot establish EOF at an unchanged source boundary");
+                    }
+                    public static void playlistPageRejection() throws Exception {
+                        var source = new PageSource(); var controller = lazyController(source);
+                        var before = field("queue").get(null);
+                        var rows = page(List.of("abcdefghijk", "ZYXWVUTSRQP", "ABCDEFGHIJK"), 1).toBuilder();
+                        var last = rows.getItems(2).getVideo();
+                        rows.setItems(2, rows.getItems(2).toBuilder().setVideo(last.toBuilder().setNavigationEndpoint(
+                            last.getNavigationEndpoint().toBuilder().setWatchEndpoint(
+                                last.getNavigationEndpoint().getWatchEndpoint().toBuilder().setIndex(0)))));
+                        source.reply = rows.build(); savePartial(controller); Utils.drainBackground(); Utils.drain();
+                        require(field("queue").get(null) == before && !controller.loading.active
+                                && Logger.lastError.contains("[row-order]") && Logger.lastError.contains("anchor 1")
+                                && Logger.lastError.contains("row 3/3") && !Logger.lastError.contains(PAGE_LIST)
+                                && !Logger.lastError.contains("ABCDEFGHIJK") && !Logger.lastError.contains("opaque"),
+                            "A rejected row retains the queue, restores content and reports safe request/row positions");
+                        source.reply = null; savePartial(controller); Utils.drainBackground(); Utils.drain();
+                        require(field("queue").get(null) == before && !controller.loading.active
+                                && Logger.lastError.contains("[no-panel]") && Logger.lastError.contains("anchor 1"),
+                            "A missing native envelope is distinguishable from rejected row data");
+                    }
                     static NativePlaylistQueuePatch.RepeatHeader header(Controller controller) {
                         return new NativePlaylistQueuePatch.RepeatHeader() {
                             public Object patch_getNavigator() { return controller.patch_getNavigator(); }
@@ -893,10 +970,121 @@ class QueueRuntimeBoundaryTest {
                         require(controller.loading.active, "Reopening or rebinding the owned list reapplies progress");
                         source.reply = page(List.of("abcdefghijk", "ZYXWVUTSRQP", "ABCDEFGHIJK"), 2);
                         Utils.drainBackground(); Utils.drain();
+                        require(controller.loading.active && field("playlistPreparation").get(null) != null,
+                            "Final preparation stays on the worker while native progress remains visible");
+                        Utils.drainBackground(); Utils.drain();
                         var after = (PlaylistQueue) field("queue").get(null);
                         require(!controller.loading.active && after.isComplete() && after.currentEntry() == current
                                 && field("playlistOperation").get(null) == null && LoadVideoPatch.opens == 0,
                             "Completion restores shuffled rows while keeping the playing video uninterrupted");
+                    }
+                    static PlaylistQueueRenderer.Panel pageWindow(List<String> ids, int from, int to, int selected) {
+                        var window = page(ids.subList(from, to), selected - from).toBuilder()
+                            .setSelectedIndex(selected).setLocalSelectedIndex(selected - from).setVideoCount(ids.size());
+                        for (int index = 0; index < window.getItemsCount(); index++) {
+                            var video = window.getItems(index).getVideo();
+                            window.setItems(index, window.getItems(index).toBuilder().setVideo(video.toBuilder()
+                                .setNavigationEndpoint(video.getNavigationEndpoint().toBuilder().setWatchEndpoint(
+                                    video.getNavigationEndpoint().getWatchEndpoint().toBuilder()
+                                        .setIndex(from + index).setPlaylistSetVideoId("row" + (from + index))))));
+                        }
+                        return window.build();
+                    }
+                    public static void largePlaylistShuffle() throws Exception {
+                        List<String> ids = new ArrayList<>(); ids.add("abcdefghijk");
+                        for (int index = 1; index < 2401; index++) ids.add(String.format(java.util.Locale.ROOT, "%011d", index));
+                        var source = new PageSource() {
+                            public java.util.concurrent.Future<?> patch_requestPlaylistPage(String list, String video,
+                                    int index, String params, String entry, byte[] tracking, PlaylistPage.Account expected) {
+                                Utils.verifyOffMainThread();
+                                reply = pageWindow(ids, Math.max(0, index - 199), Math.min(ids.size(), index + 201), index);
+                                return super.patch_requestPlaylistPage(list, video, index, params, entry, tracking, expected);
+                            }
+                        };
+                        var controller = lazyController(source);
+                        var initial = PlaylistPage.fromPanel(pageWindow(ids, 0, 200, 0), PAGE_LIST);
+                        var queue = PlaylistQueue.fromPage(initial, new PlaylistQueue.Source(PAGE_LIST, source.account))
+                            .playNext("LMNOPQRSTUV").playLast("0123456789_").withRepeatMode(controller.playback.repeat);
+                        field("queue").set(null, queue);
+                        var current = queue.currentEntry();
+                        RestoreOriginalTitlesPatch.mainCalls = 0; RestoreOriginalTitlesPatch.backgroundCalls = 0;
+                        require(NativePlaylistQueuePatch.onQueueShuffle(header(controller)) && controller.loading.active,
+                            "Whole-list Shuffle immediately shows progress");
+                        for (int wave = 0; wave < 32 && field("playlistOperation").get(null) != null; wave++) {
+                            Utils.drainBackground(); Utils.drain();
+                        }
+                        queue = (PlaylistQueue) field("queue").get(null);
+                        var expected = new java.util.HashSet<>(ids); expected.add("LMNOPQRSTUV"); expected.add("0123456789_");
+                        require(queue.isComplete() && queue.entries().size() == 2403 && queue.currentEntry() == current
+                                && queue.selectedIndex() == 0 && field("playlistOperation").get(null) == null
+                                && new java.util.HashSet<>(queue.entries().stream().map(PlaylistQueue.Entry::videoId).toList()).equals(expected),
+                            "All source rows and outside additions survive full-list Shuffle");
+                        require(RestoreOriginalTitlesPatch.mainCalls == 0 && RestoreOriginalTitlesPatch.backgroundCalls > 2403
+                                && controller.panelUpdates == 1 && source.requests > 1 && !controller.loading.active,
+                            "Growing row models are built on workers and hidden native list is bound once at completion");
+                        int requests = source.requests;
+                        require(NativePlaylistQueuePatch.onQueueShuffle(header(controller)), "Shuffle the already loaded large queue");
+                        Utils.drainBackground(); Utils.drain();
+                        require(controller.panelUpdates == 2 && source.requests == requests
+                                && RestoreOriginalTitlesPatch.mainCalls == 0 && LoadVideoPatch.opens == 0,
+                            "Repeated large Shuffle also prepares off main without fetching or reloading video");
+                    }
+                    public static void playlistPreparationLifetime() throws Exception {
+                        var source = new PageSource(); var controller = lazyController(source);
+                        source.reply = page(List.of("abcdefghijk", "ZYXWVUTSRQP", "ABCDEFGHIJK"), 1);
+                        startPage(); Utils.drainBackground();
+                        var before = (PlaylistQueue) field("queue").get(null);
+                        field("queue").set(null, before.playLast("extra123456"));
+                        Utils.drain();
+                        require(controller.playback.attaches == 0 && source.requests == 1,
+                            "Stale prepared rows cannot overwrite a later queue edit");
+                        Utils.drainBackground(); Utils.drain();
+                        var after = (PlaylistQueue) field("queue").get(null);
+                        require(after.entries().size() == 6 && after.entries().get(5).videoId().equals("extra123456")
+                                && controller.playback.attaches == 1 && source.requests == 1,
+                            "Reprepare the already fetched page around the latest edit without refetching");
+                        // Native playback may advance before its queued selection callback runs.
+                        source.reply = page(List.of("abcdefghijk", "ZYXWVUTSRQP", "ABCDEFGHIJK"), 2);
+                        startPage(); Utils.drainBackground();
+                        controller.playback.index = 1; VideoInformation.id = "LMNOPQRSTUV";
+                        Utils.drain(); Utils.drainBackground(); Utils.drain();
+                        require(((PlaylistQueue) field("queue").get(null)).selectedIndex() == 1
+                                && ((PlaylistQueue) field("queue").get(null)).currentEntry().videoId().equals("LMNOPQRSTUV"),
+                            "Prepared pages never rewind a newer native playback selection");
+                        controller.playback.index = 0; VideoInformation.id = "abcdefghijk";
+                        // Use a complete queue to exercise the final Shuffle preparation independently of fetching.
+                        field("queue").set(null, new PlaylistQueue("abcdefghijk", "Playing").playLast("ZYXWVUTSRQP")
+                            .withRepeatMode(controller.playback.repeat));
+                        require(NativePlaylistQueuePatch.onQueueShuffle(header(controller)), "Start final Shuffle preparation");
+                        Utils.drainBackground();
+                        field("queue").set(null, ((PlaylistQueue) field("queue").get(null)).playLast("0123456789_"));
+                        int bindings = controller.panelUpdates;
+                        Utils.drain();
+                        require(controller.panelUpdates == bindings && controller.loading.active,
+                            "Final stale Shuffle output cannot replace an edit");
+                        Utils.drainBackground(); Utils.drain();
+                        require(((PlaylistQueue) field("queue").get(null)).entries().size() == 3
+                                && controller.panelUpdates == bindings + 1 && !controller.loading.active,
+                            "The new immutable selection is shuffled and published once");
+                        NativePlaylistQueuePatch.onQueueShuffle(header(controller)); Utils.drainBackground();
+                        call("releasePanel"); bindings = controller.panelUpdates; Utils.drain();
+                        require(field("queue").get(null) == null && controller.panelUpdates == bindings && !controller.loading.active,
+                            "A completed worker cannot resurrect the queue after Clear");
+                    }
+                    public static void playlistLoadingPartialFailure() throws Exception {
+                        var source = new PageSource(); var controller = lazyController(source);
+                        source.reply = page(List.of("abcdefghijk", "ZYXWVUTSRQP", "ABCDEFGHIJK"), 1);
+                        NativePlaylistQueuePatch.onQueueShuffle(header(controller));
+                        Utils.drainBackground(); Utils.drain();
+                        require(controller.panelUpdates == 0 && controller.playback.attaches == 1,
+                            "Accepted pages update native playback without binding the hidden list");
+                        source.reply = null; Utils.drainBackground(); Utils.drain();
+                        require(controller.loading.active, "A failed later page first prepares the retained accepted rows");
+                        Utils.drainBackground(); Utils.drain();
+                        require(!controller.loading.active && controller.panelUpdates == 1
+                                && ((PlaylistQueue) field("queue").get(null)).entries().size() == 5
+                                && field("playlistOperation").get(null) == null && controller.feedbacks == 0,
+                            "Failure restores exactly the last accepted rows without performing Shuffle or Save");
                     }
                     public static void playlistLoadingLifecycle() throws Exception {
                         var source = new PageSource(); var controller = lazyController(source);
@@ -1135,11 +1323,13 @@ class QueueRuntimeBoundaryTest {
                             public void patch_setRepeatMode(int mode) {}
                             public void patch_setShuffleAvailable(boolean available) {}
                         };
+                        controller.playback.index = queue.selectedIndex();
                         require(NativePlaylistQueuePatch.onQueueShuffle(header), "Own the native Mix Shuffle click");
+                        Utils.drainBackground(); Utils.drain();
                         queue = (PlaylistQueue) field("queue").get(null);
                         require(queue.selectedIndex() == 0 && queue.currentEntry().videoId().equals("abcdefghijk")
                                 && field("pageLoad").get(null) == null && field("playlistOperation").get(null) == null,
-                            "Shuffle completes immediately without waiting for Mix continuation");
+                            "Shuffle prepares the finite Mix window without requesting continuation");
                         var save = QueueSaveActions.openPicker(queue.entries().stream()
                             .map(PlaylistQueue.Entry::videoId).toList());
                         require(NativePlaylistQueuePatch.onQueueMenuCommand(save,
@@ -1307,6 +1497,7 @@ class QueueRuntimeBoundaryTest {
                         byte[] panel;
                         public boolean patch_isLocalQueue() { return local; }
                         public boolean patch_attachQueue(byte[] value, byte[] command) {
+                            require(Utils.mainThread, "Native playback attachment stays on the main thread");
                             attaches++;
                             try {
                                 var watch = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(command).getWatchEndpoint();
@@ -1316,7 +1507,9 @@ class QueueRuntimeBoundaryTest {
                             if (!attachSucceeds) return false;
                             panel = value; local = true; return true;
                         }
-                        public void patch_updateSnapshot(byte[] value) { panel = value; }
+                        public void patch_updateSnapshot(byte[] value) {
+                            require(Utils.mainThread, "Native snapshot update stays on the main thread"); panel = value;
+                        }
                         public int patch_getSelectedIndex() { return index; }
                         public Object patch_getQueueSequence() { return sequence; }
                         public int patch_getRepeatMode() { return repeat; }
@@ -1344,7 +1537,7 @@ class QueueRuntimeBoundaryTest {
                         Object model = new Object(), previousModel;
                         String previousPlaylist;
                         byte[] feedback;
-                        int feedbacks;
+                        int feedbacks, panelUpdates;
                         Object navigator;
                         Controller(Playback value) { playback = value; }
                         public String patch_getVideoId() { return VideoInformation.id; }
@@ -1372,6 +1565,8 @@ class QueueRuntimeBoundaryTest {
                             return navigator;
                         }
                         public Object patch_updatePanel(byte[] value) {
+                            require(Utils.mainThread, "Native panel publication stays on the main thread");
+                            panelUpdates++;
                             previousModel = model; previousPlaylist = patch_getPlaylistId();
                             model = new Object(); playlist = "";
                             if (loading != null) {

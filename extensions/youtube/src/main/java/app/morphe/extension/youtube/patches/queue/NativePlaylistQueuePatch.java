@@ -233,8 +233,14 @@ public final class NativePlaylistQueuePatch {
                             WeakReference<NativePlayback> playback) {}
     private static PageLoad pageLoad;
     private static PlaylistQueue.Gap failedPage;
-    private enum PlaylistOperation { SHUFFLE, SAVE }
+    private enum PlaylistOperation { SHUFFLE, SAVE, RESTORE }
     private static PlaylistOperation playlistOperation;
+    private record PlaylistPreparation(long epoch, PlaylistOperation operation,
+                                       WeakReference<NativePlayback> playback) {}
+    private static PlaylistPreparation playlistPreparation;
+    /** Immutable worker output; publication must still own the exact input snapshot. */
+    private record PreparedPanel(PlaylistQueue snapshot, PlaylistQueue candidate, String playingVideoId,
+                                 @Nullable QueueRatingActions ratings, byte[] panel) {}
     private static WeakReference<PlaylistLoadingView> playlistLoadingView = new WeakReference<>(null);
     private static WeakReference<PlaylistController> playlistLoadingController = new WeakReference<>(null);
     private record PlaylistNavigation(WeakReference<PlaylistNavigator> navigator, Object request,
@@ -501,7 +507,7 @@ public final class NativePlaylistQueuePatch {
         if (publishedModel != null && controllerRef.get() == controller
                 && controller.patch_getModel() == publishedModel
                 && controller.patch_getVideoId().equals(queue.currentEntry().videoId())) {
-            if (selectionNeedsPublishing && readyController() == controller) {
+            if (selectionNeedsPublishing && playlistOperation == null && readyController() == controller) {
                 publish(controller, queue, false);
             }
 
@@ -912,7 +918,9 @@ public final class NativePlaylistQueuePatch {
         if (queue.selectedIndex() != index) {
             queue = queue.select(index);
             selectionNeedsPublishing = true;
-            playback.patch_updateSnapshot(renderer(queue));
+            if (playlistOperation == null && pageLoad == null && playlistPreparation == null) {
+                playback.patch_updateSnapshot(renderer(queue));
+            }
         }
         // Repeat is observed natively. It does not change the rendered row model.
         // An old-video callback can run before the selected row starts. Do not
@@ -1051,11 +1059,7 @@ public final class NativePlaylistQueuePatch {
                 return true;
             }
             syncNativeSelection(VideoInformation.getVideoId());
-            if (!queue.isComplete()) {
-                finishPlaylist(PlaylistOperation.SHUFFLE);
-                return true;
-            }
-            publish(controller, queue.shuffle(), true);
+            finishPlaylist(PlaylistOperation.SHUFFLE);
             return true;
         } catch (Exception ex) {
             Logger.printException(() -> "onQueueShuffle failure", ex);
@@ -1429,7 +1433,8 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static void continuePlaylistLoading() {
-        if (queue == null || pageLoad != null || publishing || dragSession != null || isQueueSuspended()) {
+        if (queue == null || pageLoad != null || playlistPreparation != null
+                || publishing || dragSession != null || isQueueSuspended()) {
             return;
         }
         PlaylistNavigation navigation = playlistNavigation;
@@ -1452,29 +1457,130 @@ public final class NativePlaylistQueuePatch {
             }
         }
         if (playlistOperation != null) {
-            PlaylistQueue.Gap gap = queue.firstGap();
+            PlaylistQueue.Gap gap = playlistOperation == PlaylistOperation.RESTORE ? null : queue.firstGap();
             if (gap != null) {
                 loadPlaylistPage(gap);
                 return;
             }
-            var operation = playlistOperation;
+            preparePlaylistOperation();
+        }
+    }
+
+    private static PreparedPanel preparePanel(PlaylistQueue snapshot, PlaylistQueue candidate) {
+        Utils.verifyOffMainThread();
+        candidate = candidate.withAvailableMetadata(metadataCache);
+        String playingVideoId = VideoInformation.getVideoId();
+        QueueRatingActions ratings = ratingActions.get(playingVideoId);
+        return new PreparedPanel(snapshot, candidate, playingVideoId, ratings,
+                renderer(candidate, playingVideoId, ratings));
+    }
+
+    private static boolean isCurrentPreparation(PreparedPanel prepared) {
+        return queue == prepared.snapshot() && VideoInformation.getVideoId().equals(prepared.playingVideoId())
+                && ratingActions.get(prepared.playingVideoId()) == prepared.ratings();
+    }
+
+    private static PreparedPanel preparePlaylistPage(PageLoad load, PlaylistQueue snapshot, PlaylistPages.Result result) {
+        Utils.verifyOffMainThread();
+        PlaylistQueue candidate = snapshot.extend(load.gap(), result.page(), result.end());
+        for (var row : result.page().rows()) {
+            metadataCache.putIfAbsent(row.metadata().videoId(), row.metadata());
+        }
+        return preparePanel(snapshot, candidate);
+    }
+
+    private static void preparePlaylistOperation() {
+        NativePlayback playback = nativePlaybackRef.get();
+        if (playback == null || !playback.patch_isLocalQueue()) {
             playlistOperation = null;
             updatePlaylistLoadingView();
-            PlaylistController controller = readyController();
-            if (controller == null || controller.patch_getModel() != publishedModel) {
-                return;
-            }
-            if (operation == PlaylistOperation.SHUFFLE) {
-                publish(controller, queue.shuffle(), true);
-            } else {
-                List<String> ids = new ArrayList<>();
-                for (var entry : queue.entries()) {
-                    ids.add(entry.videoId());
+            return;
+        }
+        PlaylistQueue snapshot = queue;
+        var preparation = new PlaylistPreparation(playlistEpoch, playlistOperation, new WeakReference<>(playback));
+        playlistPreparation = preparation;
+        Utils.runOnBackgroundThread(() -> {
+            PreparedPanel prepared = null;
+            byte[] saveCommand = null;
+            Exception failure = null;
+            try {
+                prepared = preparePanel(snapshot, preparation.operation() == PlaylistOperation.SHUFFLE
+                        ? snapshot.shuffle() : snapshot);
+                if (preparation.operation() == PlaylistOperation.SAVE) {
+                    List<String> ids = new ArrayList<>();
+                    for (var entry : prepared.candidate().entries()) {
+                        ids.add(entry.videoId());
+                    }
+                    saveCommand = QueueSaveActions.openPicker(ids).toByteArray();
                 }
-                // Reuse the controller's native command dispatcher with a fresh,
-                // complete immutable selection, not the stale partial header command.
-                controller.patch_showQueueFeedback(QueueSaveActions.openPicker(ids).toByteArray());
+            } catch (Exception ex) {
+                failure = ex;
             }
+            PreparedPanel completed = prepared;
+            byte[] command = saveCommand;
+            Exception error = failure;
+            Utils.runOnMainThread(() -> completePlaylistOperation(preparation, completed, command, error));
+        });
+    }
+
+    private static void completePlaylistOperation(PlaylistPreparation preparation, @Nullable PreparedPanel prepared,
+                                                  @Nullable byte[] saveCommand, @Nullable Exception failure) {
+        if (playlistPreparation != preparation || preparation.epoch() != playlistEpoch) {
+            return;
+        }
+        NativePlayback playback = preparation.playback().get();
+        if (!AddToQueuePatch.isNativeQueueEnabled() || queue == null || isQueueSuspended()
+                || playlistOperation != preparation.operation() || playback == null
+                || playback != nativePlaybackRef.get() || !playback.patch_isLocalQueue()) {
+            playlistPreparation = null;
+            playlistOperation = null;
+            updatePlaylistLoadingView();
+            return;
+        }
+        syncNativeSelection(VideoInformation.getVideoId());
+        if (dragSession != null || pendingSelection != null || publishing
+                || playback.patch_getSelectedIndex() != queue.selectedIndex()
+                || !queue.currentEntry().videoId().equals(VideoInformation.getVideoId())) {
+            Utils.runOnMainThreadDelayed(() -> completePlaylistOperation(preparation, prepared, saveCommand, failure), 100);
+            return;
+        }
+        playlistPreparation = null;
+        if (failure == null && prepared != null && !isCurrentPreparation(prepared)) {
+            // Selection, metadata or edits changed while the worker built the rows.
+            continuePlaylistLoading();
+            return;
+        }
+        try {
+            if (failure != null) {
+                throw failure;
+            }
+            if (prepared == null) {
+                throw new IllegalStateException("Missing completed playlist operation");
+            }
+            PlaylistPages.Source source = PlaylistPages.current();
+            if (queue.source() != null && (source == null
+                    || !queue.source().account().equals(source.patch_getPlaylistAccount()))) {
+                throw new IllegalStateException("Playlist account changed before operation");
+            }
+            PlaylistController controller = readyController();
+            if (controller != null && controller.patch_getModel() == publishedModel) {
+                // Page loads update playback only while the list is hidden. Bind the
+                // complete native list once, using the already serialized worker output.
+                if (!publish(controller, prepared.candidate(), false, prepared.panel())) {
+                    throw new IllegalStateException("Completed native playlist was not accepted");
+                }
+                playlistOperation = null;
+                updatePlaylistLoadingView();
+                if (saveCommand != null) {
+                    controller.patch_showQueueFeedback(saveCommand);
+                }
+            }
+        } catch (Exception ex) {
+            Logger.printException(() -> "Could not prepare native playlist operation", ex);
+            Utils.showToastShort(str("morphe_native_playlist_queue_playlist_failed"));
+        } finally {
+            playlistOperation = null;
+            updatePlaylistLoadingView();
         }
     }
 
@@ -1497,22 +1603,26 @@ public final class NativePlaylistQueuePatch {
         }
         var load = new PageLoad(playlistEpoch, queue.source(), gap, new WeakReference<>(playback));
         pageLoad = load;
+        PlaylistQueue snapshot = queue;
         Utils.runOnBackgroundThread(() -> {
             PlaylistPages.Result result = null;
+            PreparedPanel prepared = null;
             Exception failure = null;
             try {
                 result = PlaylistPages.load(source, load.source(), gap);
+                prepared = preparePlaylistPage(load, snapshot, result);
             } catch (Exception ex) {
                 failure = ex;
             }
             PlaylistPages.Result completed = result;
+            PreparedPanel panel = prepared;
             Exception error = failure;
-            Utils.runOnMainThread(() -> completePlaylistPage(load, completed, error));
+            Utils.runOnMainThread(() -> completePlaylistPage(load, completed, panel, error));
         });
     }
 
     private static void completePlaylistPage(PageLoad load, @Nullable PlaylistPages.Result result,
-                                             @Nullable Exception failure) {
+                                             @Nullable PreparedPanel prepared, @Nullable Exception failure) {
         if (pageLoad != load || load.epoch() != playlistEpoch) {
             return;
         }
@@ -1533,11 +1643,13 @@ public final class NativePlaylistQueuePatch {
             updatePlaylistLoadingView();
             return;
         }
-        if (dragSession != null || pendingSelection != null || publishing) {
-            Utils.runOnMainThreadDelayed(() -> completePlaylistPage(load, result, failure), 100);
+        syncNativeSelection(VideoInformation.getVideoId());
+        if (dragSession != null || pendingSelection != null || publishing
+                || playback.patch_getSelectedIndex() != queue.selectedIndex()
+                || !queue.currentEntry().videoId().equals(VideoInformation.getVideoId())) {
+            Utils.runOnMainThreadDelayed(() -> completePlaylistPage(load, result, prepared, failure), 100);
             return;
         }
-        pageLoad = null;
         try {
             if (failure != null) {
                 throw failure;
@@ -1549,19 +1661,33 @@ public final class NativePlaylistQueuePatch {
             if (source == null || !load.source().account().equals(source.patch_getPlaylistAccount())) {
                 throw new IllegalStateException("Playlist account changed before publication");
             }
-            var updated = queue.extend(load.gap(), result.page(), result.end());
-            for (var row : result.page().rows()) {
-                metadataCache.putIfAbsent(row.metadata().videoId(), row.metadata());
+            if (prepared == null || !isCurrentPreparation(prepared)) {
+                PlaylistQueue snapshot = queue;
+                Utils.runOnBackgroundThread(() -> {
+                    PreparedPanel replacement = null;
+                    Exception error = null;
+                    try {
+                        replacement = preparePlaylistPage(load, snapshot, result);
+                    } catch (Exception ex) {
+                        error = ex;
+                    }
+                    PreparedPanel completed = replacement;
+                    Exception problem = error;
+                    Utils.runOnMainThread(() -> completePlaylistPage(load, result, completed, problem));
+                });
+                return;
             }
+            pageLoad = null;
+            PlaylistQueue updated = prepared.candidate();
             PlaylistController controller = readyController();
             boolean accepted;
-            if (controller != null && controller.patch_getModel() == publishedModel) {
-                accepted = publish(controller, updated, false);
+            if (playlistOperation == null && controller != null && controller.patch_getModel() == publishedModel) {
+                accepted = publish(controller, updated, false, prepared.panel());
             } else {
                 // Background playback owns a navigator even when no panel is attached.
                 publishing = true;
                 try {
-                    accepted = playback.patch_attachQueue(renderer(updated), currentQueueCommand(updated));
+                    accepted = playback.patch_attachQueue(prepared.panel(), currentQueueCommand(updated));
                     if (accepted) {
                         queue = updated.withRepeatMode(playback.patch_getRepeatMode());
                         selectionNeedsPublishing = true;
@@ -1577,14 +1703,18 @@ public final class NativePlaylistQueuePatch {
             failedPage = null;
             continuePlaylistLoading();
         } catch (Exception ex) {
+            pageLoad = null;
             failedPage = load.gap();
             boolean requested = playlistOperation != null || playlistNavigation != null;
-            playlistOperation = null;
+            // Accepted pages have already changed native playback while the old list
+            // was hidden. Restore those rows even when a later request fails.
+            playlistOperation = selectionNeedsPublishing ? PlaylistOperation.RESTORE : null;
             playlistNavigation = null;
             updatePlaylistLoadingView();
+            continuePlaylistLoading();
             Logger.printException(() -> "Playlist page ["
                     + (ex instanceof PlaylistPages.LoadFailure pageFailure ? pageFailure.stage : ex.getClass().getSimpleName())
-                    + "] could not load", ex);
+                    + "] " + (ex instanceof PlaylistPages.LoadFailure ? ex.getMessage() : "could not load"), ex);
             if (requested) {
                 Utils.showToastShort(str("morphe_native_playlist_queue_playlist_failed"));
             }
@@ -1594,6 +1724,7 @@ public final class NativePlaylistQueuePatch {
     private static void cancelPlaylistLoading() {
         playlistEpoch++;
         pageLoad = null;
+        playlistPreparation = null;
         failedPage = null;
         playlistOperation = null;
         playlistNavigation = null;
@@ -2650,6 +2781,10 @@ public final class NativePlaylistQueuePatch {
             return;
         }
 
+        if (playlistOperation != null) {
+            selectionNeedsPublishing = true;
+            return;
+        }
         PlaylistController controller = readyController();
         if (controller != null && controller.patch_getModel() == publishedModel) {
             publish(controller, queue, false);
@@ -2903,7 +3038,11 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static boolean publish(PlaylistController controller, PlaylistQueue candidate, boolean reportFailure) {
-        candidate = candidate.withAvailableMetadata(metadataCache);
+        return publish(controller, candidate.withAvailableMetadata(metadataCache), reportFailure, null);
+    }
+
+    private static boolean publish(PlaylistController controller, PlaylistQueue candidate, boolean reportFailure,
+                                   @Nullable byte[] preparedPanel) {
         publishing = true;
         Object previousModel = controller.patch_getModel();
         Object acceptedModel = null;
@@ -2917,7 +3056,7 @@ public final class NativePlaylistQueuePatch {
                 return false;
             }
 
-            byte[] panel = renderer(candidate);
+            byte[] panel = preparedPanel == null ? renderer(candidate) : preparedPanel;
             acceptedModel = controller.patch_updatePanel(panel);
             if (acceptedModel == null) {
                 if (reportFailure) {
@@ -3059,7 +3198,7 @@ public final class NativePlaylistQueuePatch {
                 .build();
     }
 
-    private static PlaylistQueueRenderer.Menu rowMenu(PlaylistQueue source, int index) {
+    private static PlaylistQueueRenderer.Menu rowMenu(PlaylistQueue source, int index, String playingVideoId) {
         PlaylistQueue.Entry entry = source.entries().get(index);
         String videoId = entry.videoId();
         var items = PlaylistQueueRenderer.MenuRenderer.newBuilder();
@@ -3099,7 +3238,7 @@ public final class NativePlaylistQueuePatch {
                                         .setInnertubeCommand(request))));
         items.addItems(serviceMenuItem(str("accessibility_share_video"), YTIconType.SHARE, share.build()));
 
-        if (index != source.selectedIndex() && !videoId.equals(VideoInformation.getVideoId())) {
+        if (index != source.selectedIndex() && !videoId.equals(playingVideoId)) {
             var remove = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setHideEnclosingAction(
                     PlaylistQueueRenderer.HideEnclosingAction.newBuilder().setHack(true));
             items.addItems(serviceMenuItem(str("remove"), YTIconType.DELETE, remove.build()));
@@ -3122,6 +3261,11 @@ public final class NativePlaylistQueuePatch {
     }
 
     private static byte[] renderer(PlaylistQueue source) {
+        String playingVideoId = VideoInformation.getVideoId();
+        return renderer(source, playingVideoId, ratingActions.get(playingVideoId));
+    }
+
+    private static byte[] renderer(PlaylistQueue source, String playingVideoId, @Nullable QueueRatingActions ratings) {
         var panel = PlaylistQueueRenderer.Panel.newBuilder()
                 .setTitle(str("morphe_native_playlist_queue_title"))
                 .setSelectedIndex(source.selectedIndex()).setPlaylistId("").setVideoCount(source.totalCount())
@@ -3146,7 +3290,7 @@ public final class NativePlaylistQueuePatch {
                     .setWidth(480).setHeight(360);
             var video = PlaylistQueueRenderer.Video.newBuilder()
                     .setVideoId(entry.videoId()).setSelected(index == source.selectedIndex()).setCanReorder(true)
-                    .setMenu(rowMenu(source, index))
+                    .setMenu(rowMenu(source, index, playingVideoId))
                     .setNavigationEndpoint(PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
                             .setWatchEndpoint(PlaylistQueueRenderer.WatchEndpoint.newBuilder().setVideoId(entry.videoId())))
                     .setTitle(PlaylistQueueRenderer.Text.newBuilder().setSimpleText(
@@ -3161,12 +3305,12 @@ public final class NativePlaylistQueuePatch {
             }
 
             if (index != source.selectedIndex()
-                    && !entry.videoId().equals(VideoInformation.getVideoId())) {
+                    && !entry.videoId().equals(playingVideoId)) {
                 video.addSwipeButtons(swipeToRemove);
             }
 
-            QueueRatingActions actions = ratingActions.get(entry.videoId());
-            if (index == source.selectedIndex() && actions != null && entry.videoId().equals(VideoInformation.getVideoId())) {
+            QueueRatingActions actions = ratings;
+            if (index == source.selectedIndex() && actions != null && entry.videoId().equals(playingVideoId)) {
                 video.addAllActionButtons(actions.buttons(
                         str("offline_playlist_panel_like_button_accessibility_text"),
                         str("offline_playlist_panel_dislike_button_accessibility_text")));

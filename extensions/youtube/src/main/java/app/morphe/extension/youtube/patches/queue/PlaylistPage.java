@@ -37,16 +37,43 @@ public record PlaylistPage(List<Row> rows, int selectedIndex, int totalCount) {
         rows = List.copyOf(rows);
     }
 
+    /** Rejection details contain only a fixed reason and numeric row positions. */
+    static final class InvalidPanel extends Exception {
+        final String reason;
+
+        InvalidPanel(String reason, String detail) {
+            super(detail);
+            this.reason = reason;
+        }
+    }
+
+    /** Initial conversion must identify an actual playable current occurrence. */
     @Nullable
     static PlaylistPage fromPanel(MessageLite source, String playlistId) throws InvalidProtocolBufferException {
-        var panel = PlaylistQueueRenderer.Panel.parseFrom(source.toByteArray());
-        if (!playlistId.equals(panel.getPlaylistId())) {
+        try {
+            PlaylistPage page = readPanel(source, playlistId);
+            return page.selectedIndex() < 0 ? null : page;
+        } catch (InvalidPanel ex) {
             return null;
+        }
+    }
+
+    /** Read-only windows may highlight an unavailable row; local playback remains authoritative. */
+    static PlaylistPage readPanel(MessageLite source, String playlistId)
+            throws InvalidProtocolBufferException, InvalidPanel {
+        var panel = PlaylistQueueRenderer.Panel.parseFrom(source.toByteArray());
+        // The panel ID is optional, as in complete native snapshots. Each
+        // playable row must still name the expected source, and load() requires
+        // the exact requested occurrence before accepting any additional rows.
+        if (!panel.getPlaylistId().isEmpty() && !playlistId.equals(panel.getPlaylistId())) {
+            throw new InvalidPanel("source-other", "panel rows " + panel.getItemsCount());
         }
         List<Row> rows = new ArrayList<>();
         int selected = -1;
         int lastIndex = -1;
-        for (var item : panel.getItemsList()) {
+        boolean unavailableSelected = false;
+        for (int index = 0; index < panel.getItemsCount(); index++) {
+            var item = panel.getItems(index);
             if (!item.hasVideo()) {
                 continue;
             }
@@ -54,27 +81,47 @@ public record PlaylistPage(List<Row> rows, int selectedIndex, int totalCount) {
             if (video.hasUnplayableText()) {
                 // Native queue population skips these before reading a command.
                 // Deleted/private placeholders can omit both video ID and endpoint.
-                if (video.getSelected()) {
-                    return null;
-                }
+                unavailableSelected |= video.getSelected();
                 continue;
             }
+            String position = "row " + (index + 1) + "/" + panel.getItemsCount();
             Anchor anchor = anchor(video.getNavigationEndpoint());
-            if (anchor == null || !playlistId.equals(anchor.playlistId())
-                    || !video.getVideoId().equals(anchor.videoId()) || anchor.index() <= lastIndex) {
-                return null;
+            if (anchor == null) {
+                var endpoint = video.getNavigationEndpoint();
+                String reason = "row-command";
+                if (!endpoint.hasWatchEndpoint() && !endpoint.hasAlternateWatchEndpoint()) {
+                    reason = "row-endpoint";
+                } else if (endpoint.hasWatchEndpoint() ? !endpoint.getWatchEndpoint().hasIndex()
+                        : !endpoint.getAlternateWatchEndpoint().hasIndex()) {
+                    reason = "row-index";
+                }
+                throw new InvalidPanel(reason, position);
+            }
+            if (!playlistId.equals(anchor.playlistId())) {
+                throw new InvalidPanel("row-source", position);
+            }
+            if (!video.getVideoId().equals(anchor.videoId())) {
+                throw new InvalidPanel("row-video", position);
+            }
+            if (anchor.index() <= lastIndex) {
+                throw new InvalidPanel("row-order", position + "; index " + anchor.index() + " <= " + lastIndex);
             }
             lastIndex = anchor.index();
             if (video.getSelected()) {
                 if (selected >= 0) {
-                    return null;
+                    throw new InvalidPanel("row-selection", position);
                 }
                 selected = rows.size();
             }
             VideoMetadata metadata = VideoMetadata.fromPanelVideo(video);
             rows.add(new Row(new PlaylistQueue.Entry(metadata.videoId(), metadata.title()), metadata, anchor));
         }
-        return rows.isEmpty() ? null : new PlaylistPage(rows, selected, panel.getVideoCount());
+        if (rows.isEmpty()) {
+            throw new InvalidPanel("empty-page", "panel rows " + panel.getItemsCount());
+        }
+        // This response cannot prove the current playable selection or EOF, but
+        // its independently validated source rows may still extend a loaded gap.
+        return new PlaylistPage(rows, unavailableSelected ? -1 : selected, panel.getVideoCount());
     }
 
     @Nullable
