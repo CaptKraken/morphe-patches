@@ -24,6 +24,7 @@ import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.shared.Utils;
 import app.morphe.extension.shared.settings.Setting;
 import app.morphe.extension.youtube.patches.queue.NativePlaylistQueuePatch;
+import app.morphe.extension.youtube.patches.queue.QueueFlyoutActions;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.LocalQueueSheet;
 import app.morphe.extension.youtube.patches.utils.PlaylistPatch;
@@ -149,7 +150,7 @@ public final class AddToQueuePatch {
 
             android.view.View item = itemList.getChildAt(itemIndex);
             if (nativeQueue && queueButtonOriginalNames.get(1).equals(buttonName)
-                    && !NativePlaylistQueuePatch.canShowFlyoutLast()) {
+                    && FlyoutUtils.getFlyoutPlaylistId().isEmpty() && !NativePlaylistQueuePatch.canShowFlyoutLast()) {
                 // The queue may have been cleared since the native model was prepared.
                 item.setVisibility(android.view.View.GONE);
                 continue;
@@ -258,12 +259,21 @@ public final class AddToQueuePatch {
         return getNewRunnable(original, FlyoutUtils.getCurrentButtonName());
     }
 
+    /** Injection point. Bind the exact collection item before shared flyout IDs are reset. */
+    public static Runnable replaceButtonRunnable(Runnable original, Object item) {
+        Runnable action = QueueFlyoutActions.getPlaylistQueueAction(item);
+        return action == null ? replaceButtonRunnable(original) : action;
+    }
+
     /**
      * Injection point.
      * 21.04 and older.
      */
     public static boolean replaceOnItemClick(Object object) {
         try {
+            if (object instanceof com.google.protobuf.MessageLite item) {
+                return QueueFlyoutActions.onPlaylistQueueItemClick(item);
+            }
             if (!isCustomQueueEnabled() && !isNativeQueueEnabled()) {
                 return false;
             }
@@ -360,8 +370,10 @@ public final class AddToQueuePatch {
         if (!queueButtonOriginalNames.contains(buttonName)) {
             return null;
         }
-        Runnable action = NativePlaylistQueuePatch.getFlyoutQueueAction(videoId,
-                queueButtonOriginalNames.get(1).equals(buttonName));
+        boolean last = queueButtonOriginalNames.get(1).equals(buttonName);
+        String playlistId = FlyoutUtils.getFlyoutPlaylistId();
+        Runnable action = playlistId.isEmpty() ? NativePlaylistQueuePatch.getFlyoutQueueAction(videoId, last)
+                : NativePlaylistQueuePatch.getPlaylistQueueAction(playlistId, last);
         // An unsupported/stale menu context cannot silently invoke a Premium or
         // account-backed queue when the user explicitly selected Native queue.
         return action != null ? action : () -> {

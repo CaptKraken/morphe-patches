@@ -64,6 +64,16 @@ public final class PlaylistPages {
         }
     }
 
+    /** Open a collection without invoking the watch response actor or loading a player. */
+    static PlaylistQueue first(Source owner, PlaylistQueue.Source expected) throws Exception {
+        Utils.verifyOffMainThread();
+        Object response = request(owner, expected, null, 0, "", "", new byte[0]);
+        PlaylistPage page = page(owner, expected, response, "first page");
+        // This is an explicit collection action, not a playing-playlist capture.
+        // Start at its first playable occurrence even when the response highlights a hidden row.
+        return PlaylistQueue.fromPage(new PlaylistPage(page.rows(), 0, page.totalCount()), expected);
+    }
+
     static Result load(Source owner, PlaylistQueue.Source expected, PlaylistQueue.Gap gap) throws Exception {
         Utils.verifyOffMainThread();
         var anchor = gap.anchor();

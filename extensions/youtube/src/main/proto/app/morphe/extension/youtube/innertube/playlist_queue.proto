@@ -202,6 +202,10 @@ message NavigationEndpoint {
     // Local dialog capabilities, retained by native protobuf copies.
     optional string queue_mix_choice_token = 500000003;
     optional bool queue_mix_add = 500000004;
+    // Collection menu actions retain their own target across native menu copies.
+    optional string queue_playlist_id = 500000005;
+    optional bool queue_playlist_last = 500000006;
+    optional ShareEntityServiceEndpoint legacy_share_entity_endpoint = 90650344;
 }
 
 // Native playlist-position navigation can omit a video ID, including at a
@@ -275,6 +279,7 @@ message ShareEntityServiceEndpoint {
 
 message ShareEntity {
     optional string video_id = 1;
+    optional string playlist_id = 2;
 }
 
 message GetDownloadActionCommand {

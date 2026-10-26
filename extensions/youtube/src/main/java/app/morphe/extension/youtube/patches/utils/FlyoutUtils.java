@@ -68,6 +68,7 @@ import app.morphe.extension.youtube.patches.VideoDelayPatch;
 import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.components.PlayerFlyoutMenuComponentsFilter;
 import app.morphe.extension.youtube.patches.playback.speed.ShortsPlaybackSpeedFlyoutPatch;
+import app.morphe.extension.youtube.patches.queue.QueueFlyoutActions;
 import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
 import app.morphe.extension.youtube.settings.Settings;
 import app.morphe.extension.youtube.videoplayer.PictureinPictureButton;
@@ -366,6 +367,13 @@ public final class FlyoutUtils {
 
     public static String getFlyoutPlaylistId() {
         return flyoutPlaylistId;
+    }
+
+    /** Retain a collection resolved from this menu, including when its card has no video ID. */
+    public static void setQueueFlyoutPlaylistId(String playlistId) {
+        if (AddToQueuePatch.isPatchIncluded() && AddToQueuePatch.isNativeQueueEnabled()) {
+            flyoutPlaylistId = playlistId;
+        }
     }
 
     /**
@@ -1137,6 +1145,14 @@ public final class FlyoutUtils {
      * Injection point.
      */
     public static void extractFlyoutIdFromObject(@Nullable Object bufferObject) {
+        boolean nativeQueue = AddToQueuePatch.isPatchIncluded() && AddToQueuePatch.isNativeQueueEnabled();
+        var collection = nativeQueue ? QueueFlyoutActions.playlistSource(bufferObject, senderViewRef.get()) : null;
+        if (collection != null) {
+            flyoutPlaylistId = collection.playlistId();
+            if (collection.playlist()) {
+                flyoutVideoId = "";
+            }
+        }
         Logger.printDebug(() -> "Flyout buffer class: " + ((bufferObject == null)
                 ? null : bufferObject.getClass()));
 
@@ -1173,7 +1189,9 @@ public final class FlyoutUtils {
         List<Integer> shortsVideoElementsBytesIndexes = byteIndexesOf(flyoutBuffer, SHORTS_VIDEO_ELEMENT_BYTES);
         isShortFlyout = shortsVideoElementsBytesIndexes.size() == 1;
 
-        setFlyoutPlaylistId(flyoutBuffer);
+        if (!nativeQueue) {
+            setFlyoutPlaylistId(flyoutBuffer);
+        }
 
         View senderView = senderViewRef.get();
         Logger.printDebug(() -> "Flyout sender view object: " + (senderView != null));
@@ -1212,7 +1230,9 @@ public final class FlyoutUtils {
                                 stringDescription
                         );
 
-                        setFlyoutVideoId(flyoutBuffer, stringDescription);
+                        if (collection == null || !collection.playlist()) {
+                            setFlyoutVideoId(flyoutBuffer, stringDescription);
+                        }
 
                         // Since not every element (especially in shelf) in feed have
                         // a channelId, we'll use YT API to safely retrieve it.

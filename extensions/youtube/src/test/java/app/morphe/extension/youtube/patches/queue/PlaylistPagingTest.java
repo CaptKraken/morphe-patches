@@ -226,4 +226,32 @@ public class PlaylistPagingTest {
         assertNull(PlaylistPage.fromPanel(panel.build(), "WL"));
         assertThrows(PlaylistPage.InvalidPanel.class, () -> PlaylistPage.readPanel(panel.build(), "WL"));
     }
+    @Test public void collectionInsertionRetainsDuplicatesMetadataAndTheUnloadedSourceTail() {
+        var before = PlaylistQueue.fromPage(page(0, 0, A, B), SOURCE).playLast(Y);
+        var metadata = new VideoMetadata(X, "Imported title", "Channel", "1M views", "1:23", false);
+        var batch = new PlaylistQueue(X, "Imported title").playLast(X).playLast(D)
+                .withMetadata(metadata, false);
+        var next = before.insertPlaylist(batch, false);
+        assertSame(before.currentEntry(), next.currentEntry());
+        assertEquals(List.of(A, X, X, D, B, Y), next.entries().stream().map(PlaylistQueue.Entry::videoId).toList());
+        assertEquals(metadata, next.metadata(X));
+        var last = before.insertPlaylist(batch, true);
+        var gap = last.firstGap();
+        last = last.extend(gap, page(0, 1, A, B, C), true);
+        assertEquals(List.of(A, B, C, Y, X, X, D), last.entries().stream().map(PlaylistQueue.Entry::videoId).toList());
+        assertSame(before.currentEntry(), last.currentEntry());
+        assertEquals(metadata, last.metadata(X));
+        assertThrows(IllegalArgumentException.class, () -> before.insertPlaylist(before, false));
+    }
+
+    @Test public void importedCollectionsKeepTheirReportedHiddenInclusiveCountWithoutInventingVideoIds() {
+        var batch = PlaylistQueue.fromPage(page(0, 0, X, D), SOURCE);
+        batch = batch.extend(batch.firstGap(), page(0, 1, X, D), true);
+        var before = new PlaylistQueue(A, "Playing");
+        var after = before.insertPlaylist(batch, true);
+        assertEquals(3, after.entries().size());
+        assertEquals(1 + batch.totalCount(), after.totalCount());
+        assertSame(before.currentEntry(), after.currentEntry());
+    }
+
 }

@@ -337,6 +337,19 @@ public final class PlaylistQueue {
         return playNext(videoId).select(selectedIndex + 1);
     }
 
+    /** Insert a complete fetched collection; its metadata outlives the bounded feed cache. */
+    PlaylistQueue insertPlaylist(PlaylistQueue addition, boolean playLast) {
+        if (!addition.isComplete()) {
+            throw new IllegalArgumentException("Playlist addition is incomplete");
+        }
+        var updated = new ArrayList<>(nodes);
+        updated.addAll(playLast ? updated.size() : nodeIndex(selectedIndex) + 1, addition.entries());
+        var captured = new HashMap<>(metadata);
+        addition.metadata.forEach((id, value) -> captured.merge(id, value, VideoMetadata::withCapture));
+        return new PlaylistQueue(updated, selectedIndex, repeatMode, source, loadedSourceKeys,
+                totalCount + addition.totalCount(), captured);
+    }
+
     public PlaylistQueue remove(int index) {
         if (index < 0 || index >= entries.size()) {
             throw new IndexOutOfBoundsException("Index out of range: " + index);

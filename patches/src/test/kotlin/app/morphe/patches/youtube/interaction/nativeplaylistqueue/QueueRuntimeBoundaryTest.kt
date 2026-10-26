@@ -107,6 +107,18 @@ class QueueRuntimeBoundaryTest {
         withFixture("playlistHandoffIncomplete")
 
     @Test
+    fun `collection menu actions retain their own target and insert whole private playlists`() =
+        withFixture("playlistCollectionMenus")
+
+    @Test
+    fun `collection actions create queues around playback or start from a lazy first page`() =
+        withFixture("playlistCollectionStarts")
+
+    @Test
+    fun `collection additions reject late account clear and newer playback results`() =
+        withFixture("playlistCollectionLifetime")
+
+    @Test
     fun `lazy pages preserve inserts and tail while Save waits for native EOF`() = withFixture("lazyPlaylistSave")
 
     @Test
@@ -329,6 +341,9 @@ class QueueRuntimeBoundaryTest {
                     public static final List<Pair<String, Integer>> stock = new ArrayList<>();
                     public static List<Pair<String, Integer>> getVisibleFlyoutButtons() { return stock; }
                     public interface FlyoutMenuVideoIdInterface { String patch_getVideoId(); }
+                    public interface ProtocolBufferFieldInterface { byte[] patch_getBuffer(); }
+                    public static String playlist = "";
+                    public static void setQueueFlyoutPlaylistId(String id) { playlist = id; }
                     public static int contexts;
                     public static void extractFlyoutIdFromMap(Map<?, ?> context) {
                         contexts++;
@@ -337,7 +352,7 @@ class QueueRuntimeBoundaryTest {
                     }
                     public static String getCurrentButtonName() { return button; }
                     public static String getFlyoutVideoId() { return video; }
-                    public static String getFlyoutPlaylistId() { return ""; }
+                    public static String getFlyoutPlaylistId() { return playlist; }
                     public static String getFlyoutChannelName() { return "Channel"; }
                     public static void resetCurrentButtonIndex() {}
                     public static void dismissFlyout() {}
@@ -420,7 +435,8 @@ class QueueRuntimeBoundaryTest {
             "Base64" to """
                 package android.util;
                 public class Base64 {
-                    public static final int NO_WRAP = 2;
+                    public static final int NO_WRAP = 2, URL_SAFE = 8;
+                    public static byte[] decode(String text, int flags) { return java.util.Base64.getUrlDecoder().decode(text); }
                     public static String encodeToString(byte[] bytes, int flags) {
                         return java.util.Base64.getEncoder().encodeToString(bytes);
                     }
@@ -429,6 +445,9 @@ class QueueRuntimeBoundaryTest {
             "Uri" to """
                 package android.net;
                 public class Uri {
+                    public static String decode(String text) {
+                        return java.net.URLDecoder.decode(text.replace("+", "%2B"), java.nio.charset.StandardCharsets.UTF_8);
+                    }
                     public static String encode(String value) {
                         return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8);
                     }
@@ -577,6 +596,7 @@ class QueueRuntimeBoundaryTest {
                 import android.content.SharedPreferences;
                 import app.morphe.extension.shared.*;
                 import app.morphe.extension.youtube.patches.*;
+                import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
                 import app.morphe.extension.youtube.patches.originaltitles.RestoreOriginalTitlesPatch;
                 import app.morphe.extension.youtube.patches.AddToQueuePatch.QueueType;
                 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
@@ -829,6 +849,195 @@ class QueueRuntimeBoundaryTest {
                         var queue = (PlaylistQueue) field("queue").get(null);
                         Method load = owner.getDeclaredMethod("loadPlaylistPage", PlaylistQueue.Gap.class);
                         load.setAccessible(true); load.invoke(null, queue.firstGap());
+                    }
+                    static class CollectionSource extends PageSource {
+                        final String list;
+                        final List<String> ids;
+                        boolean failTail;
+                        CollectionSource(String list, List<String> ids) { this.list = list; this.ids = ids; }
+                        public java.util.concurrent.Future<?> patch_requestPlaylistPage(String playlist, String video,
+                                int index, String params, String entry, byte[] tracking, PlaylistPage.Account expected) {
+                            Utils.verifyOffMainThread();
+                            require(playlist.equals(list) && account.equals(expected),
+                                "Collection requests retain the exact private target and account");
+                            requests++;
+                            if (video == null) {
+                                require(video == null && index == 0 && params.isEmpty() && entry.isEmpty() && tracking.length == 0,
+                                    "First page is a native playlist-only request, without a thumbnail video assumption");
+                            } else {
+                                require(entry.equals("row" + index) && params.equals("opaque"),
+                                    "Further native pages retain their occurrence command");
+                            }
+                            if (failTail && video != null) {
+                                return java.util.concurrent.CompletableFuture.failedFuture(new IllegalStateException("No page"));
+                            }
+                            var panel = pageWindow(ids, 0, video == null ? Math.min(2, ids.size()) : ids.size(), index).toBuilder()
+                                .setPlaylistId(list);
+                            for (int row = 0; row < panel.getItemsCount(); row++) {
+                                var item = panel.getItems(row); var data = item.getVideo();
+                                panel.setItems(row, item.toBuilder().setVideo(data.toBuilder().setNavigationEndpoint(
+                                    data.getNavigationEndpoint().toBuilder().setWatchEndpoint(
+                                        data.getNavigationEndpoint().getWatchEndpoint().toBuilder().setPlaylistId(list)))));
+                            }
+                            return java.util.concurrent.CompletableFuture.completedFuture(panel.build());
+                        }
+                    }
+                    static void completeCollection() throws Exception {
+                        for (int wave = 0; wave < 6 && field("pendingPlaylistAddition").get(null) != null; wave++) {
+                            Utils.drainBackground(); Utils.drain();
+                        }
+                        require(field("pendingPlaylistAddition").get(null) == null, "Collection job completes or cancels");
+                    }
+                    public static void playlistCollectionMenus() throws Exception {
+                        var share = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setLegacyShareEntityEndpoint(
+                            PlaylistQueueRenderer.ShareEntityServiceEndpoint.newBuilder().setSerializedShareEntity(
+                                java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                                    PlaylistQueueRenderer.ShareEntity.newBuilder().setPlaylistId("WL").build().toByteArray())));
+                        var nativeMenu = PlaylistQueueRenderer.MenuRenderer.newBuilder().addItems(
+                            PlaylistQueueRenderer.MenuItem.newBuilder().setMenuNavigationItemRenderer(
+                                PlaylistQueueRenderer.MenuNavigationItem.newBuilder().setNavigationEndpoint(share))).build();
+                        var wrapper = (com.google.protobuf.MessageLite) Proxy.newProxyInstance(owner.getClassLoader(),
+                            new Class<?>[]{com.google.protobuf.MessageLite.class, QueueFlyoutActions.Menu.class},
+                            (proxy, method, args) -> {
+                                if (method.getName().equals("toByteArray")) return nativeMenu.toByteArray();
+                                if (method.getName().equals("patch_parseQueueFlyout")) return
+                                    PlaylistQueueRenderer.MenuRenderer.parseFrom((byte[]) args[0]);
+                                throw new AssertionError("Unexpected native menu operation");
+                            });
+                        FlyoutUtils.playlist = "LL";
+                        var completedMenu = PlaylistQueueRenderer.MenuRenderer.parseFrom(
+                            QueueFlyoutActions.completeQueueMenu(wrapper).toByteArray());
+                        require(completedMenu.getItems(0).getMenuConditionalServiceItemRenderer().getServiceEndpoint()
+                                .getQueuePlaylistId().equals("WL") && FlyoutUtils.playlist.equals("WL"),
+                            "The menu's own collection target overrides stale shared flyout context");
+                        for (int route = 0; route < 3; route++) {
+                            var controller = new Controller(new Playback());
+                            var before = installOwned(controller).select(0);
+                            field("queue").set(null, before); controller.playback.index = 0;
+                            String list = route == 0 ? "WL" : route == 1 ? "LL" : "PL-private";
+                            var source = new CollectionSource(list, List.of("0123456789_", "ABCDEFGHIJK", "0123456789_"));
+                            PlaylistPages.attach(source);
+                            var item = PlaylistQueueRenderer.MenuItem.newBuilder().setMenuConditionalServiceItemRenderer(
+                                PlaylistQueueRenderer.MenuConditionalServiceItem.newBuilder()
+                                    .setIcon(IconOuterClass.Icon.newBuilder().setYtIconType(IconOuterClass.YTIconType.QUEUE_PLAY_NEXT))
+                                    .setVisibility(2)).build();
+                            var menu = QueueFlyoutActions.completeMenu(PlaylistQueueRenderer.MenuRenderer.newBuilder()
+                                .addItems(item).build(), true, "Next", "Last", list);
+                            var copied = PlaylistQueueRenderer.MenuItem.parseFrom(menu.getItems(route == 1 ? 1 : 0).toByteArray());
+                            FlyoutUtils.playlist = ""; FlyoutUtils.video = "";
+                            if (route == 0) {
+                                AddToQueuePatch.replaceButtonRunnable(() -> {throw new AssertionError("Premium fallback");}, copied).run();
+                            } else if (route == 1) {
+                                require(QueueFlyoutActions.onPlaylistQueueItemClick(copied), "Direct native item route owns collection Last");
+                            } else {
+                                require(NativePlaylistQueuePatch.onQueueMixTap(copied.getMenuConditionalServiceItemRenderer()
+                                    .getServiceEndpoint(), Map.of()), "Watch-dispatch fallback consumes the marked collection command");
+                            }
+                            require(field("queue").get(null) == before && source.requests == 0,
+                                "Queue stays unchanged while collection fetch runs on the worker");
+                            completeCollection();
+                            var after = (PlaylistQueue) field("queue").get(null);
+                            List<String> expected = route == 1
+                                ? List.of("abcdefghijk", "ZYXWVUTSRQP", "abcdefghijk", "0123456789_", "ABCDEFGHIJK", "0123456789_")
+                                : List.of("abcdefghijk", "0123456789_", "ABCDEFGHIJK", "0123456789_", "ZYXWVUTSRQP", "abcdefghijk");
+                            require(after.entries().stream().map(PlaylistQueue.Entry::videoId).toList().equals(expected)
+                                    && after.currentEntry() == before.currentEntry() && source.requests == 3
+                                    && controller.playback.attaches == 1 && controller.panelUpdates == 1,
+                                "Native Next/Last imports every playable row in order, including duplicate occurrences");
+                            require(after.metadata("ABCDEFGHIJK") != null && LoadVideoPatch.opens == 0,
+                                "Imported display metadata belongs to the queue and playback stays uninterrupted");
+                            call("releasePanel");
+                        }
+                    }
+                    public static void playlistCollectionStarts() throws Exception {
+                        // An ordinary playing video is retained before the imported batch for either menu action.
+                        for (boolean last : new boolean[]{false, true}) {
+                            var controller = new Controller(new Playback()); controller.playback.local = false;
+                            field("controllerRef").set(null, new WeakReference<>(controller));
+                            field("queue").set(null, null); field("publishedModel").set(null, null);
+                            app.morphe.extension.youtube.shared.PlayerType.current =
+                                app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MINIMIZED;
+                            var source = new CollectionSource("WL", List.of("0123456789_", "ABCDEFGHIJK")); PlaylistPages.attach(source);
+                            NativePlaylistQueuePatch.getPlaylistQueueAction("WL", last).run(); completeCollection();
+                            var after = (PlaylistQueue) field("queue").get(null);
+                            require(after != null && after.entries().stream().map(PlaylistQueue.Entry::videoId).toList()
+                                    .equals(List.of("abcdefghijk", "0123456789_", "ABCDEFGHIJK")) && LoadVideoPatch.opens == 0,
+                                "A playlist creates a Native queue around the existing ordinary video");
+                            call("releasePanel");
+                        }
+                        // An account playlist also retains all its rows before the new collection is inserted.
+                        var controller = playlistController(false, false); controller.playback.index = 1;
+                        var source = new CollectionSource("LL", List.of("ABCDEFGHIJK", "0123456789_")); PlaylistPages.attach(source);
+                        NativePlaylistQueuePatch.getPlaylistQueueAction("LL", false).run(); completeCollection();
+                        require(((PlaylistQueue) field("queue").get(null)).entries().stream().map(PlaylistQueue.Entry::videoId)
+                                .toList().equals(List.of("lmnopqrstuv", "abcdefghijk", "ABCDEFGHIJK", "0123456789_", "0123456789_"))
+                                && field("convertedPlaylist").get(null) != null && LoadVideoPatch.opens == 0,
+                            "Creating a queue from a collection preserves the already playing account playlist too");
+                        call("releasePanel"); field("convertedPlaylist").set(null, null); VideoInformation.playlist = "";
+                        // Without playback, start immediately from the first native page and retain its lazy source.
+                        app.morphe.extension.youtube.shared.PlayerType.current = app.morphe.extension.youtube.shared.PlayerType.NONE;
+                        field("controllerRef").set(null, new WeakReference<>(null));
+                        source = new CollectionSource("WL", List.of("0123456789_", "ABCDEFGHIJK", "ZYXWVUTSRQP")); PlaylistPages.attach(source);
+                        NativePlaylistQueuePatch.getPlaylistQueueAction("WL", true).run(); completeCollection();
+                        var start = (QueueStart) field("pendingQueueStart").get(null);
+                        require(start != null && start.candidate().entries().size() == 2 && !start.candidate().isComplete()
+                                && start.candidate().totalCount() == 3 && source.requests == 1 && LoadVideoPatch.opens == 1
+                                && LoadVideoPatch.url.equals("https://www.youtube.com/watch?v=0123456789_"),
+                            "An idle collection action opens only its first video and retains native lazy paging/count");
+                        controller = new Controller(new Playback()); field("controllerRef").set(null, new WeakReference<>(controller));
+                        VideoInformation.id = "0123456789_";
+                        app.morphe.extension.youtube.shared.PlayerType.current =
+                            app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MINIMIZED;
+                        call("tryStartQueue");
+                        require(field("queue").get(null) != null && field("pendingQueueStart").get(null) == null,
+                            "Native playback acknowledgement commits the requested playlist queue");
+                    }
+                    public static void playlistCollectionLifetime() throws Exception {
+                        var controller = new Controller(new Playback());
+                        var before = installOwned(controller).select(0); field("queue").set(null, before);
+                        var source = new CollectionSource("WL", List.of("0123456789_", "ABCDEFGHIJK", "ZYXWVUTSRQP"));
+                        PlaylistPages.attach(source); source.failTail = true;
+                        NativePlaylistQueuePatch.getPlaylistQueueAction("WL", false).run(); completeCollection();
+                        require(field("queue").get(null) == before && controller.playback.attaches == 0,
+                            "A failed later page cannot insert a partial collection");
+                        source.failTail = false;
+                        NativePlaylistQueuePatch.getPlaylistQueueAction("WL", false).run();
+                        source.account = new PlaylistPage.Account("other", false); completeCollection();
+                        require(field("queue").get(null) == before && controller.playback.attaches == 0,
+                            "Changed account invalidates private collection results");
+                        source = new CollectionSource("LL", List.of("0123456789_", "ABCDEFGHIJK")); PlaylistPages.attach(source);
+                        NativePlaylistQueuePatch.getPlaylistQueueAction("LL", true).run(); Utils.drainBackground();
+                        field("queue").set(null, before.playLast("extra123456")); Utils.drain();
+                        completeCollection();
+                        require(((PlaylistQueue) field("queue").get(null)).entries().stream()
+                                .anyMatch(e -> e.videoId().equals("extra123456")) && source.requests == 2,
+                            "A same-session queue edit is preserved by remerging the fetched batch without another request");
+                        NativePlaylistQueuePatch.getPlaylistQueueAction("LL", false).run(); Utils.drainBackground();
+                        int beforeWatch = controller.playback.attaches;
+                        NativePlaylistQueuePatch.prepareQueueStartContext(playlistWatch("other123456", ""), Map.of());
+                        Utils.drain();
+                        require(field("pendingPlaylistAddition").get(null) == null && controller.playback.attaches == beforeWatch,
+                            "An intentional new watch cannot receive an old pending playlist batch");
+                        NativePlaylistQueuePatch.getPlaylistQueueAction("LL", false).run(); Utils.drainBackground();
+                        call("releasePanel"); int attaches = controller.playback.attaches; Utils.drain();
+                        require(field("queue").get(null) == null && controller.playback.attaches == attaches,
+                            "Clear cancels a completed but unpublished collection result");
+                        controller = new Controller(new Playback()); controller.playback.local = false;
+                        field("controllerRef").set(null, new WeakReference<>(controller));
+                        app.morphe.extension.youtube.shared.PlayerType.current =
+                            app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MINIMIZED;
+                        source = new CollectionSource("WL", List.of("0123456789_")); PlaylistPages.attach(source);
+                        NativePlaylistQueuePatch.getPlaylistQueueAction("WL", false).run(); Utils.drainBackground();
+                        app.morphe.extension.youtube.shared.PlayerType.current = app.morphe.extension.youtube.shared.PlayerType.HIDDEN;
+                        Utils.drain();
+                        require(field("queue").get(null) == null && controller.playback.attaches == 0 && LoadVideoPatch.opens == 0,
+                            "Closing an ordinary player during fetch cannot resurrect it as a queue");
+                        app.morphe.extension.youtube.shared.PlayerType.current =
+                            app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MINIMIZED;
+                        NativePlaylistQueuePatch.getPlaylistQueueAction("WL", false).run(); Utils.drainBackground();
+                        app.morphe.extension.youtube.shared.ShortsPlayerState.open = true; Utils.drain();
+                        require(field("queue").get(null) == null && controller.playback.attaches == 0,
+                            "A playlist addition cannot take over a newly opened Shorts player");
                     }
                     public static void lazyPlaylistSave() throws Exception {
                         var source = new PageSource(); var controller = lazyController(source);
