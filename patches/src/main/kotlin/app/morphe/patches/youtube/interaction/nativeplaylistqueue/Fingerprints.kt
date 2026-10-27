@@ -36,8 +36,12 @@ internal fun playlistPageRequestFieldFingerprint(requestType: String, serializer
     name = serializer,
     filters = listOf(
         string(label),
-        fieldAccess(definingClass = requestType, type = "Ljava/lang/String;", opcode = Opcode.IGET_OBJECT,
-            location = MatchAfterWithin(3))
+        fieldAccess(
+            definingClass = requestType,
+            type = "Ljava/lang/String;",
+            opcode = Opcode.IGET_OBJECT,
+            location = MatchAfterWithin(3)
+        )
     )
 )
 
@@ -61,8 +65,11 @@ internal fun playlistPageFactoryFingerprint(requestType: String) = Fingerprint(
 )
 
 /** Native preparation supplies the per-occurrence entry ID as well as index and params. */
-internal fun playlistPagePreparationFingerprint(requestType: String, factory: MethodReference,
-                                               paramsSetter: MethodReference) = Fingerprint(
+internal fun playlistPagePreparationFingerprint(
+    requestType: String,
+    factory: MethodReference,
+    paramsSetter: MethodReference
+) = Fingerprint(
     returnType = requestType,
     filters = listOf(
         methodCall(factory),
@@ -73,8 +80,11 @@ internal fun playlistPagePreparationFingerprint(requestType: String, factory: Me
     )
 )
 
-internal fun playlistPageServiceFingerprint(requestType: String, factoryType: String,
-                                          isResponse: (String) -> Boolean) = Fingerprint(
+internal fun playlistPageServiceFingerprint(
+    requestType: String,
+    factoryType: String,
+    isResponse: (String) -> Boolean
+) = Fingerprint(
     parameters = listOf(requestType),
     returnType = "L",
     custom = { method, owner -> owner.fields.any { it.type == factoryType } && isResponse(method.returnType) }
@@ -1568,12 +1578,14 @@ internal fun playlistLoadingContentFingerprint(frame: FieldReference, directStat
             // LoadingFrameLayout uses 2 for its existing content state.
             add(literal(2, location = MatchAfterImmediately()))
         }
-        add(methodCall(
-            definingClass = PLAYLIST_LOADING_FRAME,
-            parameters = if (directState) listOf("I") else emptyList(),
-            returnType = "V",
-            location = MatchAfterImmediately()
-        ))
+        add(
+            methodCall(
+                definingClass = PLAYLIST_LOADING_FRAME,
+                parameters = if (directState) listOf("I") else emptyList(),
+                returnType = "V",
+                location = MatchAfterImmediately()
+            )
+        )
     }
 )
 

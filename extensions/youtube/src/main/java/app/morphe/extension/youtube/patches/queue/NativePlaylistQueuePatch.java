@@ -1719,9 +1719,7 @@ public final class NativePlaylistQueuePatch {
             playlistNavigation = null;
             updatePlaylistLoadingView();
             continuePlaylistLoading();
-            Logger.printException(() -> "Playlist page ["
-                    + (ex instanceof PlaylistPages.LoadFailure pageFailure ? pageFailure.stage : ex.getClass().getSimpleName())
-                    + "] " + (ex instanceof PlaylistPages.LoadFailure ? ex.getMessage() : "could not load"), ex);
+            Logger.printException(() -> "Could not load native playlist page", ex);
             if (requested) {
                 Utils.showToastShort(str("morphe_native_playlist_queue_playlist_failed"));
             }

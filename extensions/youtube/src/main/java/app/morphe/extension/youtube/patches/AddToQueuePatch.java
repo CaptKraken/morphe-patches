@@ -259,7 +259,11 @@ public final class AddToQueuePatch {
         return getNewRunnable(original, FlyoutUtils.getCurrentButtonName());
     }
 
-    /** Injection point. Bind the exact collection item before shared flyout IDs are reset. */
+    /**
+     * Injection point.
+     * <p>
+     * Bind the exact collection item before shared flyout IDs are reset.
+     */
     public static Runnable replaceButtonRunnable(Runnable original, Object item) {
         Runnable action = QueueFlyoutActions.getPlaylistQueueAction(item);
         return action == null ? replaceButtonRunnable(original) : action;

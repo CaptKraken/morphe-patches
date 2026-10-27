@@ -57,7 +57,7 @@ public class QueueFlyoutActionsTest {
         output.writeString(80, "unknown menu field");
         output.flush();
         var menu = MenuRenderer.parseFrom(menuBytes.toByteArray());
-        var completed = QueueFlyoutActions.completeMenu(menu, true, "Next", "Last");
+        var completed = QueueFlyoutActions.completeMenu(menu, true, "Next", "Last", "");
         assertEquals(4, completed.getItemsCount());
         assertArrayEquals(remote.toByteArray(), completed.getItems(0).toByteArray());
         assertArrayEquals(next.toBuilder().setMenuConditionalServiceItemRenderer(
@@ -69,10 +69,10 @@ public class QueueFlyoutActionsTest {
         assertEquals("Last", last.getText().getSimpleText());
         assertEquals(2, last.getVisibility());
         assertFalse(last.hasServiceEndpoint());
-        assertSame(completed, QueueFlyoutActions.completeMenu(completed, true, "Next", "Last"));
+        assertSame(completed, QueueFlyoutActions.completeMenu(completed, true, "Next", "Last", ""));
         // Returning to no queue removes only our Last, including through serialization.
         assertArrayEquals(menu.toBuilder().setItems(1, completed.getItems(1)).build().toByteArray(), QueueFlyoutActions.completeMenu(
-                MenuRenderer.parseFrom(completed.toByteArray()), false, "Next", "Last").toByteArray());
+                MenuRenderer.parseFrom(completed.toByteArray()), false, "Next", "Last", "").toByteArray());
     }
 
     @Test public void suppliedLastIsGroupedAndFollowsQueueStateWithoutLosingItsEndpoint() throws Exception {
@@ -80,7 +80,7 @@ public class QueueFlyoutActionsTest {
         var share = conditional(YTIconType.SHARE.getNumber(), 2);
         var last = conditional(895, 7);
         var menu = MenuRenderer.newBuilder().addItems(next).addItems(share).addItems(last).build();
-        var completed = QueueFlyoutActions.completeMenu(menu, true, "Next", "Last");
+        var completed = QueueFlyoutActions.completeMenu(menu, true, "Next", "Last", "");
         assertEquals(3, completed.getItemsCount());
         assertEquals(2, completed.getItems(1).getMenuConditionalServiceItemRenderer().getVisibility());
         assertEquals(last.getMenuConditionalServiceItemRenderer().getServiceEndpoint(),
@@ -90,20 +90,20 @@ public class QueueFlyoutActionsTest {
                 completed.getItems(1));
         assertEquals(share, completed.getItems(2));
         assertEquals(MenuRenderer.newBuilder().addItems(completed.getItems(0)).addItems(share).build(),
-                QueueFlyoutActions.completeMenu(menu, false, "Next", "Last"));
+                QueueFlyoutActions.completeMenu(menu, false, "Next", "Last", ""));
     }
 
     @Test public void castOnlyAndUnrelatedMenusStayIdentical() throws Exception {
         var cast = MenuRenderer.newBuilder().addItems(conditional(251, 1))
                 .addItems(conditional(895, 1)).build();
-        assertSame(cast, QueueFlyoutActions.completeMenu(cast, true, "Next", "Last"));
-        assertSame(cast, QueueFlyoutActions.completeMenu(cast, false, "Next", "Last"));
+        assertSame(cast, QueueFlyoutActions.completeMenu(cast, true, "Next", "Last", ""));
+        assertSame(cast, QueueFlyoutActions.completeMenu(cast, false, "Next", "Last", ""));
         var unrelated = MenuRenderer.newBuilder().addItems(conditional(YTIconType.SHARE.getNumber(), 2)).build();
-        assertSame(unrelated, QueueFlyoutActions.completeMenu(unrelated, true, "Next", "Last"));
+        assertSame(unrelated, QueueFlyoutActions.completeMenu(unrelated, true, "Next", "Last", ""));
         var next = MenuRenderer.newBuilder().addItems(conditional(251, 2)).build();
-        var cleaned = QueueFlyoutActions.completeMenu(next, false, "Next", "Last");
+        var cleaned = QueueFlyoutActions.completeMenu(next, false, "Next", "Last", "");
         assertFalse(cleaned.getItems(0).getMenuConditionalServiceItemRenderer().hasSecondaryIcon());
-        assertSame(cleaned, QueueFlyoutActions.completeMenu(cleaned, false, "Next", "Last"));
+        assertSame(cleaned, QueueFlyoutActions.completeMenu(cleaned, false, "Next", "Last", ""));
     }
     @Test public void nativeNavigationAndServiceVariantsKeepTheirCommandsAndLoseOnlyTheBadge() throws Exception {
         int[][] variants = { { 66441108, 11 }, { 66441155, 9 }, { 77258115, 12 }, { 77262503, 0 } };
@@ -121,11 +121,11 @@ public class QueueFlyoutActionsTest {
             output.writeByteArray(variant[0], renderer.toByteArray());
             output.flush();
             var menu = MenuRenderer.newBuilder().addItems(MenuItem.parseFrom(bytes.toByteArray())).build();
-            var completed = QueueFlyoutActions.completeMenu(menu, true, "Next", "Last");
+            var completed = QueueFlyoutActions.completeMenu(menu, true, "Next", "Last", "");
             assertEquals(2, completed.getItemsCount());
-            var inactive = QueueFlyoutActions.completeMenu(completed, false, "Next", "Last");
+            var inactive = QueueFlyoutActions.completeMenu(completed, false, "Next", "Last", "");
             assertEquals(1, inactive.getItemsCount());
-            assertSame(inactive, QueueFlyoutActions.completeMenu(inactive, false, "Next", "Last"));
+            assertSame(inactive, QueueFlyoutActions.completeMenu(inactive, false, "Next", "Last", ""));
             // The only removed field is the native secondary icon. Opaque command
             // and renderer fields survive even for conditional navigation items.
             var expectedRenderer = new ByteArrayOutputStream();
@@ -145,12 +145,12 @@ public class QueueFlyoutActionsTest {
 
     @Test public void lastOnlyMenuStillUsesNativeNextAndLastPolicy() throws Exception {
         var original = MenuRenderer.newBuilder().addItems(conditional(895, 2)).build();
-        var inactive = QueueFlyoutActions.completeMenu(original, false, "Next", "Last");
+        var inactive = QueueFlyoutActions.completeMenu(original, false, "Next", "Last", "");
         assertEquals(1, inactive.getItemsCount());
         assertEquals(YTIconType.QUEUE_PLAY_NEXT,
                 inactive.getItems(0).getMenuConditionalServiceItemRenderer().getIcon().getYtIconType());
         assertFalse(inactive.getItems(0).getMenuConditionalServiceItemRenderer().hasServiceEndpoint());
-        var active = QueueFlyoutActions.completeMenu(original, true, "Next", "Last");
+        var active = QueueFlyoutActions.completeMenu(original, true, "Next", "Last", "");
         assertEquals(2, active.getItemsCount());
         assertEquals(YTIconType.QUEUE_PLAY_LAST,
                 active.getItems(1).getMenuConditionalServiceItemRenderer().getIcon().getYtIconType());
@@ -180,7 +180,7 @@ public class QueueFlyoutActionsTest {
     @Test public void aKnownPrivateCollectionCanSupplyMissingQueueRowsWithoutChangingAnUnrelatedMenu() throws Exception {
         var other = conditional(YTIconType.SHARE.getNumber(), 2);
         var menu = MenuRenderer.newBuilder().addItems(other).build();
-        assertSame(menu, QueueFlyoutActions.completeMenu(menu, true, "Next", "Last"));
+        assertSame(menu, QueueFlyoutActions.completeMenu(menu, true, "Next", "Last", ""));
         var completed = QueueFlyoutActions.completeMenu(menu, true, "Next", "Last", "LL");
         assertEquals(3, completed.getItemsCount());
         assertEquals("LL", completed.getItems(0).getMenuConditionalServiceItemRenderer().getServiceEndpoint().getQueuePlaylistId());

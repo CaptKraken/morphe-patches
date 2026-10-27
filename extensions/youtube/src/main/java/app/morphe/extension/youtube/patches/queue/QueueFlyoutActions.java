@@ -9,9 +9,9 @@ package app.morphe.extension.youtube.patches.queue;
 
 import static app.morphe.extension.shared.StringRef.str;
 
-import android.view.View;
 import android.net.Uri;
 import android.util.Base64;
+import android.view.View;
 
 import androidx.annotation.Nullable;
 
@@ -24,8 +24,8 @@ import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.MenuItem;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer.MenuRenderer;
 import app.morphe.extension.youtube.patches.AddToQueuePatch;
-import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.FeedVideoCardsPatch;
+import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 
 /** Adjusts native menu data before YouTube filters and binds its rows. */
 public final class QueueFlyoutActions {
@@ -71,10 +71,6 @@ public final class QueueFlyoutActions {
     public static boolean onStockQueueItemClick(Enum<?> icon) {
         return icon != null && AddToQueuePatch.isNativeQueueEnabled()
                 && AddToQueuePatch.flyoutButtonClickLogic(icon.name(), FlyoutUtils.getFlyoutVideoId());
-    }
-
-    static MenuRenderer completeMenu(MenuRenderer menu, boolean allowLast, String nextLabel, String lastLabel) {
-        return completeMenu(menu, allowLast, nextLabel, lastLabel, "");
     }
 
     static MenuRenderer completeMenu(MenuRenderer menu, boolean allowLast, String nextLabel, String lastLabel,
@@ -212,7 +208,11 @@ public final class QueueFlyoutActions {
         }
     }
 
-    /** Injection point. Direct sheet/popup paths can bypass the factory's Runnable. */
+    /**
+     * Injection point.
+     * <p>
+     * Direct sheet/popup paths can bypass the factory's Runnable.
+     */
     public static boolean onPlaylistQueueItemClick(MessageLite item) {
         Runnable action = getPlaylistQueueAction(item);
         if (action == null) {
