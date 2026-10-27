@@ -46,6 +46,26 @@ public class PlaylistCardSourceTest {
         assertEquals("", PlaylistCardSource.fromNavigation(conflicting.toByteArray()));
     }
 
+    @Test public void nativeCollectionRendererNeedsNeitherShareNorAnElementsSourceView() throws Exception {
+        for (String id : new String[]{"WL", "LL", "PL-private"}) {
+            var selected = PlaylistCardSource.fromElement(renderer(id, id), false);
+            assertEquals(id, selected.playlistId());
+            org.junit.Assert.assertTrue(selected.playlist());
+        }
+        // An individual video's playlist link does not identify the selected item.
+        assertEquals("", PlaylistCardSource.fromElement(renderer("abcdefghijk", "WL"), false).playlistId());
+        assertEquals("", PlaylistCardSource.fromElement(renderer("WL", "LL"), false).playlistId());
+    }
+
+    private static byte[] renderer(String id, String browseId) throws Exception {
+        var body = new ByteArrayOutputStream();
+        var output = CodedOutputStream.newInstance(body);
+        output.writeString(1, id);
+        output.writeByteArray(6, browse(browseId));
+        output.flush();
+        return body.toByteArray();
+    }
+
     @Test public void knownVideoModelsCannotImportTheirSurroundingPlaylist() throws Exception {
         var data = FeedCardLayoutOuterClass.VideoWithContextData.newBuilder().setOnTap(ByteString.copyFrom(browse("WL")))
                 .setVideoData(FeedCardLayoutOuterClass.VideoData.newBuilder().setThumbnail(

@@ -7,6 +7,8 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import androidx.annotation.Nullable;
+
 import com.google.protobuf.InvalidProtocolBufferException;
 
 import java.util.HashSet;
@@ -36,6 +38,13 @@ public final class PlaylistCardSource {
     }
 
     static Selection fromElement(byte[] bytes, boolean collectionCard) throws InvalidProtocolBufferException {
+        // Native library cards can supply their renderer directly, without an
+        // Elements envelope or a mounted ComponentHost. Its own ID and Browse
+        // target must agree; a video's surrounding playlist is insufficient.
+        Selection nativeSource = fromRenderer(bytes);
+        if (nativeSource != null) {
+            return nativeSource;
+        }
         var model = FeedCardLayoutOuterClass.Element.parseFrom(bytes).getType().getComponentType().getModel();
         if (model.hasLockupModel()) {
             var card = model.getLockupModel().getViewModel().getLockupViewModel();
@@ -57,6 +66,32 @@ public final class PlaylistCardSource {
         }
         String id = collectionCard ? fromNavigation(bytes) : "";
         return new Selection(id, !id.isEmpty());
+    }
+
+    @Nullable
+    private static Selection fromRenderer(byte[] bytes) {
+        List<ProtoNode> nodes = ProtoNode.parse(bytes);
+        if (nodes == null) {
+            return null;
+        }
+        String id = "";
+        for (ProtoNode node : nodes) {
+            // Native playlistRenderer.playlistId is field 1. Do not accept
+            // arbitrary nested strings, canonical URLs or thumbnail video IDs.
+            if (node.getFieldNumber() == 1 && node.isText()) {
+                if (!id.isEmpty() || !isPlaylistId(node.getText())) {
+                    return new Selection("", false);
+                }
+                id = node.getText();
+            }
+        }
+        if (id.isEmpty()) {
+            return null;
+        }
+        Set<String> targets = new HashSet<>();
+        collectBrowseIds(nodes, targets);
+        boolean playlist = targets.size() == 1 && targets.contains(id);
+        return new Selection(playlist ? id : "", playlist);
     }
 
     static String fromNavigation(byte[] bytes) {
