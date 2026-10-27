@@ -39,11 +39,8 @@ public record PlaylistPage(List<Row> rows, int selectedIndex, int totalCount) {
 
     /** Rejection details contain only a fixed reason and numeric row positions. */
     static final class InvalidPanel extends Exception {
-        final String reason;
-
         InvalidPanel(String reason, String detail) {
-            super(detail);
-            this.reason = reason;
+            super(reason + ": " + detail);
         }
     }
 

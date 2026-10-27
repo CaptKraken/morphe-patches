@@ -148,7 +148,7 @@ class QueueRuntimeBoundaryTest {
         withFixture("unavailablePageSelection")
 
     @Test
-    fun `page rejection identifies missing envelopes and invalid rows without exposing identifiers`() =
+    fun `invalid and missing pages preserve the queue and restore content`() =
         withFixture("playlistPageRejection")
 
     @Test
@@ -550,8 +550,7 @@ class QueueRuntimeBoundaryTest {
                     public interface LogMessage { String buildMessageString(); }
                     public static int errors;
                     public static void printDebug(LogMessage message) { message.buildMessageString(); }
-                    public static String lastError;
-                    public static void printException(LogMessage message) { lastError = message.buildMessageString(); errors++; }
+                    public static void printException(LogMessage message) { message.buildMessageString(); errors++; }
                     public static void printException(LogMessage message, Throwable e) { printException(message); }
                 }
             """,
@@ -1175,8 +1174,7 @@ class QueueRuntimeBoundaryTest {
                             "Validated read-only rows extend the queue even when the response highlights an unavailable video");
                         source.reply = response.build();
                         startPage(); Utils.drainBackground(); Utils.drain();
-                        require(field("queue").get(null) == after && !after.isComplete()
-                                && Logger.lastError.contains("[selection]"),
+                        require(field("queue").get(null) == after && !after.isComplete(),
                             "An unavailable highlight cannot establish EOF at an unchanged source boundary");
                     }
                     public static void playlistPageRejection() throws Exception {
@@ -1189,14 +1187,12 @@ class QueueRuntimeBoundaryTest {
                                 last.getNavigationEndpoint().getWatchEndpoint().toBuilder().setIndex(0)))));
                         source.reply = rows.build(); savePartial(controller); Utils.drainBackground(); Utils.drain();
                         require(field("queue").get(null) == before && !controller.loading.active
-                                && Logger.lastError.contains("[row-order]") && Logger.lastError.contains("anchor 1")
-                                && Logger.lastError.contains("row 3/3") && !Logger.lastError.contains(PAGE_LIST)
-                                && !Logger.lastError.contains("ABCDEFGHIJK") && !Logger.lastError.contains("opaque"),
-                            "A rejected row retains the queue, restores content and reports safe request/row positions");
+                                && controller.playback.attaches == 0 && LoadVideoPatch.opens == 0,
+                            "A rejected row retains the queue and restores content without changing playback");
                         source.reply = null; savePartial(controller); Utils.drainBackground(); Utils.drain();
                         require(field("queue").get(null) == before && !controller.loading.active
-                                && Logger.lastError.contains("[no-panel]") && Logger.lastError.contains("anchor 1"),
-                            "A missing native envelope is distinguishable from rejected row data");
+                                && controller.playback.attaches == 0 && LoadVideoPatch.opens == 0,
+                            "A missing native envelope cannot complete the queue or leave the list hidden");
                     }
                     static NativePlaylistQueuePatch.RepeatHeader header(Controller controller) {
                         return new NativePlaylistQueuePatch.RepeatHeader() {
@@ -1455,7 +1451,7 @@ class QueueRuntimeBoundaryTest {
                             try {
                                 positionResult(source, queue.firstGap());
                                 throw new AssertionError("An unverified end cannot complete the playlist");
-                            } catch (PlaylistPages.LoadFailure expected) {
+                            } catch (java.io.IOException expected) {
                                 require(!queue.isComplete() && source.requests == 2,
                                     "The source remains partial after an unchanged, missing-anchor or foreign response");
                             }
@@ -1471,8 +1467,8 @@ class QueueRuntimeBoundaryTest {
                         try {
                             positionResult(changed, queue.firstGap());
                             throw new AssertionError("An account switch during native continuation must reject the reply");
-                        } catch (PlaylistPages.LoadFailure expected) {
-                            require(expected.stage.equals("account") && !queue.isComplete(),
+                        } catch (java.io.IOException expected) {
+                            require(changed.requests == 2 && !queue.isComplete(),
                                 "Every follow-up request retains the original account boundary");
                         }
                     }

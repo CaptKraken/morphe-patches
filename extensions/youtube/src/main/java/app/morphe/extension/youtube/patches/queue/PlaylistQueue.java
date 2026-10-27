@@ -40,7 +40,8 @@ public final class PlaylistQueue {
     private final List<Node> nodes;
     // Active/Undo snapshots retain their own display data independently of feed-cache eviction.
     private final Map<String, VideoMetadata> metadata;
-    @Nullable private final Source source;
+    @Nullable
+    private final Source source;
     private final boolean complete;
     // Includes removed/moved source occurrences so an overlapping page cannot re-add them.
     private final Set<String> loadedSourceKeys;

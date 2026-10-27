@@ -54,16 +54,6 @@ public final class PlaylistPages {
 
     record Result(PlaylistPage page, boolean end) {}
 
-    /** Safe diagnostic stage; never includes private playlist IDs or request parameters. */
-    static final class LoadFailure extends IOException {
-        final String stage;
-
-        LoadFailure(String stage, String message) {
-            super(message);
-            this.stage = stage;
-        }
-    }
-
     /** Open a collection without invoking the watch response actor or loading a player. */
     static PlaylistQueue first(Source owner, PlaylistQueue.Source expected) throws Exception {
         Utils.verifyOffMainThread();
@@ -90,16 +80,16 @@ public final class PlaylistPages {
         // Navigation targets describe the selected response row. They establish
         // this boundary's end only when that row is the requested occurrence.
         if (page.selectedIndex() != position) {
-            throw new LoadFailure("selection", "Playlist window selected a different occurrence");
+            throw new IOException("Playlist window selected a different occurrence");
         }
         MessageLite nativeNavigation = owner.patch_getPlaylistNavigation(response);
         if (nativeNavigation == null) {
-            throw new LoadFailure("navigation", "Playlist navigation is unavailable");
+            throw new IOException("Playlist navigation is unavailable");
         }
         var navigation = PlaylistQueueRenderer.PlaylistNavigation.parseFrom(nativeNavigation.toByteArray());
         var target = PlaylistPage.target(navigation, gap.next());
         if (target == null) {
-            throw new LoadFailure("command", "Unrecognized playlist navigation");
+            throw new IOException("Unrecognized playlist navigation");
         }
         if (PlaylistPage.endsSource(target, expected.playlistId())) {
             return new Result(page, true);
@@ -108,7 +98,7 @@ public final class PlaylistPages {
             var watch = target.getWatchPlaylistEndpoint();
             if (!expected.playlistId().equals(watch.getPlaylistId()) || !watch.hasIndex()
                     || watch.getIndex() <= anchor.index()) {
-                throw new LoadFailure("command", "Playlist position does not follow its source boundary");
+                throw new IOException("Playlist position does not follow its source boundary");
             }
             // Native playlist-only commands have no video or occurrence ID.
             // One read-only request is enough: do not loop on an unchanged command.
@@ -125,21 +115,21 @@ public final class PlaylistPages {
             if (continued.selectedIndex() >= 0 && continued.selectedIndex() < boundary) {
                 return new Result(continued, true);
             }
-            throw new LoadFailure("progress", "Native playlist position did not advance or wrap");
+            throw new IOException("Native playlist position did not advance or wrap");
         }
         // A no-progress response is not proof of EOF, even if video_count is larger.
-        throw new LoadFailure("progress", "Playlist window did not advance to its native navigation target");
+        throw new IOException("Playlist window did not advance to its native navigation target");
     }
 
     private static Object request(Source owner, PlaylistQueue.Source expected, @Nullable String videoId,
                                   int index, String params, String entryId, byte[] tracking) throws Exception {
         if (owner != current() || !expected.account().equals(owner.patch_getPlaylistAccount())) {
-            throw new LoadFailure("account", "Playlist account changed");
+            throw new IOException("Playlist account changed");
         }
         Future<?> future = owner.patch_requestPlaylistPage(expected.playlistId(), videoId, index,
                 params, entryId, tracking, expected.account());
         if (future == null) {
-            throw new LoadFailure("account", "Playlist account is unavailable");
+            throw new IOException("Playlist account is unavailable");
         }
         Object response;
         try {
@@ -151,7 +141,7 @@ public final class PlaylistPages {
             }
         }
         if (owner != current() || !expected.account().equals(owner.patch_getPlaylistAccount())) {
-            throw new LoadFailure("account", "Playlist account changed during request");
+            throw new IOException("Playlist account changed during request");
         }
         return response;
     }
@@ -160,19 +150,19 @@ public final class PlaylistPages {
             throws Exception {
         MessageLite panel = owner.patch_getPlaylistPage(response);
         if (panel == null) {
-            throw new LoadFailure("no-panel", request);
+            throw new IOException("Missing playlist panel at " + request);
         }
         try {
             return PlaylistPage.readPanel(panel, expected.playlistId());
         } catch (PlaylistPage.InvalidPanel ex) {
-            throw new LoadFailure(ex.reason, request + "; " + ex.getMessage());
+            throw new IOException("Invalid playlist panel at " + request, ex);
         }
     }
 
-    private static int position(PlaylistPage page, PlaylistPage.Anchor anchor) throws LoadFailure {
+    private static int position(PlaylistPage page, PlaylistPage.Anchor anchor) throws IOException {
         int position = page.find(anchor);
         if (position < 0) {
-            throw new LoadFailure("anchor", "Playlist window no longer contains its requested occurrence");
+            throw new IOException("Playlist window no longer contains its requested occurrence");
         }
         return position;
     }

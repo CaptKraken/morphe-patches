@@ -85,11 +85,10 @@ message Video {
     // Native per-row overflow actions are supplied only for local queue rows.
     optional Menu menu = 19;
     repeated SwipeAction swipe_buttons = 22;
-    optional string playlist_set_video_id = 26;
     optional MainAppStyle main_app_style = 27;
     optional Text video_info = 31;
     repeated RatingAction action_buttons = 32;
-    // Local rows deliberately omit playlistSetVideoId and edit params (37).
+    // Local rows deliberately omit playlistSetVideoId (26) and edit params (37).
     // Native drag presentation works without authorizing an account-playlist edit.
     optional bool can_reorder = 36;
 }
