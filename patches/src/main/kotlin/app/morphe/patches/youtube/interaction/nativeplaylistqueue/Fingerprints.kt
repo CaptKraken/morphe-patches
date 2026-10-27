@@ -88,6 +88,14 @@ internal fun playlistPageDefaultNavigationFingerprint(navigationType: String) = 
     filters = listOf(methodCall(definingClass = navigationType, parameters = listOf("Z", "Z", "Z", "Z")))
 )
 
+/** The same selector remains when the default wrapper has been inlined. */
+internal fun playlistPageNavigationSelectorFingerprint(navigationType: String) = Fingerprint(
+    definingClass = navigationType,
+    parameters = listOf("Z", "Z", "Z", "Z"),
+    returnType = "L",
+    filters = listOf(fieldAccess(definingClass = navigationType, opcode = Opcode.IGET_OBJECT))
+)
+
 /** A generated protobuf message creates its default instance in its static initializer. */
 internal fun protoDefaultInstanceFingerprint(messageType: String) = Fingerprint(
     definingClass = messageType,
@@ -1548,19 +1556,23 @@ internal fun playlistLoadingStartFingerprint(controllerType: String) = Fingerpri
     )
 )
 
-/** The list's normal bind restores content after rebuilding its row index. */
-internal fun playlistLoadingContentFingerprint(frame: FieldReference) = Fingerprint(
+/** The list restores content through a wrapper or an inlined state-2 call. */
+internal fun playlistLoadingContentFingerprint(frame: FieldReference, directState: Boolean = false) = Fingerprint(
     definingClass = frame.definingClass,
     parameters = listOf("L"),
     returnType = "V",
-    filters = listOf(
-        methodCall(name = "clear", parameters = emptyList(), returnType = "V"),
-        fieldAccess(reference = frame, opcode = Opcode.IGET_OBJECT),
-        methodCall(
+    filters = buildList {
+        add(methodCall(name = "clear", parameters = emptyList(), returnType = "V"))
+        add(fieldAccess(reference = frame, opcode = Opcode.IGET_OBJECT))
+        if (directState) {
+            // LoadingFrameLayout uses 2 for its existing content state.
+            add(literal(2, location = MatchAfterImmediately()))
+        }
+        add(methodCall(
             definingClass = PLAYLIST_LOADING_FRAME,
-            parameters = emptyList(),
+            parameters = if (directState) listOf("I") else emptyList(),
             returnType = "V",
             location = MatchAfterImmediately()
-        )
-    )
+        ))
+    }
 )

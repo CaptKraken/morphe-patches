@@ -61,7 +61,18 @@ internal fun installPlaylistPages(context: BytecodePatchContext) = with(context)
     val navigationType = PlaylistModelDescriptionFingerprint.originalMethod
         .findFieldFromToString(", navigationSets=").type
     val responseNavigation = classDefBy(responseType).fields.single { it.type == navigationType }
-    val defaultNavigation = playlistPageDefaultNavigationFingerprint(navigationType).originalMethod
+    val defaultNavigation = playlistPageDefaultNavigationFingerprint(navigationType).matchOrNull()?.originalMethod
+        ?: playlistPageNavigationSelectorFingerprint(navigationType).originalMethod
+    // The default wrapper passes false for shuffle, repeat and alternate
+    // navigation. Newer builds inline it; request the same native default set.
+    val selectNavigation = if (defaultNavigation.parameterTypes.isEmpty()) {
+        "invoke-virtual {v0}, $defaultNavigation"
+    } else {
+        """
+            const/4 v1, 0x0
+            invoke-virtual {v0, v1, v1, v1, v1}, $defaultNavigation
+        """
+    }
     val navigationSet = classDefBy(defaultNavigation.returnType)
     val navigationConstructor = navigationSet.methods.single { it.name == "<init>" }
     val navigationProto = navigationSet.fields.single { it.type == navigationConstructor.parameterTypes.first() }
@@ -180,7 +191,7 @@ internal fun installPlaylistPages(context: BytecodePatchContext) = with(context)
             if (navigation) "patch_getPlaylistNavigation" else "patch_getPlaylistPage",
             listOf("Ljava/lang/Object;"),
             "Lcom/google/protobuf/MessageLite;",
-            1,
+            if (navigation && defaultNavigation.parameterTypes.isNotEmpty()) 2 else 1,
             """
                 check-cast p1, $rawResponse
                 new-instance v0, $responseType
@@ -188,7 +199,7 @@ internal fun installPlaylistPages(context: BytecodePatchContext) = with(context)
                 ${if (!navigation) "iget-object v0, v0, $responsePanel" else """
                     iget-object v0, v0, $responseNavigation
                     if-eqz v0, :done
-                    invoke-virtual {v0}, $defaultNavigation
+                    $selectNavigation
                     move-result-object v0
                     if-eqz v0, :done
                     iget-object v0, v0, $navigationProto
