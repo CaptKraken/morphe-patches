@@ -7,21 +7,37 @@
 
 package app.morphe.extension.youtube.patches.queue;
 
+import android.support.v7.widget.RecyclerView;
+import android.view.View;
+
 import androidx.annotation.Nullable;
 
 import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.MessageLite;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.youtube.innertube.FeedCardLayoutOuterClass;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 import app.morphe.extension.youtube.patches.utils.ProtoNode;
 
 /** Reads only the selected collection's identity, never a thumbnail's first video. */
 public final class PlaylistCardSource {
+    /** Native mounted NodeInfo exposes the actions of its own click handler. */
+    public interface TapActions {
+        @Nullable
+        List<?> patch_getPlaylistTapActions();
+    }
+
+    /** Decodes a bound Elements command without executing the native tap. */
+    public interface TapCommand {
+        MessageLite patch_getPlaylistTapCommand();
+    }
+
     /** A recognized collection without an ID must not fall back to its first video. */
     public record Selection(String playlistId, boolean playlist) {}
     private static final Pattern PLAYLIST_ID = Pattern.compile("[A-Za-z0-9_-]+");
@@ -35,6 +51,71 @@ public final class PlaylistCardSource {
     static boolean isPlaylistId(String id) {
         return id != null && (id.equals("WL") || id.equals("LL") || id.length() > 2)
                 && PLAYLIST_ID.matcher(id).matches();
+    }
+
+    @Nullable
+    static Selection fromView(View sender) throws InvalidProtocolBufferException {
+        int nodeInfoId = ResourceUtils.getIdIdentifier("component_node_info");
+        if (nodeInfoId == 0) {
+            return null;
+        }
+        // Only walk the tapped card's ancestors. Its shelf buffer can contain
+        // unrelated cards, but each mounted click handler retains its own command.
+        for (View view = sender; view != null && !(view instanceof RecyclerView);
+             view = view.getParent() instanceof View parent ? parent : null) {
+            if (view.getTag(nodeInfoId) instanceof TapActions owner) {
+                Selection selection = fromTapActions(owner.patch_getPlaylistTapActions());
+                if (selection != null) {
+                    return selection;
+                }
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    static Selection fromTapActions(@Nullable List<?> actions) throws InvalidProtocolBufferException {
+        if (actions == null) {
+            return null;
+        }
+        String found = "";
+        for (Object action : actions) {
+            if (!(action instanceof TapCommand tap)) {
+                continue;
+            }
+            var command = PlaylistQueueRenderer.ElementsCommand.parseFrom(
+                    tap.patch_getPlaylistTapCommand().toByteArray()).getInnertubeCommand();
+            if (command.hasWatchEndpoint() || command.hasAlternateWatchEndpoint()) {
+                // An individual video's surrounding playlist is not its target.
+                return new Selection("", false);
+            }
+            var fields = ProtoNode.parse(command.toByteArray());
+            if (fields == null) {
+                continue;
+            }
+            for (var field : fields) {
+                if (field.getFieldNumber() != BROWSE_ENDPOINT || field.children == null) {
+                    continue;
+                }
+                // Read only the direct BrowseEndpoint, never a menu's nested
+                // Share, Download or Premium navigation commands.
+                String id = "";
+                for (var value : field.children) {
+                    if (value.getFieldNumber() == BROWSE_ID && value.isText()) {
+                        id = value.getText();
+                    }
+                }
+                if (!id.startsWith("VL") || !isPlaylistId(id.substring(2))) {
+                    return new Selection("", false);
+                }
+                id = id.substring(2);
+                if (!found.isEmpty() && !found.equals(id)) {
+                    return new Selection("", true);
+                }
+                found = id;
+            }
+        }
+        return found.isEmpty() ? null : new Selection(found, true);
     }
 
     static Selection fromElement(byte[] bytes, boolean collectionCard) throws InvalidProtocolBufferException {

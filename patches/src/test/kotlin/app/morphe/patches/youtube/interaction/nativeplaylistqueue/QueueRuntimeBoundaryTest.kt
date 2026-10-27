@@ -195,6 +195,9 @@ class QueueRuntimeBoundaryTest {
     @Test
     fun `Mix choice ignores music and foreign queues and rejects stale choices and completions`() = withFixture("mixChoiceGuards")
 
+    @Test
+    fun `mounted collection commands identify their card with and without a queue`() = withFixture("mountedPlaylistSource")
+
     // NativePlaylistQueuePatch depends on Android settings, scheduling and UI classes.
     // Isolate those boundaries while executing its actual compiled coordinator.
     private fun withFixture(scenario: String) {
@@ -242,9 +245,15 @@ class QueueRuntimeBoundaryTest {
                 }
             """,
             "Drawable" to "package android.graphics.drawable; public class Drawable {}",
+            "ViewParent" to "package android.view; public interface ViewParent {}",
+            "RecyclerView" to "package android.support.v7.widget; public class RecyclerView extends android.view.ViewGroup {}",
             "View" to """
                 package android.view;
-                public class View {
+                public class View implements ViewParent {
+                    public ViewParent parent;
+                    public Object node;
+                    public ViewParent getParent() { return parent; }
+                    public Object getTag(int id) { return node; }
                     public static final int GONE = 8;
                     public interface OnClickListener { void onClick(View view); }
                     public int getVisibility() { return 0; }
@@ -304,6 +313,7 @@ class QueueRuntimeBoundaryTest {
                 package app.morphe.extension.shared;
                 public class ResourceUtils {
                     public static int getIdentifier(ResourceType type, String name) { return 0; }
+                    public static int getIdIdentifier(String name) { return 1; }
                 }
             """,
             "FeedVideoCardsPatch" to """
@@ -948,6 +958,47 @@ class QueueRuntimeBoundaryTest {
                                 "Imported display metadata belongs to the queue and playback stays uninterrupted");
                             call("releasePanel");
                         }
+                    }
+                    public static void mountedPlaylistSource() throws Exception {
+                        app.morphe.extension.youtube.patches.utils.FeedVideoCardsPatch.individual = false;
+                        var bytes = new java.io.ByteArrayOutputStream();
+                        var output = com.google.protobuf.CodedOutputStream.newInstance(bytes);
+                        output.writeString(2, "VLWL"); output.flush();
+                        var endpoint = new java.io.ByteArrayOutputStream();
+                        output = com.google.protobuf.CodedOutputStream.newInstance(endpoint);
+                        output.writeByteArray(48687626, bytes.toByteArray()); output.flush();
+                        var tap = PlaylistQueueRenderer.ElementsCommand.newBuilder().setInnertubeCommand(
+                            PlaylistQueueRenderer.NavigationEndpoint.parseFrom(endpoint.toByteArray())).build();
+                        var card = new android.view.View();
+                        card.node = (PlaylistCardSource.TapActions) () -> List.of((PlaylistCardSource.TapCommand) () -> tap);
+                        var overflow = new android.view.View(); overflow.parent = card;
+                        var empty = PlaylistQueueRenderer.MenuRenderer.getDefaultInstance();
+                        var original = (com.google.protobuf.MessageLite) java.lang.reflect.Proxy.newProxyInstance(
+                            owner.getClassLoader(), new Class<?>[]{com.google.protobuf.MessageLite.class, QueueFlyoutActions.Menu.class},
+                            (proxy, method, arguments) -> method.getName().equals("patch_parseQueueFlyout")
+                                ? PlaylistQueueRenderer.MenuRenderer.parseFrom((byte[]) arguments[0])
+                                : method.invoke(empty, arguments));
+                        for (boolean active : new boolean[]{false, true}) {
+                            field("queue").set(null, active ? new PlaylistQueue("abcdefghijk", "Playing") : null);
+                            var selected = QueueFlyoutActions.playlistSource(new Object(), overflow);
+                            require(selected.playlist() && selected.playlistId().equals("WL"),
+                                "Mounted card identifies Watch Later independently of queue or source buffer");
+                            FlyoutUtils.playlist = selected.playlistId(); FlyoutUtils.video = "";
+                            var completed = PlaylistQueueRenderer.MenuRenderer.parseFrom(
+                                QueueFlyoutActions.completeQueueMenu(original).toByteArray());
+                            require(completed.getItemsCount() == 2, "Collection offers native Next and Last");
+                            for (var item : completed.getItemsList()) {
+                                require(QueueFlyoutActions.getPlaylistQueueAction(item) != null,
+                                    "Each collection action owns its target before queue readiness is considered");
+                            }
+                        }
+                        var list = new android.support.v7.widget.RecyclerView(); list.node = card.node;
+                        overflow.parent = list;
+                        require(QueueFlyoutActions.playlistSource(new Object(), overflow).playlistId().isEmpty(),
+                            "Card search cannot escape into the list's navigation target");
+                        overflow.parent = card; Settings.QUEUE_TYPE.value = QueueType.LOCAL;
+                        require(!QueueFlyoutActions.playlistSource(new Object(), overflow).playlist(),
+                            "Other queue providers do not inspect mounted Native commands");
                     }
                     public static void playlistCollectionStarts() throws Exception {
                         // An ordinary playing video is retained before the imported batch for either menu action.

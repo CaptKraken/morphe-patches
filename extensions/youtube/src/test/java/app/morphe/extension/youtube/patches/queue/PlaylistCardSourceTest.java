@@ -8,6 +8,8 @@
 package app.morphe.extension.youtube.patches.queue;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.CodedOutputStream;
@@ -15,8 +17,10 @@ import com.google.protobuf.CodedOutputStream;
 import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
+import java.util.List;
 
 import app.morphe.extension.youtube.innertube.FeedCardLayoutOuterClass;
+import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
 
 public class PlaylistCardSourceTest {
     private static byte[] browse(String id) throws Exception {
@@ -31,7 +35,8 @@ public class PlaylistCardSourceTest {
         return command.toByteArray();
     }
 
-    @Test public void privateCollectionWithoutShareOrCanonicalUrlUsesItsNativeBrowseCommand() throws Exception {
+    @Test
+    public void privateCollectionWithoutShareOrCanonicalUrlUsesItsNativeBrowseCommand() throws Exception {
         for (String id : new String[]{"WL", "LL", "PL-private"}) {
             var wrapper = new ByteArrayOutputStream();
             var output = CodedOutputStream.newInstance(wrapper);
@@ -46,11 +51,12 @@ public class PlaylistCardSourceTest {
         assertEquals("", PlaylistCardSource.fromNavigation(conflicting.toByteArray()));
     }
 
-    @Test public void nativeCollectionRendererNeedsNeitherShareNorAnElementsSourceView() throws Exception {
+    @Test
+    public void nativeCollectionRendererNeedsNeitherShareNorAnElementsSourceView() throws Exception {
         for (String id : new String[]{"WL", "LL", "PL-private"}) {
             var selected = PlaylistCardSource.fromElement(renderer(id, id), false);
             assertEquals(id, selected.playlistId());
-            org.junit.Assert.assertTrue(selected.playlist());
+            assertTrue(selected.playlist());
         }
         // An individual video's playlist link does not identify the selected item.
         assertEquals("", PlaylistCardSource.fromElement(renderer("abcdefghijk", "WL"), false).playlistId());
@@ -66,7 +72,8 @@ public class PlaylistCardSourceTest {
         return body.toByteArray();
     }
 
-    @Test public void knownVideoModelsCannotImportTheirSurroundingPlaylist() throws Exception {
+    @Test
+    public void knownVideoModelsCannotImportTheirSurroundingPlaylist() throws Exception {
         var data = FeedCardLayoutOuterClass.VideoWithContextData.newBuilder().setOnTap(ByteString.copyFrom(browse("WL")))
                 .setVideoData(FeedCardLayoutOuterClass.VideoData.newBuilder().setThumbnail(
                         FeedCardLayoutOuterClass.VideoThumbnail.newBuilder().setTimestampText("1:23")));
@@ -87,7 +94,9 @@ public class PlaylistCardSourceTest {
         return FeedCardLayoutOuterClass.Element.newBuilder().setType(FeedCardLayoutOuterClass.ElementType.newBuilder()
                 .setComponentType(FeedCardLayoutOuterClass.ComponentType.newBuilder().setModel(model))).build().toByteArray();
     }
-    @Test public void aRecognizedCollectionWithoutAnIdentityCannotBecomeASingleVideoAction() throws Exception {
+
+    @Test
+    public void aRecognizedCollectionWithoutAnIdentityCannotBecomeASingleVideoAction() throws Exception {
         var model = FeedCardLayoutOuterClass.ElementModel.newBuilder().setVideoWithContextModel(
                 FeedCardLayoutOuterClass.VideoWithContextModel.newBuilder().setData(
                         FeedCardLayoutOuterClass.VideoWithContextData.newBuilder().setVideoData(
@@ -95,7 +104,65 @@ public class PlaylistCardSourceTest {
                                         FeedCardLayoutOuterClass.VideoThumbnail.newBuilder().setVideoCountText("10 videos")))));
         var selected = PlaylistCardSource.fromElement(element(model.build()), true);
         assertEquals("", selected.playlistId());
-        org.junit.Assert.assertTrue(selected.playlist());
+        assertTrue(selected.playlist());
     }
 
+    private static PlaylistCardSource.TapCommand tap(byte[] endpoint) throws Exception {
+        var command = PlaylistQueueRenderer.ElementsCommand.newBuilder()
+                .setInnertubeCommand(PlaylistQueueRenderer.NavigationEndpoint
+                        .parseFrom(endpoint)).build();
+        return () -> command;
+    }
+
+    @Test
+    public void boundTapUsesTheSamePlaylistIdentityForPrivateAndPublicCollections() throws Exception {
+        for (String id : new String[]{"WL", "LL", "PL-private", "PL-public"}) {
+            var selection = PlaylistCardSource.fromTapActions(List.of(tap(browse(id))));
+            assertEquals(new PlaylistCardSource.Selection(id, true), selection);
+        }
+    }
+
+    @Test
+    public void openingAMenuDoesNotReadItsNestedPlaylistAsTheCardTarget() throws Exception {
+        var bytes = new ByteArrayOutputStream();
+        var output = CodedOutputStream.newInstance(bytes);
+        output.writeByteArray(98150882, browse("WL"));
+        output.flush();
+        assertNull(PlaylistCardSource.fromTapActions(List.of(tap(bytes.toByteArray()))));
+    }
+
+    @Test
+    public void conflictingTapNavigationTargetsAreNotSelected() throws Exception {
+        var selection = PlaylistCardSource.fromTapActions(List.of(tap(browse("WL")), tap(browse("LL"))));
+        assertEquals(new PlaylistCardSource.Selection("", true), selection);
+    }
+
+    @Test
+    public void anIndividualVideoTapDoesNotAuthorizeItsSurroundingPlaylist() throws Exception {
+        var command = PlaylistQueueRenderer.NavigationEndpoint.newBuilder()
+                .setWatchEndpoint(PlaylistQueueRenderer.WatchEndpoint
+                        .newBuilder().setVideoId("aaaaaaaaaaa").setPlaylistId("PL-surrounding")).build();
+        var selection = PlaylistCardSource.fromTapActions(List.of(tap(command.toByteArray())));
+        assertEquals(new PlaylistCardSource.Selection("", false), selection);
+    }
+
+    @Test
+    public void nonNavigationActionsDoNotHideTheBoundPlaylistTarget() throws Exception {
+        var selection = PlaylistCardSource.fromTapActions(List.of(new Object(), tap(new byte[0]), tap(browse("WL"))));
+        assertEquals(new PlaylistCardSource.Selection("WL", true), selection);
+    }
+
+    @Test
+    public void channelNavigationCannotBecomeAPlaylistTarget() throws Exception {
+        var bytes = new ByteArrayOutputStream();
+        var output = CodedOutputStream.newInstance(bytes);
+        output.writeString(2, "UC-channel");
+        output.flush();
+        var endpoint = new ByteArrayOutputStream();
+        output = CodedOutputStream.newInstance(endpoint);
+        output.writeByteArray(48687626, bytes.toByteArray());
+        output.flush();
+        assertEquals(new PlaylistCardSource.Selection("", false),
+                PlaylistCardSource.fromTapActions(List.of(tap(endpoint.toByteArray()))));
+    }
 }

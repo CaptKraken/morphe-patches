@@ -1576,3 +1576,75 @@ internal fun playlistLoadingContentFingerprint(frame: FieldReference, directStat
         ))
     }
 )
+
+internal const val ELEMENTS_TAP_COMMAND =
+    "Lcom/google/protos/youtube/elements/CommandOuterClass\$Command;"
+
+/** Litho preserves NodeInfo on each mounted host under this named view tag. */
+internal object PlaylistNodeInfoFingerprint : Fingerprint(
+    definingClass = "Lcom/facebook/litho/ComponentHost;",
+    name = "setTag",
+    parameters = listOf("I", "Ljava/lang/Object;"),
+    returnType = "V",
+    filters = listOf(resourceLiteral(ResourceType.ID, "component_node_info"))
+)
+
+/** The native OnClickListener identifies both its event and the handler's owner field. */
+internal object PlaylistClickListenerFingerprint : Fingerprint(
+    interfaces = listOf("Landroid/view/View\$OnClickListener;"),
+    name = "onClick",
+    parameters = listOf("Landroid/view/View;"),
+    returnType = "V",
+    filters = listOf(string("onClick_<cls>"))
+)
+
+/** Mounting binds this NodeInfo field to the listener, rather than a long-press handler. */
+internal fun playlistClickMountFingerprint(nodeType: String, listenerType: String, handlerType: String) = Fingerprint(
+    returnType = "V",
+    filters = listOf(
+        // Some builds pass one layout wrapper instead of separate content/layout arguments.
+        // The native field -> click-listener construction identifies the same mount operation.
+        fieldAccess(definingClass = nodeType, type = handlerType, opcode = Opcode.IGET_OBJECT),
+        methodCall(
+            definingClass = listenerType,
+            name = "<init>",
+            parameters = listOf(handlerType),
+            location = MatchAfterWithin(3)
+        ),
+        methodCall(
+            smali = "Landroid/view/View;->setOnClickListener(Landroid/view/View\$OnClickListener;)V",
+            location = MatchAfterImmediately()
+        )
+    )
+)
+
+internal object PlaylistTapOwnerFingerprint : Fingerprint(
+    name = "<init>",
+    filters = listOf(string("ElementEventWithGesture"))
+)
+
+/** Follow the click event's original view field, which newer Litho builds erase to Object. */
+internal fun playlistTapActionsFingerprint(ownerType: String, event: FieldReference, handlerType: String) = Fingerprint(
+    definingClass = ownerType,
+    parameters = listOf(handlerType, "Ljava/lang/Object;"),
+    returnType = "Ljava/lang/Object;",
+    filters = listOf(
+        fieldAccess(reference = event, opcode = Opcode.IGET_OBJECT),
+        // The click branch reads its gesture state between the event view and its actions.
+        fieldAccess(
+            definingClass = ownerType,
+            type = "Ljava/util/List;",
+            opcode = Opcode.IGET_OBJECT,
+            location = MatchAfterWithin(6)
+        ),
+        methodCall(parameters = listOf("Landroid/view/View;", "L", "Landroid/view/MotionEvent;"), returnType = "V")
+    )
+)
+
+/** A native tap callback decodes its CommandFuture before handing it to the executor. */
+internal fun playlistTapCommandFingerprint(callbackType: String, parameters: List<String>) = Fingerprint(
+    interfaces = listOf(callbackType),
+    parameters = parameters,
+    returnType = "V",
+    filters = listOf(methodCall(returnType = ELEMENTS_TAP_COMMAND, parameters = emptyList()))
+)
