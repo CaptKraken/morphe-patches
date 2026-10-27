@@ -120,6 +120,37 @@ public class PlaylistCardSourceTest {
             var selection = PlaylistCardSource.fromTapActions(List.of(tap(browse(id))));
             assertEquals(new PlaylistCardSource.Selection(id, true), selection);
         }
+        var mix = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setWatchEndpoint(
+                PlaylistQueueRenderer.WatchEndpoint.newBuilder()
+                        .setVideoId("aaaaaaaaaaa").setPlaylistId("RDaaaaaaaaaaa")).build();
+        assertEquals(new PlaylistCardSource.Selection("RDaaaaaaaaaaa", true),
+                PlaylistCardSource.fromTapActions(List.of(tap(mix.toByteArray()))));
+    }
+
+    @Test
+    public void classicMixNeedsItsCollectionCardWhileMusicVideosAndPlaylistPositionsStaySingle() throws Exception {
+        var watch = PlaylistQueueRenderer.WatchEndpoint.newBuilder()
+                .setVideoId("aaaaaaaaaaa").setPlaylistId("RDaaaaaaaaaaa");
+        var command = PlaylistQueueRenderer.ElementsCommand.newBuilder().setInnertubeCommand(
+                PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setWatchEndpoint(watch));
+        var data = FeedCardLayoutOuterClass.VideoWithContextData.newBuilder()
+                .setOnTap(command.build().toByteString());
+        var model = FeedCardLayoutOuterClass.ElementModel.newBuilder().setVideoWithContextModel(
+                FeedCardLayoutOuterClass.VideoWithContextModel.newBuilder().setData(data));
+        assertEquals(new PlaylistCardSource.Selection("RDaaaaaaaaaaa", true),
+                PlaylistCardSource.fromElement(element(model.build()), true));
+        assertEquals(new PlaylistCardSource.Selection("", false),
+                PlaylistCardSource.fromElement(element(model.build()), false));
+        data.setVideoData(FeedCardLayoutOuterClass.VideoData.newBuilder().setThumbnail(
+                FeedCardLayoutOuterClass.VideoThumbnail.newBuilder().setTimestampText("1:23")));
+        model.setVideoWithContextModel(FeedCardLayoutOuterClass.VideoWithContextModel.newBuilder().setData(data));
+        assertEquals(new PlaylistCardSource.Selection("", false),
+                PlaylistCardSource.fromElement(element(model.build()), true));
+        for (var positioned : List.of(watch.clone().setIndex(0), watch.clone().setPlaylistSetVideoId("entry"))) {
+            var endpoint = PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setWatchEndpoint(positioned).build();
+            assertEquals(new PlaylistCardSource.Selection("", false),
+                    PlaylistCardSource.fromTapActions(List.of(tap(endpoint.toByteArray()))));
+        }
     }
 
     @Test
@@ -135,6 +166,11 @@ public class PlaylistCardSourceTest {
     public void conflictingTapNavigationTargetsAreNotSelected() throws Exception {
         var selection = PlaylistCardSource.fromTapActions(List.of(tap(browse("WL")), tap(browse("LL"))));
         assertEquals(new PlaylistCardSource.Selection("", true), selection);
+        var ambiguous = PlaylistQueueRenderer.NavigationEndpoint.parseFrom(browse("WL")).toBuilder()
+                .setWatchEndpoint(PlaylistQueueRenderer.WatchEndpoint.newBuilder()
+                        .setVideoId("aaaaaaaaaaa").setPlaylistId("RDaaaaaaaaaaa")).build();
+        assertEquals(new PlaylistCardSource.Selection("", true),
+                PlaylistCardSource.fromTapActions(List.of(tap(ambiguous.toByteArray()))));
     }
 
     @Test

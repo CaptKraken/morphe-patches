@@ -336,8 +336,10 @@ class QueueRuntimeBoundaryTest {
                 package app.morphe.extension.youtube.patches.queue;
                 public class MixPlaylistRequest {
                     public static java.util.List<VideoMetadata> result;
+                    public static int calls;
                     static java.util.List<VideoMetadata> fetch(String playlist, String video, java.util.Map<String, String> headers) {
                         if (app.morphe.extension.shared.Utils.mainThread) throw new AssertionError("Network on UI thread");
+                        calls++;
                         return result;
                     }
                 }
@@ -991,6 +993,80 @@ class QueueRuntimeBoundaryTest {
                                     "Each collection action owns its target before queue readiness is considered");
                             }
                         }
+                        var mix = PlaylistQueueRenderer.ElementsCommand.newBuilder().setInnertubeCommand(
+                            PlaylistQueueRenderer.NavigationEndpoint.newBuilder().setWatchEndpoint(
+                                PlaylistQueueRenderer.WatchEndpoint.newBuilder().setVideoId("0123456789_")
+                                    .setPlaylistId("RD0123456789_"))).build();
+                        card.node = (PlaylistCardSource.TapActions) () -> List.of((PlaylistCardSource.TapCommand) () -> mix);
+                        for (boolean active : new boolean[]{false, true}) {
+                            for (boolean last : new boolean[]{false, true}) {
+                                PlaylistQueue before = null;
+                                Controller controller = null;
+                                if (active) {
+                                    VideoInformation.id = "abcdefghijk";
+                                    controller = new Controller(new Playback());
+                                    before = installOwned(controller).select(0);
+                                    field("queue").set(null, before); controller.playback.index = 0;
+                                } else {
+                                    field("queue").set(null, null); VideoInformation.id = "";
+                                    field("controllerRef").set(null, new WeakReference<>(null));
+                                    app.morphe.extension.youtube.shared.PlayerType.current =
+                                        app.morphe.extension.youtube.shared.PlayerType.NONE;
+                                }
+                                var source = new CollectionSource("RD0123456789_", List.of()); PlaylistPages.attach(source);
+                                MixPlaylistRequest.calls = 0;
+                                MixPlaylistRequest.result = List.of(
+                                    new VideoMetadata("0123456789_", "First", "Channel", "", "1:00", true),
+                                    new VideoMetadata("ABCDEFGHIJK", "Second", "Channel", "", "2:00", true),
+                                    new VideoMetadata("0123456789_", "First", "Channel", "", "1:00", true));
+                                var selected = QueueFlyoutActions.playlistSource(
+                                    (FlyoutUtils.FlyoutMenuVideoIdInterface) () -> "0123456789_", overflow);
+                                require(selected.playlist() && selected.playlistId().equals("RD0123456789_"),
+                                    "A Mix's typed first-video tag cannot override its mounted collection target");
+                                FlyoutUtils.playlist = selected.playlistId(); FlyoutUtils.video = "";
+                                var menu = PlaylistQueueRenderer.MenuRenderer.parseFrom(
+                                    QueueFlyoutActions.completeQueueMenu(original).toByteArray());
+                                var copied = PlaylistQueueRenderer.MenuItem.parseFrom(menu.getItems(last ? 1 : 0).toByteArray());
+                                QueueFlyoutActions.getPlaylistQueueAction(copied).run(); completeCollection();
+                                require(MixPlaylistRequest.calls == 1 && source.requests == 0,
+                                    "Menu actions call the same finite Mix fetch as the dialog, without ordinary playlist paging");
+                                if (active) {
+                                    var after = (PlaylistQueue) field("queue").get(null);
+                                    List<String> expected = last
+                                        ? List.of("abcdefghijk", "ZYXWVUTSRQP", "abcdefghijk", "0123456789_", "ABCDEFGHIJK", "0123456789_")
+                                        : List.of("abcdefghijk", "0123456789_", "ABCDEFGHIJK", "0123456789_", "ZYXWVUTSRQP", "abcdefghijk");
+                                    require(after.entries().stream().map(PlaylistQueue.Entry::videoId).toList().equals(expected)
+                                            && after.currentEntry() == before.currentEntry() && after.isComplete()
+                                            && after.metadata("ABCDEFGHIJK").title().equals("Second"),
+                                        "Mix Next/Last inserts the complete ordered batch, retaining duplicates, current entry and metadata");
+                                    call("releasePanel");
+                                } else {
+                                    var start = (QueueStart) field("pendingQueueStart").get(null);
+                                    require(start != null && start.candidate().entries().size() == 3 && start.candidate().isComplete()
+                                            && start.candidate().entries().get(1).videoId().equals("ABCDEFGHIJK"),
+                                        "Either Mix menu action can start a queue with every returned video");
+                                    call("clearPendingQueueStart");
+                                }
+                            }
+                        }
+                        var controller = new Controller(new Playback());
+                        var before = installOwned(controller).select(0);
+                        field("queue").set(null, before); controller.playback.index = 0;
+                        var source = new CollectionSource("RD0123456789_", List.of()); PlaylistPages.attach(source);
+                        NativePlaylistQueuePatch.getPlaylistQueueAction("RD0123456789_", false).run();
+                        Utils.drainBackground();
+                        app.morphe.extension.shared.innertube.utils.AuthUtils.account = "different";
+                        Utils.drain();
+                        require(field("queue").get(null) == before && controller.playback.attaches == 0
+                                && field("pendingPlaylistAddition").get(null) == null,
+                            "A header/account change after Mix fetch cannot publish into the prior queue");
+                        app.morphe.extension.shared.innertube.utils.AuthUtils.account = "test";
+                        call("releasePanel");
+                        app.morphe.extension.youtube.patches.utils.FeedVideoCardsPatch.individual = true;
+                        require(!QueueFlyoutActions.playlistSource(
+                                (FlyoutUtils.FlyoutMenuVideoIdInterface) () -> "0123456789_", overflow).playlist(),
+                            "A music video's automatic Mix is still a single-video menu action");
+                        app.morphe.extension.youtube.patches.utils.FeedVideoCardsPatch.individual = false;
                         var list = new android.support.v7.widget.RecyclerView(); list.node = card.node;
                         overflow.parent = list;
                         require(QueueFlyoutActions.playlistSource(new Object(), overflow).playlistId().isEmpty(),

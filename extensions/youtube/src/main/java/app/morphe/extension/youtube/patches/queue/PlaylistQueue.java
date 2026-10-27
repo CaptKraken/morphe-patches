@@ -124,6 +124,21 @@ public final class PlaylistQueue {
                 mix ? rows.size() : page.totalCount(), metadata);
     }
 
+    /** A complete generated batch, retaining its display data and duplicate occurrences. */
+    static PlaylistQueue fromMetadata(List<VideoMetadata> videos) {
+        if (videos.isEmpty()) {
+            throw new IllegalArgumentException("Playlist batch is empty");
+        }
+        var entries = new ArrayList<Entry>();
+        var metadata = new HashMap<String, VideoMetadata>();
+        for (var video : videos) {
+            requireVideoId(video.videoId());
+            entries.add(new Entry(video.videoId(), video.title()));
+            metadata.putIfAbsent(video.videoId(), video);
+        }
+        return new PlaylistQueue(new ArrayList<>(entries), 0, REPEAT_OFF, null, Set.of(), entries.size(), metadata);
+    }
+
     @Nullable
     Source source() {
         return source;
