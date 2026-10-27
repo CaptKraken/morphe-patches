@@ -143,12 +143,22 @@ public final class QueueFlyoutActions {
         if (!AddToQueuePatch.isNativeQueueEnabled() || source instanceof FlyoutUtils.FlyoutMenuVideoIdInterface) {
             return new PlaylistCardSource.Selection("", false);
         }
+        boolean collection = sender != null && FeedVideoCardsPatch.isPlaylistTap(sender);
+        try {
+            if (collection) {
+                var mounted = PlaylistCardSource.fromView(sender);
+                if (mounted != null) {
+                    return mounted;
+                }
+            }
+        } catch (Exception ex) {
+            Logger.printException(() -> "Could not read mounted playlist command", ex);
+        }
         byte[] bytes = source instanceof FlyoutUtils.ProtocolBufferFieldInterface buffer ? buffer.patch_getBuffer()
                 : source instanceof MessageLite message ? message.toByteArray() : null;
         if (bytes == null) {
             return new PlaylistCardSource.Selection("", false);
         }
-        boolean collection = sender != null && FeedVideoCardsPatch.isPlaylistTap(sender);
         try {
             return PlaylistCardSource.fromElement(bytes, collection);
         } catch (com.google.protobuf.InvalidProtocolBufferException ex) {
