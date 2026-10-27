@@ -11,6 +11,8 @@ import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.getReference
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
@@ -25,13 +27,31 @@ internal fun installPlaylistLoading(context: BytecodePatchContext) = with(contex
     val frame = start.instructionMatches[0].instruction.getReference<FieldReference>()!!
     val showProgress = start.instructionMatches[1].instruction.getReference<MethodReference>()!!
     val list = classDefBy(controllerType).fields.single { it.type == frame.definingClass }
-    val content = playlistLoadingContentFingerprint(frame).match()
+    // Newer builds inline the content wrapper into the list binder. Discover
+    // either native form instead of assuming a version-specific method name.
+    val content = playlistLoadingContentFingerprint(frame).matchOrNull()
+        ?: playlistLoadingContentFingerprint(frame, directState = true).match()
     val showContentMatch = content.instructionMatches.last()
     val showContent = showContentMatch.instruction.getReference<MethodReference>()!!
     check(showContent != showProgress) { "Playlist loading and content must be distinct native states" }
     val frameRegister = content.instructionMatches[1].getInstruction<TwoRegisterInstruction>().registerA
     check(showContentMatch.getInstruction<FiveRegisterInstruction>().registerC == frameRegister) {
         "Playlist content state must belong to its list's loading frame"
+    }
+    val restoreContent = if (showContent.parameterTypes.isEmpty()) {
+        "invoke-virtual {p0}, $showContent"
+    } else {
+        val state = content.instructionMatches[2]
+        val stateRegister = state.getInstruction<OneRegisterInstruction>().registerA
+        check(stateRegister != frameRegister &&
+                showContentMatch.getInstruction<FiveRegisterInstruction>().registerD == stateRegister) {
+            "Playlist content state must use the matched constant argument"
+        }
+        val value = state.getInstruction<NarrowLiteralInstruction>().narrowLiteral
+        """
+            const/4 v0, $value
+            invoke-virtual {p0, v0}, $showContent
+        """
     }
 
     mutableClassDefBy(controllerType).apply {
@@ -57,14 +77,14 @@ internal fun installPlaylistLoading(context: BytecodePatchContext) = with(contex
             "patch_setPlaylistLoading",
             listOf("Z"),
             "V",
-            0,
+            if (showContent.parameterTypes.isEmpty()) 0 else 1,
             """
                 if-eqz p1, :content
                 invoke-virtual {p0}, $showProgress
                 return-void
 
                 :content
-                invoke-virtual {p0}, $showContent
+                $restoreContent
                 return-void
             """
         )
