@@ -53,6 +53,13 @@ public final class PlaylistCardSource {
                 && PLAYLIST_ID.matcher(id).matches();
     }
 
+    /** A generated Mix start, rather than a position in an already playing list. */
+    static boolean isMixStart(PlaylistQueueRenderer.WatchEndpoint watch) {
+        return PlaylistQueue.isVideoId(watch.getVideoId())
+                && watch.getPlaylistId().startsWith(NativePlaylistQueuePatch.MIX_PLAYLIST_ID_PREFIX)
+                && !watch.hasIndex() && watch.getPlaylistSetVideoId().isEmpty();
+    }
+
     @Nullable
     static Selection fromView(View sender) throws InvalidProtocolBufferException {
         int nodeInfoId = ResourceUtils.getIdIdentifier("component_node_info");
@@ -86,8 +93,16 @@ public final class PlaylistCardSource {
             var command = PlaylistQueueRenderer.ElementsCommand.parseFrom(
                     tap.patch_getPlaylistTapCommand().toByteArray()).getInnertubeCommand();
             if (command.hasWatchEndpoint() || command.hasAlternateWatchEndpoint()) {
-                // An individual video's surrounding playlist is not its target.
-                return new Selection("", false);
+                // The caller has already classified this mounted card as a collection.
+                // Mix cards start through Watch, with the first video as their seed.
+                if (!command.hasWatchEndpoint() || !isMixStart(command.getWatchEndpoint())) {
+                    return new Selection("", false);
+                }
+                String id = command.getWatchEndpoint().getPlaylistId();
+                if (!found.isEmpty() && !found.equals(id)) {
+                    return new Selection("", true);
+                }
+                found = id;
             }
             var fields = ProtoNode.parse(command.toByteArray());
             if (fields == null) {
@@ -136,10 +151,15 @@ public final class PlaylistCardSource {
         }
         if (model.hasVideoWithContextModel()) {
             var data = model.getVideoWithContextModel().getData();
-            if (data.getVideoData().getThumbnail().getVideoCountText().isEmpty()) {
+            var thumbnail = data.getVideoData().getThumbnail();
+            boolean countedPlaylist = !thumbnail.getVideoCountText().isEmpty();
+            if (!countedPlaylist && (!collectionCard || !thumbnail.getTimestampText().isEmpty())) {
                 return new Selection("", false);
             }
             var command = PlaylistQueueRenderer.ElementsCommand.parseFrom(data.getOnTap()).getInnertubeCommand();
+            if (!countedPlaylist && (!command.hasWatchEndpoint() || !isMixStart(command.getWatchEndpoint()))) {
+                return new Selection("", false);
+            }
             String id = command.hasWatchEndpoint() ? command.getWatchEndpoint().getPlaylistId()
                     : command.hasAlternateWatchEndpoint() ? command.getAlternateWatchEndpoint().getPlaylistId()
                     : command.getWatchPlaylistEndpoint().getPlaylistId();

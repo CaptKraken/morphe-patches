@@ -27,7 +27,6 @@ import com.google.protobuf.MessageLite;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -257,7 +256,8 @@ public final class NativePlaylistQueuePatch {
                                     WeakReference<PlaylistController> controller,
                                     WeakReference<NativePlayback> playback, WeakReference<Object> model,
                                     @Nullable PlaylistQueue base, @Nullable PlaylistQueue originalQueue,
-                                    String videoId, String playingPlaylistId, boolean playLast) {}
+                                    String videoId, String playingPlaylistId, boolean playLast,
+                                    @Nullable Map<String, String> mixHeaders) {}
     private static volatile PlaylistAddition pendingPlaylistAddition;
     private static volatile WeakReference<NativePlayback> nativePlaybackRef = new WeakReference<>(null);
     private static Object originalModel;
@@ -2452,7 +2452,8 @@ public final class NativePlaylistQueuePatch {
             var addition = new PlaylistAddition(playlistEpoch, new PlaylistQueue.Source(playlistId, account),
                     new WeakReference<>(transport), new WeakReference<>(controller), new WeakReference<>(playback),
                     new WeakReference<>(controller == null ? null : controller.patch_getModel()), base, queue,
-                    VideoInformation.getVideoId(), controller == null ? "" : controller.patch_getPlaylistId(), playLast);
+                    VideoInformation.getVideoId(), controller == null ? "" : controller.patch_getPlaylistId(), playLast,
+                    playlistId.startsWith(MIX_PLAYLIST_ID_PREFIX) ? Map.copyOf(AuthUtils.getRequestHeader()) : null);
             pendingPlaylistAddition = addition;
             FlyoutUtils.dismissFlyout();
             Utils.showToastShort(str("morphe_native_playlist_queue_loading_playlist"));
@@ -2461,7 +2462,17 @@ public final class NativePlaylistQueuePatch {
                 PreparedPanel prepared = null;
                 Exception failure = null;
                 try {
-                    fetched = PlaylistPages.first(transport, addition.source());
+                    if (addition.mixHeaders() != null) {
+                        // Use the same finite Mix request as the Watch/Add dialog.
+                        // Its playlist ID identifies the generated batch without guessing a thumbnail ID.
+                        var videos = MixPlaylistRequest.fetch(playlistId, "", addition.mixHeaders());
+                        if (videos == null) {
+                            throw new IllegalStateException("Native queue Mix request was unavailable");
+                        }
+                        fetched = PlaylistQueue.fromMetadata(videos);
+                    } else {
+                        fetched = PlaylistPages.first(transport, addition.source());
+                    }
                     // A new player can start from the first native page and use the
                     // existing lazy source. An insertion is one atomic ordered batch.
                     while (addition.base() != null && !fetched.isComplete()) {
@@ -2502,7 +2513,8 @@ public final class NativePlaylistQueuePatch {
         if (!AddToQueuePatch.isNativeQueueEnabled() || isQueueSuspended() || ShortsPlayerState.isOpen()
                 || transport == null
                 || transport != PlaylistPages.current()
-                || !addition.source().account().equals(transport.patch_getPlaylistAccount())) {
+                || !addition.source().account().equals(transport.patch_getPlaylistAccount())
+                || addition.mixHeaders() != null && !addition.mixHeaders().equals(AuthUtils.getRequestHeader())) {
             pendingPlaylistAddition = null;
             return;
         }
@@ -3138,8 +3150,7 @@ public final class NativePlaylistQueuePatch {
      */
     @Nullable
     private static View getMixTapSender(PlaylistQueueRenderer.WatchEndpoint watch, Map<?, ?> context) {
-        if (!PlaylistQueue.isVideoId(watch.getVideoId()) || !watch.getPlaylistId().startsWith(MIX_PLAYLIST_ID_PREFIX)
-                || watch.hasIndex() || !watch.getPlaylistSetVideoId().isEmpty()) {
+        if (!PlaylistCardSource.isMixStart(watch)) {
             return null;
         }
 
@@ -3162,15 +3173,11 @@ public final class NativePlaylistQueuePatch {
         }
 
         try {
-            var additions = new ArrayList<PlaylistQueue.Entry>();
-            var captured = new HashMap<String, VideoMetadata>();
             for (VideoMetadata video : videos) {
-                additions.add(new PlaylistQueue.Entry(video.videoId(), video.title()));
                 metadataCache.put(video.videoId(), video);
-                captured.putIfAbsent(video.videoId(), video);
             }
 
-            PlaylistQueue updated = queue.append(additions).withAvailableMetadata(captured)
+            PlaylistQueue updated = queue.insertPlaylist(PlaylistQueue.fromMetadata(videos), true)
                     .withRepeatMode(playback.patch_getRepeatMode());
             if (publish(controller, updated, true)) {
                 Utils.showToastShort(str("morphe_queue_manager_fetch_succeeded_add"));

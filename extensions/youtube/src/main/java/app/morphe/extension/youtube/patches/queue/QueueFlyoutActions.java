@@ -136,7 +136,7 @@ public final class QueueFlyoutActions {
      * Capture from the selected source before native menu binding resets shared flyout state.
      */
     public static PlaylistCardSource.Selection playlistSource(@Nullable Object source, @Nullable View sender) {
-        if (!AddToQueuePatch.isNativeQueueEnabled() || source instanceof FlyoutUtils.FlyoutMenuVideoIdInterface) {
+        if (!AddToQueuePatch.isNativeQueueEnabled()) {
             return new PlaylistCardSource.Selection("", false);
         }
         boolean collection = sender != null && FeedVideoCardsPatch.isPlaylistTap(sender);
@@ -149,6 +149,9 @@ public final class QueueFlyoutActions {
             }
         } catch (Exception ex) {
             Logger.printException(() -> "Could not read mounted playlist command", ex);
+        }
+        if (source instanceof FlyoutUtils.FlyoutMenuVideoIdInterface) {
+            return new PlaylistCardSource.Selection("", false);
         }
         byte[] bytes = source instanceof FlyoutUtils.ProtocolBufferFieldInterface buffer ? buffer.patch_getBuffer()
                 : source instanceof MessageLite message ? message.toByteArray() : null;

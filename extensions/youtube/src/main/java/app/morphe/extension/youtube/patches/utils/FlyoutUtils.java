@@ -1161,8 +1161,11 @@ public final class FlyoutUtils {
             String videoId = videoIdInterface.patch_getVideoId();
             if (videoId != null) {
                 // An empty typed ID must clear the previous menu's video as well.
-                flyoutVideoId = videoId;
-                flyoutPlaylistId = "";
+                // A confirmed Mix card can expose that same first video as its menu tag.
+                if (collection == null || !collection.playlist()) {
+                    flyoutVideoId = videoId;
+                    flyoutPlaylistId = "";
+                }
                 isShortFlyout = false;
             }
             return;
