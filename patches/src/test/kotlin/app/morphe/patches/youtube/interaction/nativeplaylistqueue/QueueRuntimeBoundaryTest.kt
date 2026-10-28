@@ -1076,20 +1076,31 @@ class QueueRuntimeBoundaryTest {
                             "Other queue providers do not inspect mounted Native commands");
                     }
                     public static void playlistCollectionStarts() throws Exception {
-                        // An ordinary playing video is retained before the imported batch for either menu action.
-                        for (boolean last : new boolean[]{false, true}) {
-                            var controller = new Controller(new Playback()); controller.playback.local = false;
-                            field("controllerRef").set(null, new WeakReference<>(controller));
-                            field("queue").set(null, null); field("publishedModel").set(null, null);
-                            app.morphe.extension.youtube.shared.PlayerType.current =
-                                app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MINIMIZED;
-                            var source = new CollectionSource("WL", List.of("0123456789_", "ABCDEFGHIJK")); PlaylistPages.attach(source);
-                            NativePlaylistQueuePatch.getPlaylistQueueAction("WL", last).run(); completeCollection();
-                            var after = (PlaylistQueue) field("queue").get(null);
-                            require(after != null && after.entries().stream().map(PlaylistQueue.Entry::videoId).toList()
-                                    .equals(List.of("abcdefghijk", "0123456789_", "ABCDEFGHIJK")) && LoadVideoPatch.opens == 0,
-                                "A playlist creates a Native queue around the existing ordinary video");
-                            call("releasePanel");
+                        // Standalone playback has no playlist model or local queue yet.
+                        for (String list : List.of("WL", "RD0123456789_")) {
+                            for (boolean last : new boolean[]{false, true}) {
+                                var controller = new Controller(new Playback()); controller.playback.local = false;
+                                controller.model = null;
+                                field("controllerRef").set(null, new WeakReference<>(controller));
+                                field("queue").set(null, null); field("publishedModel").set(null, null);
+                                app.morphe.extension.youtube.shared.PlayerType.current =
+                                    app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MINIMIZED;
+                                var source = new CollectionSource(list, List.of("0123456789_", "ABCDEFGHIJK"));
+                                PlaylistPages.attach(source);
+                                MixPlaylistRequest.calls = 0;
+                                MixPlaylistRequest.result = List.of(
+                                    new VideoMetadata("0123456789_", "First", "Channel", "", "1:00", true),
+                                    new VideoMetadata("ABCDEFGHIJK", "Second", "Channel", "", "2:00", true));
+                                NativePlaylistQueuePatch.getPlaylistQueueAction(list, last).run(); completeCollection();
+                                var after = (PlaylistQueue) field("queue").get(null);
+                                require(after != null && after.entries().stream().map(PlaylistQueue.Entry::videoId).toList()
+                                        .equals(List.of("abcdefghijk", "0123456789_", "ABCDEFGHIJK")) && LoadVideoPatch.opens == 0
+                                        && controller.playback.attaches == 1 && after.repeatMode() == PlaylistQueue.REPEAT_ONE,
+                                    "A playlist or Mix creates a queue around standalone playback without reopening or losing repeat");
+                                require(MixPlaylistRequest.calls == (list.startsWith("RD") ? 1 : 0),
+                                    "Standalone Mix insertion uses the same finite batch request as the dialog");
+                                call("releasePanel");
+                            }
                         }
                         // An account playlist also retains all its rows before the new collection is inserted.
                         var controller = playlistController(false, false); controller.playback.index = 1;
