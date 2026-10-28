@@ -693,6 +693,24 @@ private fun verifyNativeQueueHeader(classes: List<ClassDef>, selected: Boolean) 
     println("Native queue repeat flags and shuffle visibility/listener restoration verified")
 }
 
+/** Repeat is read before a standalone video's navigator becomes a local queue. */
+private fun verifyNativeRepeatRead(playbackOwner: ClassDef) {
+    val repeatRead = playbackOwner.methods.single { it.name == "patch_getRepeatMode" }
+        .implementation!!.instructions.toList()
+    val delegate = repeatRead.mapNotNull { (it as? ReferenceInstruction)?.reference as? MethodReference }.single()
+    check(delegate.definingClass == playbackOwner.type && delegate.returnType == "I" &&
+            delegate.parameterTypes.isEmpty() && !delegate.name.startsWith("patch_") &&
+            repeatRead.none { it.opcode == Opcode.CHECK_CAST }) {
+        "Repeat must use the wrapper's native getter before local queue attachment, including standalone autoplay"
+    }
+    val nativeRead = playbackOwner.methods.single { it.toString() == delegate.toString() }
+        .implementation!!.instructions.toList()
+    check(nativeRead.none { it.opcode == Opcode.CHECK_CAST } && nativeRead.any { it.opcode == Opcode.INVOKE_INTERFACE }) {
+        "Native repeat must delegate without narrowing playback to a concrete playlist queue"
+    }
+    println("Native repeat getter retains standalone and playlist navigator support")
+}
+
 /** SDK structural checks do not catch a base protobuf value stored in a concrete panel field. */
 private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
     val dexFiles = directory.listFiles()!!.filter { it.extension == "dex" }.map { file ->
@@ -722,6 +740,7 @@ private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
         } == true }
     check(transitions.size == if (selected) 1 else 0) { "Unexpected native playback transition observer inclusion" }
     if (!selected) return
+    verifyNativeRepeatRead(owners.single())
     val transition = transitions.single()
     check(transition.returnType == "V" && transition.parameterTypes == List(3) { "Ljava/lang/String;" }) {
         "Reload readiness must observe the playback descriptor transition, not a playlist model bind"

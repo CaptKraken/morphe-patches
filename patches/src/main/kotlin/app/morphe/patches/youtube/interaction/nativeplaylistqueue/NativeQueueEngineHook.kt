@@ -74,8 +74,8 @@ internal fun installNativeQueueEngine(
 
     val repeatSetter = nativeQueueRepeatSetterFingerprint(wrapperType)
         .instructionMatches.last().methodReference
-    val repeatGetter = nativeQueueRepeatGetterFingerprint(wrapperType)
-        .instructionMatches.last().methodReference
+    val repeatRead = nativeQueueRepeatGetterFingerprint(wrapperType).match()
+    val repeatGetter = repeatRead.instructionMatches.last().methodReference
 
     val responseConstructor = nativeQueueResponseConstructorFingerprint(responseType).originalMethod
     val sourceResponse = nativeQueueResponseSourceFingerprint(
@@ -291,6 +291,8 @@ internal fun installNativeQueueEngine(
         """
     )
 
+    // Repeat is also read before queue attachment, when standalone playback can
+    // still use the autoplay navigator. Reuse the wrapper's native repeat delegate.
     bridge(
         wrapperType,
         "patch_getRepeatMode",
@@ -298,9 +300,7 @@ internal fun installNativeQueueEngine(
         "I",
         1,
         """
-            iget-object v0, p0, $nativeNavigator
-            check-cast v0, $queueType
-            invoke-interface {v0}, $repeatGetter
+            invoke-virtual {p0}, ${repeatRead.originalMethod}
             move-result v0
             return v0
         """
