@@ -10,7 +10,6 @@ package app.morphe.patches.youtube.interaction.nativeplaylistqueue
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.util.getReference
-import app.morphe.patches.shared.misc.fix.proto.protoDefaultInstanceFingerprint
 import app.morphe.patches.youtube.misc.contexthook.NextEndpointParentFingerprint
 import app.morphe.patches.youtube.video.series.AccountIdentityFingerprint
 import app.morphe.patches.youtube.video.series.IdentityFieldGetterFingerprint
@@ -26,7 +25,6 @@ import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
-import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 
 private const val PAGES = "$EXTENSION_PACKAGE/PlaylistPages;"
 private const val SOURCE = "$EXTENSION_PACKAGE/PlaylistPages\$Source;"
@@ -79,7 +77,6 @@ internal fun installPlaylistPages(context: BytecodePatchContext) = with(context)
     val navigationProto = navigationSet.fields.single { it.type == navigationConstructor.parameterTypes.first() }
 
     val instructions = blocking.implementation!!.instructions.toList()
-    val callback = instructions.first { it.opcode == Opcode.NEW_INSTANCE }.getReference<TypeReference>()!!.type
     val dispatch = instructions.mapNotNull { it.getReference<MethodReference>() }.single {
         it.returnType == "V" && it.parameterTypes.size == 3
     }
@@ -87,8 +84,9 @@ internal fun installPlaylistPages(context: BytecodePatchContext) = with(context)
         it.definingClass == blocking.definingClass && it.parameterTypes.isEmpty() &&
                 it.returnType == dispatch.parameterTypes[2]
     }
-    val callbackConstructor = instructions.mapNotNull { it.getReference<MethodReference>() }
-        .first { it.name == "<init>" && it.parameterTypes.isEmpty() }
+    val asyncDispatch = playlistPageAsyncRequestFingerprint(dispatch).originalMethod
+    val executor = playlistPageExecutorFingerprint(asyncDispatch)
+        .instructionMatches.first().instruction.getReference<MethodReference>()!!
     val service = mutableClassDefBy(blocking.definingClass)
     val factoryField = service.fields.single { it.type == factory.definingClass }
     val dispatchOwner = instructions.mapNotNull { it.getReference<FieldReference>() }
@@ -174,12 +172,14 @@ internal fun installPlaylistPages(context: BytecodePatchContext) = with(context)
             invoke-virtual {v0, p4}, $paramsSetter
             # Native validation requires non-null tracking even for read-only requests.
             iput-object p6, v0, $tracking
-            new-instance v1, $callback
-            invoke-direct {v1}, $callbackConstructor
+            # Return the native transport Future so timeout cancellation reaches the request.
+            invoke-static {}, $executor
+            move-result-object v1
             invoke-virtual {p0}, $contextGetter
             move-result-object v2
             iget-object v3, p0, $dispatchOwner
-            invoke-virtual {v3, v0, v1, v2}, $dispatch
+            invoke-virtual {v3, v0, v1, v2}, $asyncDispatch
+            move-result-object v1
             return-object v1
 
             :unknown

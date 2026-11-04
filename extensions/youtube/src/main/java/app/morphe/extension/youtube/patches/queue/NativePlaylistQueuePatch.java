@@ -2949,8 +2949,9 @@ public final class NativePlaylistQueuePatch {
             String knownTitle = ChannelIdRequest.getVideoTitleIfAvailable(entry.videoId());
             String capturedTitle = metadata == null ? entry.title() : metadata.title();
             String searchTitle = knownTitle.isEmpty() ? capturedTitle : knownTitle;
+            boolean needsDuration = metadata == null || metadata.duration().isEmpty();
             Utils.runOnBackgroundThread(() -> {
-                VideoMetadata fetched = PlaylistMetadataRequest.fetch(entry.videoId(), searchTitle, locale);
+                VideoMetadata fetched = PlaylistMetadataRequest.fetch(entry.videoId(), searchTitle, locale, needsDuration);
                 Utils.runOnMainThread(() -> {
                     pendingMetadata.remove(key);
                     if (fetched == null || !Locale.getDefault().equals(locale)) {

@@ -15,6 +15,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import app.morphe.extension.youtube.innertube.queue.QueueCardRenderer;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
@@ -173,9 +174,9 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
     }
 
     boolean isComplete() {
-        // Native Mix rows can intentionally omit view counts. Their server-supplied
-        // display data is sufficient; adding a Mix must not launch a search per row.
-        // Other sources need the native long byline to confirm all collaborators.
+        // Native panel rows can intentionally omit metadata; do not fetch each row.
+        // Individual-video lookups try the player length before returning a full byline.
+        // A live or unavailable duration can remain empty after that attempt.
         return !title.isEmpty() && !title.equals(videoId) && !channelName.isEmpty()
                 && (panelMetadata || fullByline && !videoInfo.isEmpty());
     }
@@ -192,19 +193,30 @@ record VideoMetadata(String videoId, String title, String channelName, String vi
 
         // Later feed/player captures must not downgrade an authoritative byline.
         return new VideoMetadata(videoId, captured.title().equals(videoId) ? title : captured.title(),
-                channelName, videoInfo, captured.duration().isEmpty() ? duration : captured.duration(), true);
+                channelName, videoInfo, captured.duration().isEmpty() ? duration : captured.duration(), true,
+                panelMetadata || captured.panelMetadata());
     }
 
     VideoMetadata withLookup(VideoMetadata fetched) {
-        if (fullByline && !fetched.fullByline()) {
-            return this;
-        }
-
         // Preserve captured titles and their title-patch processing, but prefer
         // the lookup's native long byline over an uploader-only fallback.
+        boolean replaceByline = !fullByline || fetched.fullByline();
         return new VideoMetadata(videoId, title.equals(videoId) ? fetched.title() : title,
-                fetched.channelName(), fetched.videoInfo(),
-                fetched.duration().isEmpty() ? duration : fetched.duration(), fetched.fullByline());
+                replaceByline && !fetched.channelName().isEmpty() ? fetched.channelName() : channelName,
+                replaceByline && !fetched.videoInfo().isEmpty() ? fetched.videoInfo() : videoInfo,
+                duration.isEmpty() ? fetched.duration() : duration, fullByline || fetched.fullByline(),
+                panelMetadata || fetched.panelMetadata());
+    }
+
+    /** Native display text wins; a positive player length fills only a missing timestamp. */
+    VideoMetadata withDuration(long seconds) {
+        if (!duration.isEmpty() || seconds <= 0) {
+            return this;
+        }
+        String timestamp = seconds < 3600
+                ? String.format(Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60)
+                : String.format(Locale.ROOT, "%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60);
+        return new VideoMetadata(videoId, title, channelName, videoInfo, timestamp, fullByline, panelMetadata);
     }
 
     private VideoMetadata withChannelLabel(String avatarLabel, String description) {

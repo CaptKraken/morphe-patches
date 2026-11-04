@@ -35,6 +35,7 @@ public class ChannelIdRequest {
     private final String videoId;
     private final Future<Pair<String, String>> future;
     private volatile String videoTitle = "";
+    private volatile long videoLengthSeconds;
     @Nullable
     private volatile HttpURLConnection openConnection;
 
@@ -109,6 +110,13 @@ public class ChannelIdRequest {
         return request == null ? "" : request.videoTitle;
     }
 
+    /** Reuses the same player response off the main thread; returns zero if its length is unavailable. */
+    public long getVideoLengthSeconds() {
+        Utils.verifyOffMainThread();
+        getChannelInfo();
+        return videoLengthSeconds;
+    }
+
     private static void handleConnectionError(String toastMessage, @Nullable Exception ex) {
         Logger.printInfo(() -> toastMessage, ex);
     }
@@ -154,6 +162,7 @@ public class ChannelIdRequest {
         if (videoDetails != null) {
             if (videoId.equals(videoDetails.optString("videoId"))) {
                 videoTitle = videoDetails.optString("title");
+                videoLengthSeconds = Math.max(0, videoDetails.optLong("lengthSeconds"));
             }
             return new Pair<>(
                     videoDetails.optString("author", ""),

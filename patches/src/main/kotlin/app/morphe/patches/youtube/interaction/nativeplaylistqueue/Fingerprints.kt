@@ -90,6 +90,38 @@ internal fun playlistPageServiceFingerprint(
     custom = { method, owner -> owner.fields.any { it.type == factoryType } && isResponse(method.returnType) }
 )
 
+/** The raw asynchronous dispatcher returns the request's cancellable Future, without publishing UI actions. */
+internal fun playlistPageAsyncRequestFingerprint(dispatch: MethodReference) = Fingerprint(
+    definingClass = dispatch.definingClass,
+    parameters = listOf(
+        dispatch.parameterTypes[0].toString(),
+        "Ljava/util/concurrent/Executor;",
+        dispatch.parameterTypes[2].toString()
+    ),
+    returnType = "Lcom/google/common/util/concurrent/ListenableFuture;",
+    filters = listOf(
+        methodCall(
+            returnType = "Lcom/google/common/util/concurrent/ListenableFuture;",
+            opcode = Opcode.INVOKE_INTERFACE
+        )
+    )
+)
+
+/** Reuse the executor supplied by the native one-argument forwarding method. */
+internal fun playlistPageExecutorFingerprint(dispatch: MethodReference) = Fingerprint(
+    definingClass = dispatch.definingClass,
+    parameters = listOf(dispatch.parameterTypes[0].toString()),
+    returnType = dispatch.returnType,
+    filters = listOf(
+        methodCall(
+            parameters = emptyList(),
+            returnType = "Ljava/util/concurrent/Executor;",
+            opcode = Opcode.INVOKE_STATIC
+        ),
+        methodCall(dispatch)
+    )
+)
+
 /** Default set delegates to the native selector with shuffle and both repeat modes off. */
 internal fun playlistPageDefaultNavigationFingerprint(navigationType: String) = Fingerprint(
     definingClass = navigationType,

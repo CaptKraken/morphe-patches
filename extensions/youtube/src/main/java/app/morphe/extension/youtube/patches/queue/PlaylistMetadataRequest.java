@@ -17,6 +17,7 @@ import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.Utils;
 import app.morphe.extension.shared.requests.Requester;
 import app.morphe.extension.shared.requests.Route;
+import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRequest;
 import app.morphe.extension.youtube.patches.utils.requests.ChannelIdRoutes;
 
 /** Completes missing display data; never supplies playback or account actions. */
@@ -30,13 +31,28 @@ final class PlaylistMetadataRequest {
                     + VIDEO_FIELD + ".shortBylineText.runs.text,"
                     + VIDEO_FIELD + ".shortViewCountText.runs.text,"
                     + VIDEO_FIELD + ".publishedTimeText.runs.text,"
-                    + VIDEO_FIELD + ".lengthText.runs.text").compile();
+                    + VIDEO_FIELD + ".lengthText").compile();
 
     private PlaylistMetadataRequest() {}
 
     @Nullable
-    static VideoMetadata fetch(String videoId, String title, Locale locale) {
+    static VideoMetadata fetch(String videoId, String title, Locale locale, boolean needsDuration) {
         Utils.verifyOffMainThread();
+        VideoMetadata result = search(videoId, title);
+        if (needsDuration && (result == null || result.duration().isEmpty())) {
+            long seconds = ChannelIdRequest.fetchRequestIfNeeded(videoId).getVideoLengthSeconds();
+            if (seconds > 0) {
+                if (result == null) {
+                    result = new VideoMetadata(videoId, videoId, "", "", "", false);
+                }
+                result = result.withDuration(seconds);
+            }
+        }
+        return Locale.getDefault().equals(locale) ? result : null;
+    }
+
+    @Nullable
+    private static VideoMetadata search(String videoId, String title) {
         HttpURLConnection connection = null;
         try {
             // Titles are searchable even when a newly uploaded video's ID is not indexed.
@@ -51,8 +67,7 @@ final class PlaylistMetadataRequest {
             }
 
             if (connection.getResponseCode() == Requester.HTTP_STATUS_CODE_SUCCESS) {
-                VideoMetadata result = VideoMetadata.fromSearch(Requester.parseJSONObject(connection), videoId);
-                return Locale.getDefault().equals(locale) ? result : null;
+                return VideoMetadata.fromSearch(Requester.parseJSONObject(connection), videoId);
             }
 
             Logger.printInfo(() -> "Native playlist card lookup was unavailable");

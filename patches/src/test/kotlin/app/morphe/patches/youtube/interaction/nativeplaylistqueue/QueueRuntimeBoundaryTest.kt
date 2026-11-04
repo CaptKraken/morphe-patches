@@ -468,7 +468,7 @@ class QueueRuntimeBoundaryTest {
             "PlaylistMetadataRequest" to """
                 package app.morphe.extension.youtube.patches.queue;
                 class PlaylistMetadataRequest {
-                    static VideoMetadata fetch(String id, String title, java.util.Locale locale) {
+                    static VideoMetadata fetch(String id, String title, java.util.Locale locale, boolean needsDuration) {
                         app.morphe.extension.shared.Utils.verifyOffMainThread();
                         return null;
                     }

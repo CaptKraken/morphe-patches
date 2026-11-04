@@ -711,11 +711,38 @@ private fun verifyNativeRepeatRead(playbackOwner: ClassDef) {
     println("Native repeat getter retains standalone and playlist navigator support")
 }
 
+/** The page timeout must cancel the native request, not an unrelated callback result holder. */
+private fun verifyNativePlaylistRequests(classes: List<ClassDef>, selected: Boolean) {
+    val sourceInterface = "Lapp/morphe/extension/youtube/patches/queue/PlaylistPages\$Source;"
+    val sources = classes.filter { sourceInterface in it.interfaces }
+    check(sources.size == if (selected) 1 else 0) { "Unexpected native playlist request bridge inclusion" }
+    if (!selected) return
+
+    val bridge = sources.single().methods.single { it.name == "patch_requestPlaylistPage" }
+    val code = bridge.implementation!!.instructions.toList()
+    val dispatches = code.withIndex().filter { (_, instruction) ->
+        val reference = (instruction as? ReferenceInstruction)?.reference as? MethodReference
+        instruction.opcode == Opcode.INVOKE_VIRTUAL &&
+                reference?.returnType == "Lcom/google/common/util/concurrent/ListenableFuture;" &&
+                reference.parameterTypes.size == 3 &&
+                reference.parameterTypes[1] == "Ljava/util/concurrent/Executor;"
+    }
+    check(dispatches.size == 1) { "Playlist pages must use the native asynchronous request dispatcher" }
+    val result = dispatches.single().index + 1
+    check(code[result].opcode == Opcode.MOVE_RESULT_OBJECT && code[result + 1].opcode == Opcode.RETURN_OBJECT &&
+            (code[result] as OneRegisterInstruction).registerA ==
+            (code[result + 1] as OneRegisterInstruction).registerA) {
+        "Playlist pages must return the native cancellation-capable Future directly"
+    }
+    println("Read-only playlist pages return the native request Future for timeout cancellation")
+}
+
 /** SDK structural checks do not catch a base protobuf value stored in a concrete panel field. */
 private fun verifyNativePanelAssignment(directory: File, selected: Boolean) {
     val dexFiles = directory.listFiles()!!.filter { it.extension == "dex" }.map { file ->
         file.inputStream().buffered().use { DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it) }
     }
+    verifyNativePlaylistRequests(dexFiles.flatMap { it.classes }, selected)
     verifyNativeServiceDelegates(dexFiles.flatMap { it.classes }, selected)
     verifyNativeQueueWindow(dexFiles.flatMap { it.classes }, selected)
     verifyNativeQueueHeader(dexFiles.flatMap { it.classes }, selected)

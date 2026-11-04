@@ -8,7 +8,10 @@
 package app.morphe.extension.youtube.patches.queue;
 
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
@@ -29,6 +32,34 @@ import app.morphe.extension.youtube.innertube.queue.QueueCardRenderer.VideoWithC
 import app.morphe.extension.youtube.innertube.queue.QueueCardRenderer.VideoWithContextModel;
 
 public class VideoMetadataTest {
+    @Test
+    public void durationOnlyLookupPreservesNativeBylineDetailsAndTimestamps() {
+        var known = new VideoMetadata("abcdefghijk", "Native title", "Artist and guest", "1,8 M de vues",
+                "", true, true);
+        var fallback = new VideoMetadata("abcdefghijk", "abcdefghijk", "", "", "", false).withDuration(257);
+        var enriched = known.withLookup(fallback);
+        assertEquals(new VideoMetadata("abcdefghijk", "Native title", "Artist and guest", "1,8 M de vues",
+                "4:17", true, true), enriched);
+        assertEquals(enriched, enriched.withCapture(fallback));
+        assertTrue(enriched.isComplete());
+
+        var nativeTimestamp = new VideoMetadata("abcdefghijk", "Native title", "Artist", "123 views",
+                "4:16", true);
+        assertEquals(nativeTimestamp, nativeTimestamp.withLookup(fallback));
+        assertSame(nativeTimestamp, nativeTimestamp.withDuration(257));
+    }
+
+    @Test
+    public void playerLengthFormatsHourBoundariesAndKeepsUnknownLengthsEmpty() {
+        var missing = new VideoMetadata("abcdefghijk", "A video", "Artist", "", "", false);
+        assertEquals("0:59", missing.withDuration(59).duration());
+        assertEquals("59:59", missing.withDuration(3599).duration());
+        assertEquals("1:00:00", missing.withDuration(3600).duration());
+        assertEquals("1:01:01", missing.withDuration(3661).duration());
+        assertSame(missing, missing.withDuration(0));
+        assertSame(missing, missing.withDuration(-1));
+    }
+
     private static AttributedText text(String content) {
         return AttributedText.newBuilder().setContent(content).build();
     }
