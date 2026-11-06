@@ -1,31 +1,34 @@
-# native queue mix menu fix — test build
+# native queue regional view counts - test build
 
-[download the mpp](https://github.com/CaptKraken/morphe-patches/raw/refs/heads/build/native-queue-mix-card-url-fix-fc9fe932f-dev11.mpp)
+[download the mpp](https://github.com/CaptKraken/morphe-patches/raw/refs/heads/build/native-queue-regional-view-counts-a56bc696f-dev11-test.mpp)
 
-patches version: **2.1.0-dev.11**. based on [fc9fe932f](https://github.com/CaptKraken/morphe-patches/commit/fc9fe932ffe4aad9b05d5426d3324e8a50f3d3f4), including the feed-preview startup fix.
+patches version: **2.1.0-dev.11**. requires a manager with **Patcher 2.3.0-dev.2 or newer**, such as [Morphe Manager 2.5.0-dev.3](https://github.com/MorpheApp/morphe-manager/releases/tag/v2.5.0-dev.3). Manager 2.4.0 bundles Patcher 2.2.0 and cannot load this build.
 
-fixes target detection for mix cards whose tap command wraps a dialog/watch choice. the queue can read the selected mix's own native card url when the direct watch command is unavailable. no new proto or native hooks; no temporary diagnostics in this build. phone confirmation is pending.
+includes the tested Mix menu fix and the feed-preview startup fix. this new change preserves the full app locale in queue metadata and Mix requests. YouTube formats the counts: a live comparison returned `1B` for `en` and `108 crore` for `en-IN`. no custom number formatter or new settings were added. no temporary diagnostics in this build.
 
 ## test
 
-1. repatch with this mpp and your usual patches, including **Add to queue**. select **Native queue**. debug logging is not required.
-2. with no playback, open the failing mix's three-dot menu -> **Play next in queue**. confirm it starts a queue containing the mix's videos.
-3. add an ordinary video, remove that added video, then add the same mix again through its three-dot menu.
-4. with a native queue active, try both **Play next in queue** and **Play last in queue** on the mix. confirm the incoming mix is inserted next or appended as selected.
-5. check that an ordinary video's menu still adds only that video. a small regular playlist should still work too.
+1. repatch with this mpp and your usual patches, including **Add to queue**. select **Native queue**. debug logging is not needed.
+2. start a fresh queue and add a video whose feed card shows lakh/crore. compare the count units in the queue with the feed.
+3. try adding a Mix too. where its rows include view counts, they should use the same regional format.
+4. confirm regular playlist additions and ordinary single-video additions still work.
 
-use the same mix and screen as the failing report first. this fix targets menu actions; the separate normal-card-tap dialog behavior is unchanged. no new diagnostic capture is requested.
+keep the app locale that produced the reported mismatch. phone confirmation is pending; no new diagnostic capture is requested. imported ordinary playlists still use YouTube's own native page metadata.
 
 ## checks and source
 
-58 patch tests and 384 youtube tests passed; 5 optional apk tests skipped. the new regression fails against the old parser and passes with the fix. actual apk patching with strict fingerprint and sdk validation passed on **21.30.216** and **21.44.528**, with the related feed-card, playback and title patches selected. these checks do not replace phone testing.
+59 patch tests and 386 youtube tests passed; 5 optional apk tests skipped. tests cover full regional request fields independently of the system locale, unchanged player/edit request contexts, and rejecting an in-flight result after the app language changes.
 
-source: the [base commit](https://github.com/CaptKraken/morphe-patches/tree/fc9fe932ffe4aad9b05d5426d3324e8a50f3d3f4) plus [fix source archive](native-queue-mix-card-url-fix-source.zip). extract `fix.patch`, apply it to that commit, then run `./gradlew :patches:buildAndroid` with the repository's build prerequisites. the patch changes the existing card parser and adds focused tests.
+actual apk patching with strict fingerprint and sdk validation passed on **21.30.216** and **21.44.528**, with related feed-card, playback and title patches selected. these checks do not replace phone testing.
 
-sha256: `400d92dfa742ed1b7ccb4133a55b42bb82317c8926f77122611225847cf603ac`
+source: the [public base commit](https://github.com/CaptKraken/morphe-patches/tree/fc9fe932ffe4aad9b05d5426d3324e8a50f3d3f4) plus [complete source archive](native-queue-regional-view-counts-source.zip). the archive includes both the Mix target fix and this regional locale change, so it can be applied to the public base even before the feature branch is pushed. extract `complete-source.patch`, apply it, then run `./gradlew :patches:buildAndroid` with the repository's build prerequisites.
 
-## previous diagnostics
+sha256: `cbd58f079d86aa5248cb1ca60d3751a9c9d98934c1110b50bec43307de60598f`
 
-existing downloads remain available: [mix3 mpp](native-queue-mix-diagnostics-mix3-fc9fe932f-dev11.mpp) / [source](diagnostic-source-mix3.zip), and [mix2 mpp](native-queue-mix-diagnostics-mix2-fc9fe932f-dev11.mpp) / [source](diagnostic-source.zip). use the fix build above for the new test.
+## previous builds
+
+- [Mix menu fix](native-queue-mix-card-url-fix-fc9fe932f-dev11.mpp) / [source](native-queue-mix-card-url-fix-source.zip)
+- [mix3 diagnostics](native-queue-mix-diagnostics-mix3-fc9fe932f-dev11.mpp) / [source](diagnostic-source-mix3.zip)
+- [mix2 diagnostics](native-queue-mix-diagnostics-mix2-fc9fe932f-dev11.mpp) / [source](diagnostic-source.zip)
 
 see [LICENSE](LICENSE) and [NOTICE](NOTICE).
