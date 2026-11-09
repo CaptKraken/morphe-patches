@@ -1,0 +1,53 @@
+{
+  "head": "559a3354f9f46df4217efb99810735c61fa96ee4",
+  "branch": "feature/youtube-native-playlist-queue",
+  "staged_tree": "8fe47a474e633a22d314f71a7c1a6b417367c435",
+  "reviews": {
+    "scope_and_complete_diff": {
+      "status": "pending",
+      "evidence": ""
+    },
+    "code_quality": {
+      "status": "pending",
+      "evidence": ""
+    },
+    "conventions_and_reuse": {
+      "status": "pending",
+      "evidence": ""
+    },
+    "fingerprints": {
+      "status": "pending",
+      "evidence": ""
+    },
+    "injection_and_control_flow": {
+      "status": "pending",
+      "evidence": ""
+    },
+    "patch_interactions_and_lifecycle": {
+      "status": "pending",
+      "evidence": ""
+    },
+    "versions_and_resources": {
+      "status": "pending",
+      "evidence": ""
+    },
+    "focused_tests": {
+      "status": "pending",
+      "evidence": ""
+    }
+  },
+  "blocking_findings": [
+    "Authenticated whole-queue Save interpretation is unverified. Candidate input is comma-separated in native scalar111.1; invalid arbitrary strings also reach401. Do not commit or call the feature verified until phone tests confirm every ID is saved through both existing and new playlist paths."
+  ],
+  "validation": [
+    {
+      "command_or_check": "",
+      "status": "pending",
+      "evidence": ""
+    }
+  ],
+  "device_validation": {
+    "status": "pending",
+    "evidence_or_remaining_checks": ""
+  }
+}

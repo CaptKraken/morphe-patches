@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Require a completed review of the exact staged tree; local development only."""
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+REVIEW_AREAS = (
+    "scope_and_complete_diff",
+    "code_quality",
+    "conventions_and_reuse",
+    "fingerprints",
+    "injection_and_control_flow",
+    "patch_interactions_and_lifecycle",
+    "versions_and_resources",
+    "focused_tests",
+)
+
+
+def git(*arguments):
+    return subprocess.check_output(["git", *arguments], text=True).strip()
+
+
+def fail(message):
+    print(f"Pre-commit review gate: {message}", file=sys.stderr)
+    print("Follow /workspace/AGENTS.md before committing.", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def main():
+    # A build-only branch can start without a parent commit. Still bind its
+    # initial review to the branch and exact staged tree; subsequent commits
+    # retain the normal HEAD binding.
+    head = subprocess.run(["git", "rev-parse", "--verify", "HEAD"],
+                          text=True, capture_output=True)
+    branch = subprocess.run(["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+                            text=True, capture_output=True)
+    if head.returncode and branch.returncode:
+        fail("could not resolve HEAD or an unborn branch")
+    snapshot = {
+        "head": head.stdout.strip() if head.returncode == 0 else None,
+        "branch": branch.stdout.strip() if branch.returncode == 0 else "HEAD",
+        "staged_tree": git("write-tree"),
+    }
+    if sys.argv[1:] == ["--template"]:
+        print(json.dumps({
+            **snapshot,
+            "reviews": {
+                area: {"status": "pending", "evidence": ""}
+                for area in REVIEW_AREAS
+            },
+            "blocking_findings": [],
+            "validation": [
+                {"command_or_check": "", "status": "pending", "evidence": ""}
+            ],
+            "device_validation": {
+                "status": "pending", "evidence_or_remaining_checks": ""
+            },
+        }, indent=2))
+        return
+    if sys.argv[1:]:
+        fail("unsupported arguments; only --template is available")
+    if subprocess.run(["git", "diff", "--cached", "--check"]).returncode:
+        fail("staged whitespace/conflict-marker checks failed")
+
+    review_path = Path(git("rev-parse", "--git-path", "native-playlist-queue-review.json"))
+    try:
+        review = json.loads(review_path.read_text())
+    except (OSError, ValueError) as error:
+        fail(f"completed review record is missing or invalid: {error}")
+    if not isinstance(review, dict):
+        fail("review record must be an object")
+    if any(review.get(key) != value for key, value in snapshot.items()):
+        fail("review is stale: HEAD, branch, or staged content changed")
+    if review.get("blocking_findings") != []:
+        fail("blocking findings must be resolved before committing")
+
+    reviews = review.get("reviews")
+    if not isinstance(reviews, dict):
+        fail("review areas are missing")
+    for area in REVIEW_AREAS:
+        entry = reviews.get(area)
+        if not isinstance(entry, dict) or entry.get("status") not in {"pass", "not_applicable"}:
+            fail(f"review area is incomplete: {area}")
+        if not isinstance(entry.get("evidence"), str) or not entry["evidence"].strip():
+            fail(f"review area needs evidence or a reason: {area}")
+
+    validation = review.get("validation")
+    if not isinstance(validation, list) or not validation:
+        fail("actual validation evidence is required")
+    for entry in validation:
+        if not isinstance(entry, dict) or entry.get("status") not in {"pass", "not_applicable"}:
+            fail("a validation check is unfinished or failed")
+        for field in ("command_or_check", "evidence"):
+            if not isinstance(entry.get(field), str) or not entry[field].strip():
+                fail(f"validation needs {field}")
+
+    device = review.get("device_validation")
+    if not isinstance(device, dict) or device.get("status") not in {"pass", "pending", "not_applicable"}:
+        fail("device validation status is required")
+    if not isinstance(device.get("evidence_or_remaining_checks"), str) or not device["evidence_or_remaining_checks"].strip():
+        fail("describe device evidence, outstanding checks, or why no device check is needed")
+
+    print("Pre-commit review gate: completed review matches the staged tree.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except subprocess.CalledProcessError as error:
+        fail(f"Git could not inspect the staged snapshot (exit {error.returncode})")

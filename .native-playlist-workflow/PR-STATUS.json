@@ -1,0 +1,10 @@
+{
+  "number": 3953,
+  "html_url": "https://github.com/MorpheApp/morphe-patches/pull/3953",
+  "title": "feat(YouTube): Add `Native playlist queue` patch",
+  "state": "open",
+  "draft": true,
+  "base": "dev",
+  "head": "CaptKraken:feature/youtube-native-playlist-queue-dev",
+  "head_sha": "4a14e8bedd7e633e37cecdc339a1209181ab5b1f"
+}

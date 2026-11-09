@@ -1,0 +1,10 @@
+CURRENT PoC39: user-requested first-video-only Save diagnostic, implemented/gated/committed/uploaded. Both pushes confirmed.
+Source1fbc1a7ab1d927f766cf05f18380fbb5c850245a feature/youtube-native-playlist-queue; artifactd6cd555ee8125a2615846c45b21b8248de2e3e96 builds/youtube-native-playlist-queue.
+https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc39-first-video-save.mpp
+SHA256c5ca6f64db952261284e191d6b1a8838cb27f1b7fdb017c82073da2eb5894461;11893026bytes.
+
+PoC38 FAILED phone: same generic native error, screenshot also shows Saved to Watch later. User narrowed task: just save FIRST video, see if single native Save works. Do not continue batch implementation until phone result. QueueSaveActions request now real first video ID, prepareContext copies map/removes endpoint owner. No Selection attached, so existing resolver expansion/presentation guard/provider enrichment are inactive for header Save. Native commands/auth/membership/New run unchanged. No player/queue writes, native injections/resources unchanged. Batch helpers retained inactive during diagnostic.
+
+Two source files only (helper/test). New assertions decode request from3IDs to first-only, equal singleton request, no owner/caller map mutation; prior helper coverage retained. Final :patches:test :patches:buildAndroid :patches:verifyNativeQueueDefaultsLocal passed44s,22tests/5unrelatedJamAPKskips/0fail/errors/defaulttrue. CRC/currentYouTubeMPE/all36Kotlinpayloads verified. Logs/review/gate/staged/cumulative snapshots under /workspace/scratch/native-playlist-save-first-video-*. No freshAPK run for this Java-only change, prior PoC38 actualAPK checks cover unchanged discovery only. No device/authSave tested.
+
+PHONE NEXT: queue3distinct videos, optionally play2nd/3rd, headerSave to existing/WatchLater and New. Verify ONLY first video saved, no genericerror, playback unchanged. No logs requested/noagents. GitHub source+build publication explicitly authorized; no pending permission.

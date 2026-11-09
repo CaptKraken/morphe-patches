@@ -1,0 +1,24 @@
+# Current checkpoint — final PoC53 Undo dispatch fix published
+
+Source 65ed65bfb2f07afdc6e9d40473fcda9eb434927a on feature/youtube-native-playlist-queue; base e5464395441e916b643af4e2175c4e253e6df487. Artifact facda6fa8285e6d3922cca8e6ddb75fb5311b1cc on builds/youtube-native-playlist-queue. Both pushes confirmed; both trees clean.
+https://raw.githubusercontent.com/CaptKraken/morphe-patches/builds/youtube-native-playlist-queue/native-playlist-queue-21.20.405-poc53-undo-dispatch.mpp
+SHA2564569c3f4307287935011c600a29d139f99ff38a5f5760244b698d18ac7479da2;11917920bytes.
+
+## User evidence/status
+PoC52 Undo FAILED BOTH removal andClear. FinalPoC53 phonepending. No device/trace/newlogrequests; sourceconfirmedincorrectprerequisitescorrected, not proven solephonecause. PoC51 firststartnullservice fix WORKSuserconfirmed; PoC47wholequeueNew/picker andPoC45existingSaveToastUndo WORKSuserconfirmed. PreserveordinarySave/nativeUI/mini/browse/accountplaylists.
+
+## Fix
+Source24f9e1e02 addsdedicated onQueueUndoCommand(MessageLite)boolean callback, QueueUndoActions.dispatchUndo exactpendingtokenauthorization independentofrow/menuTag. MatchingtokenrunsUndo,expired/replacedlocalcapabilitiesconsumedwithoutmutation,ordinary/nullfallthrough. OldonQueueMenuCommandUndo branchremoved. Existingmainthread/one-shot/10sidentityexpiry/weakbackend/activevideo/controller/account/lifecycle/unchangedentryidentity/drag/pendingselectionguards retained. Existingoperationexceptionreportingretained.
+Source65ed65bfb moveslocalhook BEFOREnativeoptionaldispatcher guard. Nativebranch:dispatcherfieldload->IF_EQZdismiss->endpointload/cast->callback->GOTOdismiss. FirstcandidatehookafterIF_EQZcouldneverrunwithoutnativedispatcher. FinalKotlinverifiescallback-adjacentendpointfieldload/cast/nullguard/callbackregister/branch relationships, derivesfieldandowner, copiesendpointtofreev1BEFOREguard,castsMessageLite,invokeslocalcallback,reusesv1forboolean. True->originalGOTO/dismissal,false->originalnullguard+endpointreload/cast/callback. v0dispatcher/v11receiver/v12Map intact. NativeSnackbarconstructorendpointgeneratedmessageornull. No hardcodedobfuscatedrefs,newblindfingerprints/listenerreplacement/globalentryhook. NewDEXverifierassertsbothdismissaltargets,copy/reloadfield/receiver/registeragreementandhookbeforeguard.
+Finalfilepoc53-undo-dispatch.mpp. Intermediatepoc53-undo-capability.mpp(source24f9/artifactfc21c0e)wasuploadedbutNOTdelivered; superseded/renamedbyartifactfacda6f normalcommit,noforcepush. Neverlinkintermediate.
+
+## Actual checks
+Final :patches:test :patches:validatePlaylistQueue :patches:buildAndroid real21.20.405combined20related PASS2m14s in undo-optional-dispatcher-combined.log;directorycombined6588396874632502109 SDK12DEX/hierarchy58244/resources+newsemanticUndo checkpassed.30total25pass5unrelatedJamAPKskips0fail/errors. ExactMPP CRC/currentYouTubeMPE/37queueKotlinclassesverified undo-optional-dispatcher-integrity.json. Mandatoryfreshreviews/gatespassednormallyforbothcommits; last2file53+17-,first5file61+22-. Fullstaged/cumulative/reviewfiles /workspace/scratch/native-playlist-undo-capability-* and undo-optional-dispatcher-*.
+Intermediatefreshcombined2m29s andruntimefinaldelivery31s passed;18stockSave methods exact undo-capability-stock-save.log. Updatedverifieron existingunselected18191896318544807645 proves interface/callbackabsent undo-capability-unselected-check.log. No freshunselectedAPKthisturn; unchangedselection/dependencies/nativeSave paths retainpreviousactual2m2scoverage. No newstrings,priorresourcecheckapplies. Actualfinalnativebranchdump undo-optional-dispatcher-dex.txt:copy40/call44/consumed48->GOTO59/nativeguard50/reload52/callback56/dismiss664.
+ProductionJava/proto regressioncoversmatchingcapabilitywithoutrowcontext,expired/replacedtokensnoaction,ordinary/nullfallthrough andexistingduplicateidentity/selectionadvance/precedingremoval/repeat/staleedit/newqueue/wrongvideo checks. No Androidplaybackemulation or phonepassclaim.
+
+## Next
+AwaitfinalPoC53:immediateUndoafter swipe/menu removal ANDClear; restorationandcurrenttimestampcontinuous. Checklatest-only/expiry/newvideo/close/newqueue/Shortsstaleactions andordinarySaveUndo. Ifstillfails needactualcallback/pending-stateboundarydiagnostics,notmoreblindguardchanges; no newlogrequests. PreviousSTATE-history-before-poc53.md;PoC52detailundo-removal-clear-poc52.md.
+
+## Workflow/recovery
+Read /workspace/AGENTS.md andWORKFLOW.md. Noagents/delegation/modelrouting. Gatedcommits/source+builduploadsauthorized,noPR.21.20.405only/defaulttrue. KeepnativeUI/logic/nullordinarymodelbuilderfallback/sharedwatchcontextFINALIZEaftercached-indexfilters anddescriptor-freezebeforefiltersverification. Broadpublishpostcommitrollbackconcern deferred. ConfigdraftsaveisnotPublishsnapshot/restoreverification. Reviewrecordnaturallystaleaftercommit; freshreviewnextstagedtree.

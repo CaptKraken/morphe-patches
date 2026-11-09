@@ -1,0 +1,11 @@
+# Save payload investigation after PoC38/39 phone comparison
+
+User confirms PoC38 multi-video queue Save fails for BOTH existing and New playlists; one-item queue works for both. PoC39 first-only Save works. WatchLater is not sole cause. Latest asks why comma-joined IDs: admitted unsupported invented local carrier, never a verified server contract; picker opening did not validate payload. Do not repeat it.
+
+Inspected actual21.20.405 native schemas/request builders (read-only):
+- Modern PAadd_to_playlist params root111 -> bbbf has exactly2scalar strings (fields1,2), no repeated video-ID field. Current queue helper encodes111.1 videoId. Failed PoC38 encodes comma-joined IDs in that single scalar; batch expansion later was attempted but runtime correctness not proven. Do not claim actual phone outgoing payload captured.
+- Legacy AddToPlaylistEndpoint69487224 located axvo via FindLiteral; actual dynamic schema has only field1 scalar string. Our old row entry itself does not express batch IDs.
+- Native final edit request ailv browse/edit_playlist appends all actions into bcni field2 repeated-message(type27). New request ailn playlist/create appends IDs into bcns field3 repeated-string(type26); sourcePlaylistId and videoIds mutually exclusive. jtu has native SelectedVideoIds ArrayList/dialog input. This establishes native list capability; not authenticated backend acceptance or Premium restrictions.
+- Public YouTube.js get_add_to_playlist request uses videoIds array/playlistId; that is a DIFFERENT entrypoint than modern get_panel params, not proof interchangeable. Prior unauthenticated probes returned401 and cannot validate batch or disprove it.
+
+New captures /workspace/scratch/native-playlist-save-entry-literal.txt, -entry-schema.txt, -request-edit-schema.txt, -request-create-schema.txt. Save modern-java/ailv.java,ailn.java,jtu.java and prior bbbf schema inspected. JADX attempt failed config under read-only /home/agent/.config; direct DEX dump succeeded. No implementation/build/source changes. Repo remains PoC39 working first-video diagnostic. Need discover correct modern batch source/selection or verified native command input before another batch build. No agents/no logs requested.
