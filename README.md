@@ -1,3 +1,33 @@
+# niconico comments in PiP - revised overlay test
+
+[download the revised mpp](https://github.com/CaptKraken/morphe-patches/raw/refs/heads/build/niconico-comments-pip-overlay-fix-21.30.216-test.mpp)
+
+this replaces the first PiP test below. it restores the original comments attachment
+in the regular player. only PiP moves the same comments view to an Android view overlay
+on the player host, with explicit sizing and restoration when returning.
+
+1. repatch with **Niconico comments** selected, enable its main switch and restart youtube.
+2. confirm its player button is on, then test comments in the regular player first. landscape and portrait are supported.
+3. enable **Show in picture-in-picture** under **Morphe → Player → Niconico comments** and enter PiP.
+4. try resizing, pause/resume, returning to the player and entering PiP again.
+
+the cause of the first blank result is not confirmed. this corrects a native layout
+path where the previous custom container may have no usable bounds. phone testing
+is still needed; no change to comment fetching and no diagnostics added.
+
+based on upstream/dev `93d0d701c`, patches **2.3.0-dev.1**, requires **Patcher 2.3.0+**.
+52 Niconico and 64 patch tests passed; 5 optional APK tests skipped. strings and MPP
+build passed. actual APK application with `--validate` and SDK verification passed
+on **21.30.216** and **21.44.528** with related player/overlay patches selected.
+
+[matching complete source](niconico-comments-pip-overlay-fix-20261112-source.zip)
+includes the uncommitted feature snapshot, LICENSE and NOTICE.
+experimental fork build; see [#4718](https://github.com/MorpheApp/morphe-patches/issues/4718).
+
+mpp sha256: `8d748bc382ef8a203ae5ff67595d879b6fa3e18f4966df1d6a01dc6ee5bf116e`
+
+---
+
 # niconico comments in picture-in-picture - test build
 
 [download the mpp](https://github.com/CaptKraken/morphe-patches/raw/refs/heads/build/niconico-comments-pip-21.30.216-test.mpp)
