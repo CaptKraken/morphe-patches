@@ -1,3 +1,32 @@
+# niconico comments in picture-in-picture - test build
+
+[download the mpp](https://github.com/CaptKraken/morphe-patches/raw/refs/heads/build/niconico-comments-pip-21.30.216-test.mpp)
+
+experimental fork build for [#4718](https://github.com/MorpheApp/morphe-patches/issues/4718),
+based on upstream/dev `93d0d701c`. patches **2.3.0-dev.1**; requires **Patcher 2.3.0 or newer**.
+
+1. repatch with **Niconico comments** selected.
+2. enable Niconico comments and restart youtube if newly enabled.
+3. under **Morphe → Player → Niconico comments**, enable **Show in picture-in-picture** (default off).
+4. open a video where scrolling comments already appear, then enter PiP.
+5. try resizing, pause/resume and returning to the player. repeat with **Show in portrait** off, then with the PiP toggle off.
+
+reuses the existing comments renderer and youtube's native custom-views container.
+no diagnostics added. actual phone rendering and readability still need testing.
+
+52 Niconico tests and 64 patch tests passed; 5 optional APK tests skipped.
+203281 strings checked and MPP build passed. separate actual APK patching with
+`--validate` and SDK verification passed on **21.30.216** and **21.44.528**, together
+with SponsorBlock, captions, overlay opacity, PiP button and background playback.
+
+[complete matching source](niconico-comments-pip-20261112-source.zip) includes the
+uncommitted feature snapshot on top of the stated upstream base, plus LICENSE and NOTICE.
+build with the repository setup and `./gradlew :patches:buildAndroid`.
+
+mpp sha256: `2bc2e38465ccbbccfa521077463f1f941441216ba161d4163072d1fefa3b3303`
+
+---
+
 # shorts queue actions - test build
 
 [download the mpp](https://github.com/CaptKraken/morphe-patches/raw/refs/heads/build/shorts-queue-upstream-dev-20261111-test.mpp)
