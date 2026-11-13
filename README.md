@@ -1,3 +1,21 @@
+# native queue thumbnail binding - startup correction
+
+[download the corrected test mpp](native-queue-thumbnail-binding-startup-fix-21.30.216-test.mpp)
+
+**use this instead of the previous shared-binding build**, which was reported to crash at startup. found a verifier-type defect in its native helper: the image-source object and URL shared a register, so Android could see Object where String was required. the source now uses a separate register, keeping the callback URL String/null on every branch. only three production Smali lines changed; no detection, requests, settings or UI changes.
+
+added a focused argument-type check to the existing APK verifier. it rejects the old build's actual emitted DEX and passes this build on **21.30.216**, **21.44.528**, and 216 with Watch Later selected but Add to queue unselected. fingerprint validation, SDK checks and 66 patch tests passed (5 optional APK tests skipped). unchanged Java and strings were not retested for this Kotlin-only fix.
+
+repatch and **check that YouTube opens first**. then enable Native queue / Show queue button on thumbnails and test landscape Search, portrait, Home and Subscriptions. try Watch Later too if included.
+
+**not visually verified**: no connected Android runtime here. the code defect is confirmed; phone launch must confirm whether it resolves the reported crash.
+
+patches **2.3.0-dev.2**, requires **Patcher 2.3.0 or newer**. base upstream/dev `0306f45b1`. [complete matching source](native-queue-thumbnail-binding-startup-fix-20261113-source.zip) includes LICENSE/NOTICE and BUILD-SNAPSHOT.json. build with repository setup and `./gradlew :patches:buildAndroid`.
+
+mpp sha256: `4f54e0667fef42d9dc552fb971871ac025bd0bd0ef465cd1a4e856ced175bb72`
+
+---
+
 # native queue thumbnail button - shared native image binding
 
 [download the mpp](native-queue-thumbnail-binding-21.30.216-test.mpp)
