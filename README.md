@@ -1,3 +1,38 @@
+# native queue thumbnail button - test build
+
+[download the mpp](native-queue-thumbnail-button-21.30.216-test.mpp)
+
+built from upstream/dev `0306f45b1` with the thumbnail queue-button feature.
+patches version: **2.3.0-dev.2**. requires **Patcher 2.3.0 or newer**.
+no temporary diagnostics or Niconico feature changes.
+
+## test
+
+1. repatch YouTube **21.30.216** with **Add to queue** included.
+2. select **Native queue** under **Morphe -> Feed**, enable **Show queue button on thumbnails**, then restart YouTube.
+3. tap the thumbnail queue button to play last, or hold it to play next. with no playback, either creates the first queue.
+4. enable **Swap queue thumbnail button actions** to reverse tap/hold.
+5. optionally include **Feed video actions** and enable **Show Watch later button on thumbnails**: queue appears below Watch Later, or in its position when Watch Later is off.
+6. check scrolling, preview playback and returning from previews. the button hides only on the card currently playing a feed preview. check adding with a standalone video, ordinary playlist and active queue.
+
+this uses the existing full-width feed video-card layout. compact lists, horizontal tablet rows, Shorts and playlist/Mix cards are outside this first test build.
+**not visually verified**: phone layout, gestures and playback still need testing.
+
+## checks and source
+
+433 extension tests and 66 patch tests passed; 5 optional APK tests skipped.
+English string validation and MPP build passed. Desktop CLI `--validate` and Android SDK verification passed on **21.30.216** (queue alone, related patches together, and queue unselected) and **21.44.528** with related patches. Each has one shared thumbnail touch callback. Latest experimental **21.45.82** was not checked.
+
+[complete matching source archive](native-queue-thumbnail-button-20261113-source.zip).
+source includes the eight uncommitted feature files and BUILD-SNAPSHOT.json; it excludes local workflow files and generated build outputs.
+extract it and use the repository build setup with `./gradlew :patches:buildAndroid`.
+
+mpp sha256: `28b153d3ef77cf465c578f3e917fcc98b3e833101daf318866381e1b26da14c4`
+
+see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+---
+
 # niconico comments in PiP - revised overlay test
 
 [download the revised mpp](https://github.com/CaptKraken/morphe-patches/raw/refs/heads/build/niconico-comments-pip-overlay-fix-21.30.216-test.mpp)
