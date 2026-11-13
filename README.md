@@ -1,3 +1,21 @@
+# native queue thumbnail buttons - swipe anchor
+
+[download the test mpp](native-queue-thumbnail-button-swipe-anchor-21.30.216-test.mpp)
+
+both buttons now share the native thumbnail's overlay, using thumbnail-local coordinates. the thumbnail and its moving ancestors carry them during swipe/reveal. touch targets follow the current image position, and pending long presses cancel if the image moves. row/column layout is retained. native image unmount/rebind removes our drawables before pooling/reuse. no extra container, animation loop or native swipe hook.
+
+repatch **21.30.216** and repeat the Watch Later swipe in portrait and landscape. swipe open and back, then tap/hold both buttons at their new positions. check the exposed native action area, normal taps, scrolling/recycling, rotation, single-button mode and larger-card column too.
+
+433 extension tests and 66 patch tests passed (5 optional APK tests skipped); MPP built. exact final216 combined and Watch Later-only/queue-unselected APKs passed fingerprint validation, SDK checks and native URL argument-type regression checks. Kotlin/native hooks/settings/resources unchanged; 528 not rerun for this Java-only step. uses existing public ViewOverlay/getLocationOnScreen APIs at minSdk26.
+
+**not visually verified**: no connected Android runtime. user reports the previous compact-row build looks good; supplied swipe screenshots show its stale root-overlay positions, not proof of this new anchor.
+
+patches **2.3.0-dev.2**, requires **Patcher 2.3.0 or newer**. base upstream/dev `0306f45b1`. two Java files differ from the previous build. [complete matching source](native-queue-thumbnail-button-swipe-anchor-20261113-source.zip) includes LICENSE/NOTICE and BUILD-SNAPSHOT.json. build with repository setup and `./gradlew :patches:buildAndroid`.
+
+mpp sha256: `afbf04ab6ca6b3bfb517978b2a1e73671ea757480d2d8847fbab927df351be1a`
+
+---
+
 # native queue thumbnail buttons - compact row
 
 [download the test mpp](native-queue-thumbnail-button-compact-row-21.30.216-test.mpp)
