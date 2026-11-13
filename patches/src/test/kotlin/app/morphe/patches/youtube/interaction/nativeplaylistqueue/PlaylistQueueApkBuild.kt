@@ -107,6 +107,7 @@ fun main(arguments: Array<String>) {
     val verifier = object : DexVerifier by sdkVerifier {
         override fun verifyDexDirectory(dexDir: File) {
             sdkVerifier.verifyDexDirectory(dexDir)
+            verifyFeedThumbnailBindings(dexDir, mode != "standalone")
             verifyNativePanelAssignment(dexDir, mode != "unselected")
             verifyNativeRowMenuPaths(dexDir, mode != "unselected")
             verifyNativeFullscreenActions(dexDir, mode != "unselected")
@@ -131,6 +132,36 @@ fun main(arguments: Array<String>) {
         arguments.getOrNull(2)?.let { result.applyTo(File(it)) }
         println("$mode: APK patched and SDK DEX/resource verification completed: $workspace")
     }
+}
+
+/** A nullable image source must never widen the URL argument to Object at the branch merge. */
+internal fun verifyFeedThumbnailBindings(directory: File, selected: Boolean) {
+    val dexFiles = directory.listFiles()!!.filter { it.extension == "dex" }.map { file ->
+        file.inputStream().buffered().use { DexBackedDexFile.fromInputStream(Opcodes.getDefault(), it) }
+    }
+    val classPath = ClassPath(dexFiles.map(::DexClassProvider))
+    val bindings = dexFiles.flatMap { it.classes }.flatMap { it.methods }
+        .filter { it.name == "patch_bindFeedImage" }
+    check(bindings.size == if (selected) 1 else 0) {
+        "Unexpected thumbnail image binding methods: $bindings"
+    }
+    for (binding in bindings) {
+        val analyzer = MethodAnalyzer(classPath, binding, null, false)
+        analyzer.analysisException?.let { throw it }
+        val callback = analyzer.analyzedInstructions.single { instruction ->
+            ((instruction.instruction as? ReferenceInstruction)?.reference as? MethodReference)?.let {
+                it.definingClass == "Lapp/morphe/extension/youtube/patches/utils/FeedVideoCardsPatch;"
+                        && it.name == "onImageBound"
+            } == true
+        }
+        val register = (callback.instruction as FiveRegisterInstruction).registerD
+        val url = callback.getPreInstructionRegisterType(register)
+        check(url.category == RegisterType.NULL || url.category == RegisterType.REFERENCE
+                && url.type?.type == "Ljava/lang/String;") {
+            "Thumbnail URL callback receives incompatible register type: $url"
+        }
+    }
+    println("Thumbnail image binding URL arguments: compatible register types")
 }
 
 /** Check the emitted native request, scroll branch and intent replay contracts. */

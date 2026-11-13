@@ -160,6 +160,123 @@ public final class FeedVideoCardsPatch {
 
     private static final byte[] THUMBNAIL_PATH = "/vi".getBytes(StandardCharsets.US_ASCII);
 
+    /** Exact mounted image -> video in its native source URL. Main thread only. */
+    private static final Map<View, String> imageVideoIds = new WeakHashMap<>();
+
+    /** Injection point, after YouTube has selected the source of a mounted image. */
+    public static void onImageBound(View image, @Nullable String url) {
+        if (!FeedVideoActionsPatch.isEnabled() || url == null) {
+            return;
+        }
+        Matcher matcher = THUMBNAIL_VIDEO_ID_PATTERN.matcher(url);
+        if (matcher.find()) {
+            imageVideoIds.put(image, matcher.group(1));
+            requestImageUpdate(image);
+        }
+    }
+
+    /** Injection point, on unmount and before rebinding pooled image content. */
+    public static void onImageUnbound(View image) {
+        if (imageVideoIds.remove(image) != null) {
+            FeedVideoActionsPatch.onThumbnailUnbound(image);
+            requestImageUpdate(image);
+        }
+    }
+
+    private static void requestImageUpdate(View image) {
+        if (image.getParent() instanceof ComponentHost host) {
+            requestUpdate(host);
+        }
+    }
+
+    public record VideoThumbnail(String videoId, Rect bounds, View view) {
+    }
+
+    /**
+     * Finds the video thumbnail from YouTube's mounted image source, in either card layout.
+     * An attachment may have a smaller video image too; equally sized different videos are
+     * ambiguous. The native duration/live badge still excludes collections and Shorts.
+     */
+    @Nullable
+    public static VideoThumbnail findVideoThumbnail(ComponentHost root) {
+        if (!FeedVideoActionsPatch.isEnabled() || hasHorizontalList(root) || isInDialog(root)) {
+            return null;
+        }
+        List<View> images = new ArrayList<>();
+        collectVideoImages(root, images);
+        View thumbnail = null;
+        String videoId = null;
+        long largestArea = 0;
+        boolean ambiguous = false;
+        for (View image : images) {
+            long area = (long) image.getWidth() * image.getHeight();
+            String id = imageVideoIds.get(image);
+            if (area > largestArea) {
+                largestArea = area;
+                thumbnail = image;
+                videoId = id;
+                ambiguous = false;
+            } else if (area == largestArea && !Objects.equals(videoId, id)) {
+                ambiguous = true;
+            }
+        }
+        if (thumbnail == null || ambiguous) {
+            return null;
+        }
+        synchronized (shortsVideoIds) {
+            if (shortsVideoIds.containsKey(videoId)) {
+                return null;
+            }
+        }
+        Rect bounds = new Rect(0, 0, thumbnail.getWidth(), thumbnail.getHeight());
+        root.offsetDescendantRectToMyCoords(thumbnail, bounds);
+        if (!hasVideoBadge(root, root, bounds, new Rect())) {
+            return null;
+        }
+        return new VideoThumbnail(videoId, bounds, thumbnail);
+    }
+
+    private static void collectVideoImages(ViewGroup group, List<View> images) {
+        for (int i = 0, count = group.getChildCount(); i < count; i++) {
+            View child = group.getChildAt(i);
+            if (child.getVisibility() != View.VISIBLE) {
+                continue;
+            }
+            if (imageVideoIds.containsKey(child)) {
+                images.add(child);
+            }
+            if (child instanceof ViewGroup childGroup) {
+                collectVideoImages(childGroup, images);
+            }
+        }
+    }
+
+    private static boolean hasVideoBadge(ComponentHost root, ComponentHost host,
+                                         Rect thumbnail, Rect rect) {
+        TextContent content = host.getTextContent();
+        if (content != null) {
+            rect.set(0, 0, host.getWidth(), host.getHeight());
+            if (host != root) {
+                root.offsetDescendantRectToMyCoords(host, rect);
+            }
+            if (Rect.intersects(thumbnail, rect)) {
+                for (CharSequence text : content.getTextItems()) {
+                    if (text != null && isVideoBadgeText(text.toString().trim())) {
+                        return true;
+                    }
+                }
+            }
+        }
+        for (int i = 0, count = host.getChildCount(); i < count; i++) {
+            if (host.getChildAt(i) instanceof ComponentHost child
+                    && child.getVisibility() == View.VISIBLE
+                    && hasVideoBadge(root, child, thumbnail, rect)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Invisible format characters, such as the ones the elements of the classic layout add
      * after the title (U+2060 to U+2064), which the card does not show.
@@ -979,6 +1096,10 @@ public final class FeedVideoCardsPatch {
      */
     @Nullable
     public static String findVideoId(ComponentHost root) {
+        VideoThumbnail thumbnail = findVideoThumbnail(root);
+        if (thumbnail != null) {
+            return thumbnail.videoId();
+        }
         // The badge of a card with the thumbnail beside the texts is on the host of the thumbnail.
         return findVideoId(root, isVideoShaped(root) ? root : findSideThumbnail(root));
     }

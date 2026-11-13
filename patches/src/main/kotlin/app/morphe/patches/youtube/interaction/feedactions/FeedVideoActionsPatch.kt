@@ -16,6 +16,7 @@ import app.morphe.patches.youtube.misc.auth.authHookPatch
 import app.morphe.patches.youtube.misc.commandrouter.commandRouterHookPatch
 import app.morphe.patches.youtube.misc.extension.sharedExtensionPatch
 import app.morphe.patches.youtube.misc.feedcards.feedVideoCardsHookPatch
+import app.morphe.patches.youtube.misc.feedcards.hookFeedVideoThumbnails
 import app.morphe.patches.youtube.misc.settings.PreferenceScreen
 import app.morphe.patches.youtube.misc.settings.settingsPatch
 import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
@@ -23,6 +24,26 @@ import app.morphe.util.setExtensionIsPatchIncluded
 
 private const val EXTENSION_CLASS =
     "Lapp/morphe/extension/youtube/patches/FeedVideoActionsPatch;"
+
+/** Shares thumbnail touches without selecting the Watch later feature. */
+internal val feedVideoActionsTouchHookPatch = patch {
+    dependsOn(sharedExtensionPatch, feedVideoCardsHookPatch)
+
+    execute {
+        hookFeedVideoThumbnails()
+        FeedComponentHostTouchFingerprint.method.addInstructionsWithLabels(
+            0,
+            """
+                invoke-static { p0, p1 }, $EXTENSION_CLASS->onComponentHostTouch(Lcom/facebook/litho/ComponentHost;Landroid/view/MotionEvent;)Z
+                move-result v0
+                if-eqz v0, :original
+                return v0
+                :original
+                nop
+            """
+        )
+    }
+}
 
 val feedVideoActionsPatch = patch(
     name = "Feed video actions",
@@ -36,7 +57,7 @@ val feedVideoActionsPatch = patch(
         // Finds the video id of the menu, to learn the description of the menu button.
         flyoutPatch,
         // Finds the video of each card, to hide the button while it plays in the feed.
-        feedVideoCardsHookPatch,
+        feedVideoActionsTouchHookPatch,
         // Runs the commands of the Watch later button.
         commandRouterHookPatch,
         // Loads the videos of the Watch later playlist, to show if the video is saved.
@@ -49,24 +70,6 @@ val feedVideoActionsPatch = patch(
         PreferenceScreen.FEED.addPreferences(
             SwitchPreference("morphe_feed_long_press_menu", summary = true),
             SwitchPreference("morphe_feed_watch_later_button", summary = true),
-        )
-
-        // The root host of each video is found by the layout hook of feedVideoCardsHookPatch,
-        // which gives every laid out card to the extension with FeedVideoCardsPatch.onCardLaidOut,
-        // so no layout hook of this patch is needed.
-
-        // The touches of the root host decide the long press and the Watch later button.
-        // When the extension handles the touch, it is not given to the children.
-        FeedComponentHostTouchFingerprint.method.addInstructionsWithLabels(
-            0,
-            """
-                invoke-static { p0, p1 }, $EXTENSION_CLASS->onComponentHostTouch(Lcom/facebook/litho/ComponentHost;Landroid/view/MotionEvent;)Z
-                move-result v0
-                if-eqz v0, :original
-                return v0
-                :original
-                nop
-            """
         )
 
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
