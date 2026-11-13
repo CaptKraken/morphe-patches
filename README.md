@@ -1,3 +1,21 @@
+# native queue thumbnail button - shared native image binding
+
+[download the mpp](native-queue-thumbnail-binding-21.30.216-test.mpp)
+
+both Watch Later and Native queue buttons now find the mounted thumbnail through YouTube's own image source. position comes from the actual ImageView, including horizontal cards. removes the failed Search width workaround and guessed thumbnail-top placement. no extra requests, diagnostics or Niconico changes.
+
+repatch **21.30.216** with **Add to queue**, select Native queue, enable **Show queue button on thumbnails**, then restart. test **Search in landscape first**, followed by portrait Search, Home and Subscriptions. try tap/hold, scroll away and back, rotate, and check the card playing a feed preview hides its buttons. include **Feed video actions** to test Watch Later alongside queue; also test each button alone.
+
+**not visually verified**. no connected Android device here. these checks establish native discovery/injection, not that the reported Search UI failure is fixed.
+
+433 extension tests and 66 patch tests passed; 5 optional APK tests skipped. 198835 strings verified and MPP built. exact MPP passed `--validate` and Android SDK checks on **21.30.216** and **21.44.528** with related patches, plus 216 Watch Later without Add to queue, and count-only selection without either thumbnail action. native bind/unbind registers and fallthrough inspected in both APKs. count-only selection does not install the new image hooks. 21.45.82 unrun.
+
+patches **2.3.0-dev.2**; requires **Patcher 2.3.0 or newer**. source base upstream/dev `0306f45b1`. [complete matching source](native-queue-thumbnail-binding-20261113-source.zip) contains all tracked source plus the new fingerprint file, LICENSE, NOTICE and BUILD-SNAPSHOT.json. build with the repository setup and `./gradlew :patches:buildAndroid`.
+
+mpp sha256: `d8cbf1836f334376eadad3f89de7915d34259f1cf2760aeb19b5f2818070f5e7`
+
+---
+
 # native queue thumbnail button - Search landscape test
 
 [download the mpp](native-queue-thumbnail-button-search-landscape-21.30.216-test.mpp)
