@@ -1,3 +1,31 @@
+# native queue thumbnail button - horizontal cards test
+
+[download the mpp](native-queue-thumbnail-button-horizontal-21.30.216-test.mpp)
+
+adds the thumbnail-left/details-right layout (mirrored in RTL) to both queue and Watch Later buttons, using the existing side-thumbnail detector and thumbnail bounds. tap/hold, queue insertion, settings and preview hiding are unchanged from the first phone-tested build.
+
+## test
+
+1. repatch **21.30.216** with **Add to queue**. select Native queue and enable **Show queue button on thumbnails**, then restart.
+2. rotate to landscape and try a card with its thumbnail beside the video info. tap queues last; hold queues next. try the Swap setting too.
+3. optionally include **Feed video actions** and enable its Watch Later thumbnail button. try both buttons, then each alone.
+4. rotate back to portrait, scroll away/back and try a feed preview. check the buttons stay on the correct thumbnail and only its playing preview hides them.
+
+ordinary horizontal Litho video cards are supported by this change; native compact/history views, Shorts and playlist/Mix collection-card buttons remain outside scope.
+**not visually verified**: horizontal placement, rotation and gestures await phone testing. the user confirmed tap/hold and adding while a playlist is active on the previous full-width-only build.
+
+433 extension tests and 66 patch tests passed; 5 optional APK tests skipped. English strings and MPP build passed. Desktop CLI `--validate` and Android SDK verification passed on **21.30.216** and **21.44.528** with related patches, and on **21.30.216** with Add to queue unselected. The shared touch injection is unchanged. Latest experimental **21.45.82** was not checked.
+
+patches version **2.3.0-dev.2**; requires **Patcher 2.3.0 or newer**. base upstream/dev `0306f45b1`. no diagnostics or Niconico changes. one Java file differs from the prior phone-tested source.
+
+[complete matching source archive](native-queue-thumbnail-button-horizontal-20261113-source.zip). source snapshot is in BUILD-SNAPSHOT.json. build with `./gradlew :patches:buildAndroid` using the repository setup.
+
+mpp sha256: `399a54e72f518b1b8570c3b0f091813fc2bf11506a58756736384c392269cf25`
+
+see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+---
+
 # native queue thumbnail button - test build
 
 [download the mpp](native-queue-thumbnail-button-21.30.216-test.mpp)
