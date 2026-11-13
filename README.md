@@ -1,3 +1,21 @@
+# native queue thumbnail buttons - compact row
+
+[download the test mpp](native-queue-thumbnail-button-compact-row-21.30.216-test.mpp)
+
+when two stacked buttons would crowd a compact thumbnail, Watch Later and queue now appear side by side at the top. larger thumbnails retain the vertical stack. uses the actual thumbnail size, with space below for native badges; no page/screen detection. matching touch targets and RTL ordering included. one Java file differs from the startup-corrected build; the confirmed startup register correction is retained.
+
+repatch **21.30.216** and try the same portrait playlist pages with both buttons enabled. check each button's tap/hold action and that the duration stays visible. then check larger Home/Search/Subscriptions cards, each button alone, scrolling and rotation.
+
+433 extension tests and 66 patch tests passed (5 optional APK tests skipped); MPP built. exact final216 combined APK passed fingerprint validation, SDK checks and the native argument-type regression check. native hooks/settings/resources unchanged; 528 was not rerun for this layout-only change.
+
+**not visually verified**: no connected Android runtime. earlier corrected build opens according to user testing; these screenshots identify its compact-thumbnail overlap, not proof of this new row layout.
+
+patches **2.3.0-dev.2**, requires **Patcher 2.3.0 or newer**. base upstream/dev `0306f45b1`. [complete matching source](native-queue-thumbnail-button-compact-row-20261113-source.zip) includes LICENSE/NOTICE and BUILD-SNAPSHOT.json. build with repository setup and `./gradlew :patches:buildAndroid`.
+
+mpp sha256: `d00486a67e9df7a70b6f46f1850661898880e955708737a3227bd8c3699de652`
+
+---
+
 # native queue thumbnail binding - startup correction
 
 [download the corrected test mpp](native-queue-thumbnail-binding-startup-fix-21.30.216-test.mpp)
