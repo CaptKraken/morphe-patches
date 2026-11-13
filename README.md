@@ -1,3 +1,29 @@
+# native queue thumbnail button - Search landscape test
+
+[download the mpp](native-queue-thumbnail-button-search-landscape-21.30.216-test.mpp)
+
+candidate correction for missing thumbnail buttons in landscape Search. keeps the original side-thumbnail matcher for thumbnails up to half the row width; when Feed video actions are enabled, wider thumbnails also qualify if a separate visible text host is beside the image. this removes a strict width assumption without increasing the percentage limit. other size/aspect/inset/row/menu checks remain.
+
+## test
+
+repatch **21.30.216** with **Add to queue**, select Native queue, enable **Show queue button on thumbnails**, restart, and repeat the same Search in landscape. try tap/hold, then Home and Subscriptions again. optionally include **Feed video actions** and test Watch Later too. individual playlist-row buttons remain enabled by the earlier horizontal-layout change.
+
+**not visually verified**: this targets a concrete detection constraint suggested by the screenshot; the exact runtime rejection and success still need phone confirmation. earlier phone results: Home/Subscriptions horizontal work; Search portrait works; Search landscape is missing buttons.
+
+433 extension tests and 66 patch tests passed; 5 optional APK tests skipped. English string checks and MPP build passed. exact MPP passed Desktop CLI `--validate` and Android SDK verification on **21.30.216** and **21.44.528** with related patches, plus **21.30.216** with Add to queue unselected. touch injection is unchanged. latest **21.45.82** not checked.
+
+one Java helper file differs from the previous horizontal MPP; queue actions/settings/preview logic are unchanged. with thumbnail actions disabled, other feed features retain their original matching. when combined, they can resolve the same newly recognized valid row.
+
+patches **2.3.0-dev.2**, requires **Patcher 2.3.0 or newer**. base upstream/dev `0306f45b1`. no diagnostics or Niconico changes.
+
+[complete matching source archive](native-queue-thumbnail-button-search-landscape-20261113-source.zip). BUILD-SNAPSHOT.json binds the eight uncommitted feature files. build with `./gradlew :patches:buildAndroid` using the repository setup.
+
+mpp sha256: `b67d92fcef0c031b019e01616502e592cf99b21b771dcdeed149e8856ea075fb`
+
+see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+---
+
 # native queue thumbnail button - horizontal cards test
 
 [download the mpp](native-queue-thumbnail-button-horizontal-21.30.216-test.mpp)
