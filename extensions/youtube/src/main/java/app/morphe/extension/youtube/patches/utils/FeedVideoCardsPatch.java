@@ -1092,10 +1092,6 @@ public final class FeedVideoCardsPatch {
      */
     @Nullable
     public static String findVideoId(ComponentHost root) {
-        VideoThumbnail thumbnail = findVideoThumbnail(root);
-        if (thumbnail != null) {
-            return thumbnail.videoId();
-        }
         // The badge of a card with the thumbnail beside the texts is on the host of the thumbnail.
         return findVideoId(root, isVideoShaped(root) ? root : findSideThumbnail(root));
     }
