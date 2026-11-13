@@ -831,6 +831,10 @@ Info: May not work on live streams"</string>
     <!-- interaction.nativeplaylistqueue.nativePlaylistQueuePatch -->
     <string name="morphe_native_queue_fetch_on_scroll_title">Load queue pages on scroll</string>
     <string name="morphe_native_queue_fetch_on_scroll_summary">Loads more playlist videos when scrolling near the end of the queue</string>
+    <string name="morphe_native_queue_thumbnail_button_title">Show queue button on thumbnails</string>
+    <string name="morphe_native_queue_thumbnail_button_summary">Adds a Native queue button to feed video thumbnails. Tap to play last in queue, or tap and hold to play next</string>
+    <string name="morphe_native_queue_thumbnail_swap_actions_title">Swap queue thumbnail button actions</string>
+    <string name="morphe_native_queue_thumbnail_swap_actions_summary">Tap to play next in queue, or tap and hold to play last</string>
     <string name="morphe_native_playlist_queue_saved">Playlist saved</string>
     <string name="morphe_native_playlist_queue_saved_to">Saved to %s</string>
     <string name="morphe_native_playlist_queue_clear">Clear queue</string>

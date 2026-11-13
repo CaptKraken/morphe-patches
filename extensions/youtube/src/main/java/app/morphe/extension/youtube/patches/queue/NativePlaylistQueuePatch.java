@@ -2954,7 +2954,20 @@ public final class NativePlaylistQueuePatch {
         return playlistId != null && !playlistId.isEmpty();
     }
 
+    /** Queues the exact thumbnail video, including starting the first queue. */
+    public static void addThumbnailVideo(String videoId, boolean playLast) {
+        if (canQueueFlyoutVideo(videoId)) {
+            // Without a list, Next and Last both create the same first queue.
+            addToQueue(videoId, playLast && canShowFlyoutLast(), "");
+        }
+    }
+
     private static void addToQueue(String videoId, boolean playLast) {
+        addToQueue(videoId, playLast, videoId.equals(FlyoutUtils.getFlyoutVideoId())
+                ? FlyoutUtils.getFlyoutChannelName() : "");
+    }
+
+    private static void addToQueue(String videoId, boolean playLast, String channelName) {
         if (!AddToQueuePatch.isNativeQueueEnabled()) {
             releaseNativeQueue();
             return;
@@ -2967,8 +2980,6 @@ public final class NativePlaylistQueuePatch {
             return;
         }
 
-        String channelName = videoId.equals(FlyoutUtils.getFlyoutVideoId())
-                ? FlyoutUtils.getFlyoutChannelName() : "";
         try {
             if (playlist != null) {
                 convertPlayingPlaylist(() -> {
@@ -2977,7 +2988,7 @@ public final class NativePlaylistQueuePatch {
                         FlyoutUtils.dismissFlyout();
                         Utils.showSnackbarShort(str("morphe_queue_manager_fetch_succeeded_add"));
                     } else {
-                        addToQueue(videoId, playLast);
+                        addToQueue(videoId, playLast, channelName);
                     }
                 });
                 return;

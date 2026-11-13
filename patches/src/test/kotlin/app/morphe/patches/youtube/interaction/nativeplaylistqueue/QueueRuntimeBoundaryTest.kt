@@ -101,6 +101,13 @@ class QueueRuntimeBoundaryTest {
     fun `single video Last rejects stale actions after its queue is cleared`() = withFixture("staleLastAction")
 
     @Test
+    fun `thumbnail Last starts the exact video without reusing a stale menu target`() = withFixture("thumbnailStart")
+
+    @Test
+    fun `thumbnail actions preserve standalone and playlist playback and insert in the requested position`() =
+        withFixture("thumbnailPositions")
+
+    @Test
     fun `stock Next preserves the playing playlist without reopening current playback`() =
         withFixture("playlistNextHandoff")
 
@@ -793,6 +800,49 @@ class QueueRuntimeBoundaryTest {
                         Settings.QUEUE_TYPE.value = QueueType.DEFAULT;
                         require(AddToQueuePatch.replaceButtonRunnable(original) == original,
                             "Default mode must retain the original callback");
+                    }
+                    public static void thumbnailStart() throws Exception {
+                        NativePlaylistQueuePatch.addThumbnailVideo("LMNOPQRSTUV", true);
+                        require(LoadVideoPatch.opens == 1 && LoadVideoPatch.url.contains("LMNOPQRSTUV"),
+                            "Thumbnail Last starts the exact card, independently of the stale flyout target");
+                        require(field("pendingQueueStart").get(null) != null && field("queue").get(null) == null,
+                            "First thumbnail queue waits for native attachment");
+                        NativePlaylistQueuePatch.addThumbnailVideo("", false);
+                        Settings.QUEUE_TYPE.value = QueueType.MORPHE;
+                        NativePlaylistQueuePatch.addThumbnailVideo("ZYXWVUTSRQP", true);
+                        require(LoadVideoPatch.opens == 1,
+                            "Missing targets and other queue providers must not start thumbnail playback");
+                    }
+                    public static void thumbnailPositions() throws Exception {
+                        for (String playlist : List.of("", "PL-account", "RD-mix")) {
+                            var controller = new Controller(new Playback());
+                            controller.playlist = playlist;
+                            controller.playingPanel = playlist.isEmpty() ? null : ordinaryWindow(playlist);
+                            PlaylistPages.attach(new PageSource());
+                            controller.playback.local = false;
+                            VideoInformation.playlist = playlist;
+                            field("controllerRef").set(null, new WeakReference<>(controller));
+                            field("observingPlayer").setBoolean(null, true);
+                            app.morphe.extension.youtube.shared.PlayerType.current =
+                                app.morphe.extension.youtube.shared.PlayerType.WATCH_WHILE_MINIMIZED;
+                            NativePlaylistQueuePatch.addThumbnailVideo("LMNOPQRSTUV", true);
+                            Utils.drainBackground(); Utils.drain();
+                            var queue = (PlaylistQueue) field("queue").get(null);
+                            int originalSize = playlist.isEmpty() ? 1 : 3;
+                            require(queue != null && queue.entries().size() == originalSize + 1
+                                    && queue.currentEntry().videoId().equals("abcdefghijk")
+                                    && queue.entries().get(originalSize).videoId().equals("LMNOPQRSTUV"),
+                                "Thumbnail Last preserves original rows and appends without restarting playback");
+                            NativePlaylistQueuePatch.addThumbnailVideo("ZYXWVUTSRQP", false);
+                            NativePlaylistQueuePatch.addThumbnailVideo("0123456789_", true);
+                            queue = (PlaylistQueue) field("queue").get(null);
+                            require(queue.entries().size() == originalSize + 3 && queue.selectedIndex() == 0
+                                    && queue.entries().get(1).videoId().equals("ZYXWVUTSRQP")
+                                    && queue.entries().get(originalSize + 2).videoId().equals("0123456789_")
+                                    && LoadVideoPatch.opens == 0 && LoadVideoPatch.dismissals == 0,
+                                "Existing thumbnail queue honors Next and Last without changing playback");
+                            call("releaseNativeQueue");
+                        }
                     }
                     static com.google.protobuf.MessageLite nativeMenu(PlaylistQueueRenderer.MenuRenderer menu) {
                         return (com.google.protobuf.MessageLite) Proxy.newProxyInstance(owner.getClassLoader(),

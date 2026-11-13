@@ -70,14 +70,11 @@ import app.morphe.extension.youtube.shared.PlayerType;
 @SuppressWarnings("unused")
 public final class FeedVideoCardsPatch {
 
-    private static final boolean ENABLED = FeedEngagementCountsPatch.ENABLED
-            || FeedViewCountPatch.ENABLED
-            || Settings.FEED_WATCH_LATER_BUTTON.get()
-            // FeedVideoActionsPatch is given every card, so its long press also works
-            // when its own features are the only ones on.
-            || Settings.FEED_LONG_PRESS_MENU.get()
-            || PostImageDownloadPatch.ENABLED
-            || PostTranslatePatch.ENABLED;
+    private static boolean isEnabled() {
+        return FeedEngagementCountsPatch.ENABLED || FeedViewCountPatch.ENABLED
+                || FeedVideoActionsPatch.isEnabled() || PostImageDownloadPatch.ENABLED
+                || PostTranslatePatch.ENABLED;
+    }
 
     /**
      * If the video of every card is needed. The posts are found by their own texts, so with only
@@ -85,11 +82,10 @@ public final class FeedVideoCardsPatch {
      * to their videos. The elements are parsed on the main thread, while the page loads.
      * {@link FeedVideoActionsPatch} is also given the video of the card for its long press menu.
      */
-    private static final boolean VIDEO_CARDS = ENABLED
-            && (FeedEngagementCountsPatch.ENABLED
-            || FeedViewCountPatch.ENABLED
-            || Settings.FEED_WATCH_LATER_BUTTON.get()
-            || Settings.FEED_LONG_PRESS_MENU.get());
+    private static boolean needsVideoCards() {
+        return FeedEngagementCountsPatch.ENABLED || FeedViewCountPatch.ENABLED
+                || FeedVideoActionsPatch.isEnabled();
+    }
 
     /**
      * A card must be as wide as a card of a grid of up to three columns, such as the feed in landscape.
@@ -383,7 +379,7 @@ public final class FeedVideoCardsPatch {
     private static final Map<View, String> compactVideoIds = new WeakHashMap<>();
 
     static {
-        if (ENABLED) {
+        if (isEnabled()) {
             // The inline player shows its buttons over the thumbnail, so what is drawn
             // on the thumbnail is hidden while the video of the card plays in the feed.
             PlayerType.getOnChange().addObserver(type -> redrawCards());
@@ -472,7 +468,7 @@ public final class FeedVideoCardsPatch {
      * Called when a video is loaded, such as the next video that plays in the feed.
      */
     public static void onVideoLoaded(String videoId) {
-        if (ENABLED) {
+        if (isEnabled()) {
             redrawCards();
         }
     }
@@ -560,7 +556,7 @@ public final class FeedVideoCardsPatch {
      * Called when an element is parsed. The element is not changed.
      */
     public static byte[] onElementLoaded(byte[] bytes) {
-        if (!VIDEO_CARDS || bytes == null || !contains(bytes, THUMBNAIL_PATH)) {
+        if (!needsVideoCards() || bytes == null || !contains(bytes, THUMBNAIL_PATH)) {
             return bytes;
         }
         try {
@@ -730,7 +726,7 @@ public final class FeedVideoCardsPatch {
      * of the video do not include. Can be called on any thread.
      */
     public static void addVideoText(String videoId, @Nullable String text) {
-        if (!VIDEO_CARDS || text == null) {
+        if (!needsVideoCards() || text == null) {
             return;
         }
         String normalized = normalizeText(text);
@@ -1396,7 +1392,7 @@ public final class FeedVideoCardsPatch {
                 if (!root.isAttachedToWindow() || root.getParent() instanceof ComponentHost) {
                     continue;
                 }
-                if (!VIDEO_CARDS) {
+                if (!needsVideoCards()) {
                     // Only the post features are on, which do not use the video of the card.
                     PostImageDownloadPatch.onRootLaidOut(root);
                     PostTranslatePatch.onRootLaidOut(root);
@@ -1722,7 +1718,7 @@ public final class FeedVideoCardsPatch {
      * Called after a host has laid out its children.
      */
     public static void onComponentHostLayout(ComponentHost host) {
-        if (!ENABLED) {
+        if (!isEnabled()) {
             return;
         }
         try {

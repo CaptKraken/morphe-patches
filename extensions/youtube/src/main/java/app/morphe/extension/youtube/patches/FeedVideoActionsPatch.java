@@ -57,6 +57,7 @@ import app.morphe.extension.shared.innertube.utils.AuthUtils;
 import app.morphe.extension.shared.spoof.SpoofAppVersionPatch;
 import app.morphe.extension.youtube.innertube.PlaylistEdit;
 import app.morphe.extension.youtube.innertube.queue.PlaylistQueueRenderer;
+import app.morphe.extension.youtube.patches.queue.NativePlaylistQueuePatch;
 import app.morphe.extension.youtube.patches.utils.FeedVideoCardsPatch;
 import app.morphe.extension.youtube.patches.utils.FlyoutUtils;
 import app.morphe.extension.youtube.patches.utils.requests.GetPlaylistItemsRequest;
@@ -84,12 +85,15 @@ import app.morphe.extension.youtube.settings.Settings;
 @SuppressWarnings("unused")
 public final class FeedVideoActionsPatch {
 
-    private static final boolean LONG_PRESS_MENU = Settings.FEED_LONG_PRESS_MENU.get();
-    private static final boolean WATCH_LATER_BUTTON = Settings.FEED_WATCH_LATER_BUTTON.get();
-    private static final boolean ENABLED = isPatchIncluded() && (LONG_PRESS_MENU || WATCH_LATER_BUTTON);
-
+    private static final boolean LONG_PRESS_MENU = isPatchIncluded() && Settings.FEED_LONG_PRESS_MENU.get();
+    private static final boolean WATCH_LATER_BUTTON = isPatchIncluded() && Settings.FEED_WATCH_LATER_BUTTON.get();
     public static boolean isEnabled() {
-        return ENABLED;
+        return LONG_PRESS_MENU || WATCH_LATER_BUTTON || isQueueButtonEnabled();
+    }
+
+    public static boolean isQueueButtonEnabled() {
+        return Settings.NATIVE_QUEUE_THUMBNAIL_BUTTON.get() && AddToQueuePatch.isPatchIncluded()
+                && NativePlaylistQueuePatch.isPatchIncluded() && AddToQueuePatch.isNativeQueueEnabled();
     }
 
     private static final boolean USE_EXPERIMENTAL_ICONS = VersionCheckPatch.IS_20_31_OR_GREATER
@@ -167,7 +171,7 @@ public final class FeedVideoActionsPatch {
     private static WeakReference<ComponentHost> gestureHostRef = new WeakReference<>(null);
     private static int gestureMode = GESTURE_NONE;
     @Nullable
-    private static WatchLaterBadge gestureBadge;
+    private static ThumbnailBadge gestureBadge;
     @Nullable
     private static String gestureVideoId;
     private static float downX, downY;
@@ -192,6 +196,8 @@ public final class FeedVideoActionsPatch {
     private static Drawable clockIcon;
     @Nullable
     private static Drawable checkIcon;
+    @Nullable
+    private static Drawable queueIcon;
 
     /**
      * The videos of the Watch later playlist, with the id of their entry in the playlist if it's known.
@@ -218,8 +224,10 @@ public final class FeedVideoActionsPatch {
 
     private static final class VideoCard {
         WeakReference<View> menuButtonRef = new WeakReference<>(null);
-        final WatchLaterBadge badge = new WatchLaterBadge();
+        final ThumbnailBadge badge = new ThumbnailBadge(false);
+        final ThumbnailBadge queueBadge = new ThumbnailBadge(true);
         boolean badgeAdded;
+        boolean queueBadgeAdded;
         /** Native image content may move inside the root host without another layout pass. */
         WeakReference<View> thumbnailRef = new WeakReference<>(null);
         final int[] hostLocation = new int[2];
@@ -236,21 +244,52 @@ public final class FeedVideoActionsPatch {
                 removeBadge();
                 thumbnailRef = new WeakReference<>(thumbnail);
             }
+            final boolean showQueue = isQueueButtonEnabled();
+            final int count = (WATCH_LATER_BUTTON ? 1 : 0) + (showQueue ? 1 : 0);
+            if (count == 0) {
+                removeBadge();
+                return;
+            }
+            final int gap = count > 1 ? dp(host, BADGE_MARGIN_DP) : 0;
+            final int preferredSize = dp(host, BADGE_SIZE_DP);
             final int margin = dp(host, BADGE_MARGIN_DP);
-            final int size = Math.min(dp(host, BADGE_SIZE_DP), Math.min(
-                    thumbnail.getWidth() - 2 * dp(host, BADGE_RIGHT_MARGIN_DP),
-                    thumbnail.getHeight() - 2 * margin));
+            // Keep a button-height clear below the stack for YouTube's duration and other badges.
+            final boolean horizontal = count > 1
+                    && thumbnail.getHeight() < margin + count * preferredSize + gap + preferredSize;
+            final int columns = horizontal ? count : 1;
+            final int rows = horizontal ? 1 : count;
+            final int size = Math.min(preferredSize, Math.min(
+                    (thumbnail.getWidth() - 2 * dp(host, BADGE_RIGHT_MARGIN_DP) - (columns - 1) * gap) / columns,
+                    (thumbnail.getHeight() - 2 * margin - (rows - 1) * gap) / rows));
             if (size <= 0) {
                 removeBadge();
                 return;
             }
-            final int top = Math.min(margin, Math.max(0, thumbnail.getHeight() - size));
+            final int top = Math.min(margin,
+                    Math.max(0, thumbnail.getHeight() - rows * size - (rows - 1) * gap));
             final int right = thumbnail.getWidth() - dp(host, BADGE_RIGHT_MARGIN_DP);
-            badge.setBounds(right - size, top, right, top + size);
-            badge.hostRef = new WeakReference<>(host);
-            if (!badgeAdded) {
-                thumbnail.getOverlay().add(badge);
-                badgeAdded = true;
+            final boolean rtl = host.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
+            if (WATCH_LATER_BUTTON) {
+                final int badgeRight = horizontal && !rtl ? right - size - gap : right;
+                badge.setBounds(badgeRight - size, top, badgeRight, top + size);
+                badge.hostRef = new WeakReference<>(host);
+                if (!badgeAdded) {
+                    thumbnail.getOverlay().add(badge);
+                    badgeAdded = true;
+                }
+            }
+            if (showQueue) {
+                final int queueTop = badgeAdded && !horizontal ? top + size + gap : top;
+                final int queueRight = horizontal && rtl ? right - size - gap : right;
+                queueBadge.setBounds(queueRight - size, queueTop, queueRight, queueTop + size);
+                queueBadge.hostRef = new WeakReference<>(host);
+                if (!queueBadgeAdded) {
+                    thumbnail.getOverlay().add(queueBadge);
+                    queueBadgeAdded = true;
+                }
+            } else if (queueBadgeAdded) {
+                thumbnail.getOverlay().remove(queueBadge);
+                queueBadgeAdded = false;
             }
         }
 
@@ -262,13 +301,19 @@ public final class FeedVideoActionsPatch {
                 }
                 badgeAdded = false;
             }
+            if (queueBadgeAdded) {
+                if (thumbnail != null) {
+                    thumbnail.getOverlay().remove(queueBadge);
+                }
+                queueBadgeAdded = false;
+            }
             thumbnailRef.clear();
         }
 
         @Nullable
-        WatchLaterBadge hitBadge(ComponentHost host, float x, float y) {
+        ThumbnailBadge hitBadge(ComponentHost host, float x, float y) {
             View thumbnail = thumbnailRef.get();
-            if (!badgeAdded || thumbnail == null || !thumbnail.isAttachedToWindow() || !thumbnail.isShown()
+            if (thumbnail == null || !thumbnail.isAttachedToWindow() || !thumbnail.isShown()
                     || findRootHost(thumbnail) != host
                     || FeedVideoCardsPatch.isCardPlayingInline(host)
                     || FeedVideoCardsPatch.isPlaylistCard(host)) {
@@ -279,10 +324,29 @@ public final class FeedVideoActionsPatch {
             thumbnail.getLocationOnScreen(thumbnailLocation);
             x += hostLocation[0] - thumbnailLocation[0];
             y += hostLocation[1] - thumbnailLocation[1];
-            Rect bounds = badge.getBounds();
+            final boolean queueShown = queueBadgeAdded && isQueueButtonEnabled();
+            ThumbnailBadge hit;
+            if (badgeAdded && queueShown) {
+                // Divide the gap so the expanded touch targets never overlap.
+                Rect watchBounds = badge.getBounds();
+                Rect queueBounds = queueBadge.getBounds();
+                if (watchBounds.top == queueBounds.top) {
+                    final float middle = (watchBounds.centerX() + queueBounds.centerX()) / 2f;
+                    hit = (x < middle) == (watchBounds.left < queueBounds.left) ? badge : queueBadge;
+                } else {
+                    hit = y < (watchBounds.bottom + queueBounds.top) / 2f ? badge : queueBadge;
+                }
+            } else if (badgeAdded) {
+                hit = badge;
+            } else if (queueShown) {
+                hit = queueBadge;
+            } else {
+                return null;
+            }
+            Rect bounds = hit.getBounds();
             final int slop = dp(host, BADGE_TOUCH_SLOP_DP);
             return x >= bounds.left - slop && x <= bounds.right + slop
-                    && y >= bounds.top - slop && y <= bounds.bottom + slop ? badge : null;
+                    && y >= bounds.top - slop && y <= bounds.bottom + slop ? hit : null;
         }
     }
 
@@ -296,16 +360,18 @@ public final class FeedVideoActionsPatch {
     }
 
     /**
-     * Round dark button with the app's Watch later icon, or a check mark if already saved.
+     * Round dark thumbnail button using the app's Watch later or queue icon.
      */
-    private static final class WatchLaterBadge extends Drawable {
+    private static final class ThumbnailBadge extends Drawable {
         private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final boolean queue;
         private boolean pressed;
         @Nullable
         String videoId;
         WeakReference<ComponentHost> hostRef = new WeakReference<>(null);
 
-        WatchLaterBadge() {
+        ThumbnailBadge(boolean queue) {
+            this.queue = queue;
             backgroundPaint.setColor(BADGE_COLOR);
         }
 
@@ -318,6 +384,9 @@ public final class FeedVideoActionsPatch {
 
         @Override
         public void draw(@NonNull Canvas canvas) {
+            if (queue && !isQueueButtonEnabled()) {
+                return;
+            }
             ComponentHost host = hostRef.get();
             if (host != null && (FeedVideoCardsPatch.isCardPlayingInline(host)
                     || FeedVideoCardsPatch.isPlaylistCard(host))) {
@@ -329,7 +398,7 @@ public final class FeedVideoActionsPatch {
             canvas.drawCircle(bounds.exactCenterX(), bounds.exactCenterY(),
                     bounds.width() / 2f, backgroundPaint);
 
-            Drawable icon = getBadgeIcon(videoId != null && savedVideos.containsKey(videoId));
+            Drawable icon = queue ? getQueueIcon() : getBadgeIcon(videoId != null && savedVideos.containsKey(videoId));
             if (icon != null) {
                 final int iconSize = bounds.width() * BADGE_ICON_DP / BADGE_SIZE_DP;
                 final int left = bounds.centerX() - iconSize / 2;
@@ -352,6 +421,19 @@ public final class FeedVideoActionsPatch {
         public int getOpacity() {
             return PixelFormat.TRANSLUCENT;
         }
+    }
+
+    @Nullable
+    private static Drawable getQueueIcon() {
+        if (queueIcon == null) {
+            queueIcon = ResourceUtils.getDrawable(USE_EXPERIMENTAL_ICONS
+                    ? "yt_outline_experimental_queue_vd_theme_24" : "yt_outline_list_view_black_24");
+            if (queueIcon != null) {
+                queueIcon = queueIcon.mutate();
+                queueIcon.setColorFilter(new PorterDuffColorFilter(BADGE_ICON_COLOR, PorterDuff.Mode.SRC_IN));
+            }
+        }
+        return queueIcon;
     }
 
     @Nullable
@@ -664,7 +746,7 @@ public final class FeedVideoActionsPatch {
                 // until the card is fully shown and still has no menu button.
                 final boolean sameThumbnail = thumbnail != null
                         && card.thumbnailRef.get() == thumbnail.view();
-                if (card.badgeAdded && videoShaped && sameThumbnail
+                if ((card.badgeAdded || card.queueBadgeAdded) && videoShaped && sameThumbnail
                         && FeedVideoCardsPatch.scheduleScrollCheck(host)) {
                     card.placeBadge(host, thumbnail.view());
                     return card;
@@ -680,7 +762,7 @@ public final class FeedVideoActionsPatch {
             cards.put(host, card);
         }
         card.menuButtonRef = new WeakReference<>(menuButton);
-        if (WATCH_LATER_BUTTON) {
+        if (WATCH_LATER_BUTTON || isQueueButtonEnabled()) {
             if (thumbnail != null) {
                 card.placeBadge(host, thumbnail.view());
                 final String videoId = findCardVideoId(host);
@@ -688,7 +770,9 @@ public final class FeedVideoActionsPatch {
                     card.badge.videoId = videoId;
                     card.badge.invalidateSelf();
                 }
-                fetchSavedVideosIfNeeded();
+                if (WATCH_LATER_BUTTON) {
+                    fetchSavedVideosIfNeeded();
+                }
             } else {
                 card.removeBadge();
             }
@@ -715,7 +799,7 @@ public final class FeedVideoActionsPatch {
             // Litho reuses the host for other content, such as another video or a row of Shorts,
             // which is known by its description before its texts are drawn.
             VideoCard card = cards.get(host);
-            if (card != null && card.badgeAdded) {
+            if (card != null && (card.badgeAdded || card.queueBadgeAdded)) {
                 String shownVideoId = FeedVideoCardsPatch.findVideoIdByDescription(host, false);
                 if (shownVideoId != null && !shownVideoId.equals(card.badge.videoId)) {
                     card.removeBadge();
@@ -835,7 +919,7 @@ public final class FeedVideoActionsPatch {
         downRawY = event.getRawY();
         host.getLocationOnScreen(downLocation);
 
-        WatchLaterBadge hit = card.hitBadge(host, downX, downY);
+        ThumbnailBadge hit = card.hitBadge(host, downX, downY);
         if (hit != null) {
             gestureMode = GESTURE_BADGE;
             gestureBadge = hit;
@@ -965,7 +1049,14 @@ public final class FeedVideoActionsPatch {
                 || !gestureVideoId.equals(findCardVideoId(host))) {
             return;
         }
-        runVideoCommand(host, longPress);
+        if (gestureBadge.queue) {
+            if (isQueueButtonEnabled()) {
+                NativePlaylistQueuePatch.addThumbnailVideo(gestureVideoId,
+                        longPress == Settings.NATIVE_QUEUE_THUMBNAIL_SWAP_ACTIONS.get());
+            }
+        } else {
+            runVideoCommand(host, longPress);
+        }
     }
 
     /**
