@@ -1,4 +1,24 @@
+# Native queue thumbnail buttons: corrected browse getter
+
+[Download the corrected test MPP](native-queue-thumbnail-playlist-context-getter-fix-20261114-test.mpp) · [Complete matching source](native-queue-thumbnail-playlist-context-getter-fix-20261114-source.zip)
+
+Corrects a verifier-type defect in the new native browse getter after the previous build was reported to crash immediately on launch. The getter now returns the native reader's String separately and explicitly returns null for an empty endpoint. This prevents the endpoint and String register types from merging into Object. Only two Smali instructions differ from the failed build; page detection, card recognition, button placement/actions, settings and requests are unchanged.
+
+Repatch **YouTube 21.30.216** and check that it opens first. Then check both buttons are hidden on ordinary playlist-page rows in portrait and landscape. Home, Search, Subscriptions and normal player recommendations should retain the buttons; cached navigation and hold-to-open menus should still work.
+
+65 patch tests passed, with 5 optional APK-dependent tests skipped; MPP build passed. Unchanged Java had 446 passing extension unit tests in the previous run; these were not rerun for this Smali-only correction. Five new actual APK applications passed strict fingerprint validation, SDK DEX/hierarchy checks and inclusion/coexistence checks: 21.30.216 with Watch later alone, Queue alone, both with overlapping patches, and neither; 21.44.528 combined. A new emitted-DEX return-type analysis rejects the previous build and passes both String/null return paths of all four selected-feature APKs. Validation APKs were deliberately unsigned; signature verification is not claimed.
+
+**Not visually verified:** no attached Android runtime. The previous immediate-launch crash is a tester report; the register-type defect is directly established by bytecode analysis. A phone retest is still needed to confirm startup and UI behavior.
+
+Patches **2.3.0-dev.3**, requires **Patcher 2.3.0 or newer**. Source HEAD `2768fd397dfe02e0e087970f718eb0341281e5c4` plus the three uncommitted changes recorded in BUILD-SNAPSHOT.json. The source archive includes LICENSE/NOTICE and every tracked source file. Build with the repository setup and `./gradlew :patches:buildAndroid`. This delivery does not commit or push the feature branch.
+
+MPP SHA-256: `6f635779cc1c152743f2b1b7124a08c281fb75966633a41a8f4ae4b8ef81d053`
+
+---
+
 # Native queue thumbnail buttons: playlist-page context test
+
+**Failed phone test: this older build crashes on launch. Use the corrected browse-getter build above.**
 
 [Download the test MPP](native-queue-thumbnail-playlist-context-20261114-test.mpp) · [Complete matching source](native-queue-thumbnail-playlist-context-20261114-source.zip)
 
