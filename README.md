@@ -1,3 +1,21 @@
+# Native queue thumbnail buttons: playlist-page context test
+
+[Download the test MPP](native-queue-thumbnail-playlist-context-20261114-test.mpp) · [Complete matching source](native-queue-thumbnail-playlist-context-20261114-source.zip)
+
+Hides the entire Watch later/Native queue thumbnail button container on ordinary playlist pages using the card's ancestor fragment and its native browse endpoint. Reuses existing browse discovery with one typed getter; no new fingerprint or global page flag. Card detection, video-ID lookup, long-press menus and the individual actions are unchanged.
+
+Repatch **YouTube 21.30.216** and check that both buttons disappear on playlist rows in portrait and landscape, including Watch later and public playlists. Check Home, Search, Subscriptions and normal watch-page recommendations still have working buttons. Also check cached back navigation and hold-to-open menus.
+
+65 patch tests and 446 extension tests passed; 5 optional APK-dependent tests skipped. MPP build passed. Five actual APK patch applications passed strict fingerprint validation and SDK DEX/hierarchy checks: 21.30.216 with Watch later alone, Queue alone, both with overlapping patches, and both unselected; 21.44.528 with the combined selection. Native getter contracts and existing Playlist improvements callbacks were checked. Validation APKs were deliberately unsigned; signature verification is not claimed.
+
+**Not visually verified:** no attached Android runtime. This is a phone-test candidate; the earlier global page-state attempt failed phone testing and is not included.
+
+Patches **2.3.0-dev.3**, requires **Patcher 2.3.0 or newer**. Source HEAD `2768fd397dfe02e0e087970f718eb0341281e5c4` plus the three uncommitted changes recorded in the source archive's BUILD-SNAPSHOT.json. The archive includes every tracked source file and LICENSE/NOTICE. Build with the repository setup and `./gradlew :patches:buildAndroid`. This delivery does not commit or push the feature branch.
+
+MPP SHA-256: `2c6bd23696907bc03164e63d5e403542b7ac7a3243ee833d76d572949b2ffb73`
+
+---
+
 # native queue thumbnail buttons - swipe anchor
 
 [download the test mpp](native-queue-thumbnail-button-swipe-anchor-21.30.216-test.mpp)
