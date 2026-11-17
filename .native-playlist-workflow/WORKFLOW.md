@@ -7,6 +7,10 @@ Keep this workflow, checkpoint and review tooling outside the upstream patch dif
 Before implementation/review, read MAINTAINER-CONVENTIONS.md for the concrete Java,
 Kotlin/Smali, refactoring, and fingerprint patterns established by the maintainer's
 PR #3953 edits. Apply them while preserving tested behavior and existing validation.
+Consult IMPLEMENTATION-PATTERNS.md for relevant examples before writing another
+implementation. Follow the user's is-prefixed boolean-variable naming rule in
+AGENTS.md. Record newly reviewed reusable patterns with source links, applicability,
+and safety limits; distinguish user rules from observed maintainer choices.
 
 1. Read STATE.md, inspect the actual branch/HEAD and local changes. Resume the first
    unfinished step; do not restart completed work or overwrite user changes.

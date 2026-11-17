@@ -9,6 +9,21 @@ style specification. Existing user instructions and correctness requirements
 still apply. A file can be a good formatting example while containing a runtime
 bug we have since fixed; do not copy its old queue behavior back into our code.
 
+## User rule: boolean variable names
+
+Recorded 2026-11-17: use `is...` for new boolean fields, local variables, and
+parameters, such as `isQueue`, `isPressed`, and `isEnabled`. Use `IS_...` for new
+boolean constants. Preserve framework/external API names and avoid unrelated
+mass renames of existing declarations or shared settings. Boolean predicate
+methods may still use meaningful existing `is...`, `has...`, or `can...` APIs.
+
+This is the user's explicit convention, not a claim that upstream requires it.
+The maintainer changed `queueButton` to `isQueue` in PR #4822 while retaining
+other names such as `pressed`; the user chose to adopt a stricter variable rule.
+
+For reusable implementation examples, consult [IMPLEMENTATION-PATTERNS.md](IMPLEMENTATION-PATTERNS.md).
+It records the source, the reason to reuse a pattern, and its safety limits.
+
 ## Java: explicit blocks and readable control flow
 
 In `df3d0e7e6`, the maintainer expanded single-statement branches throughout the

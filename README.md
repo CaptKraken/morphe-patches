@@ -1,14 +1,18 @@
 # Codex workflow backup
 
 Standalone backup of the local Morphe development instructions and lessons,
-recorded on 2026-11-09. This branch contains no application implementation and
+initially recorded on 2026-11-09, with reviewed patterns updated on 2026-11-17.
+This branch contains no application implementation and
 is not intended to be merged into `dev`, `main`, or a feature PR.
 
 ## Current instructions and lessons
 
-- `AGENTS.md`: copy of `/workspace/AGENTS.md`.
+- `AGENTS.md`: instruction snapshot with the new naming and pattern-review rules.
+  Other sections retain their prior snapshot; compare with current local instructions.
 - `.native-playlist-workflow/MAINTAINER-CONVENTIONS.md`: observed maintainer
-  conventions, concrete examples, and lessons from PR #4404's refactor.
+  conventions, concrete examples, and the explicit user boolean naming rule.
+- [.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md](.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md):
+  reusable examples from PR #4822, indexed by task with source links and safety limits.
 - `.native-playlist-workflow/WORKFLOW.md`: development and delivery workflow.
 - `.native-playlist-workflow/STATE.md`: checkpoint journal. Read the newest
   entries at the top; older branch names and decisions are historical.
@@ -29,9 +33,10 @@ snapshots, not scripts run by this branch. Review them before reuse: older embed
 state and setup commands can predate the current workflow and dependency versions.
 Prefer the separately saved current files when restoring instructions and lessons.
 
-There were no project-local `SKILL.md` files in `/workspace/.agents` or
-`/workspace/.codex` at backup time. Managed connector/plugin skills are supplied
-by their providers and are not included here.
+The local [morphe-pr-writing skill](.native-playlist-workflow/skills/morphe-pr-writing/SKILL.md)
+is included. It requires the current PR template, the user's AI disclosure, issue
+references, and accurate test reporting. AGENTS.md specifies when to read it.
+Managed connector/plugin skills are supplied by their providers and are not included.
 
 ## Restore carefully
 

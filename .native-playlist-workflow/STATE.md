@@ -1,3 +1,15 @@
+# CURRENT: reviewed thumbnail implementation patterns recorded 2026-11-17
+
+User adopted is-prefixed names for new boolean fields, local variables and
+parameters (IS_ for new constants), preserving external names and avoiding mass
+renames. This is an explicit user convention, not a universal upstream rule.
+IMPLEMENTATION-PATTERNS.md indexes seven source-linked examples reviewed against
+PR4822 e1928dd9502844e55811894c615dfd410c59e904, with applicability and safety limits.
+AGENTS.md and WORKFLOW.md direct future implementation/review to the catalog.
+This update changes local workflow documentation only; no application behavior,
+APK/MPP build, or new device validation is involved. Older journal entries below
+are historical snapshots and may reference scratch removed in later cleanup.
+
 # MAINTAINER REFACTOR LESSONS RECORDED (2026-11-09)
 
 Useraskedwhatwelearnfromec90bb620. Re-reviewedactual9-filecommitandappendedobserved

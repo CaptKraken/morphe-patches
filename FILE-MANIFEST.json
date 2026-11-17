@@ -33,10 +33,18 @@
       "sha256": "3fce82ae1e87c10dbf261939e7f99d8ce1ae903d759f472565555719648e0d9f"
     },
     {
+      "path": ".native-playlist-workflow/IMPLEMENTATION-PATTERNS.md",
+      "source": "/workspace/.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md",
+      "bytes": 7622,
+      "sha256": "1ddb1405365730855a3c6ec3453a114c22625ef1f10fe26ff7cd6cbab802908a",
+      "updated_date": "2026-11-17"
+    },
+    {
       "path": ".native-playlist-workflow/MAINTAINER-CONVENTIONS.md",
       "source": "/workspace/.native-playlist-workflow/MAINTAINER-CONVENTIONS.md",
-      "bytes": 21191,
-      "sha256": "60478de04f046b58dfc0f706bd1b853640e1c2e47a759d2389d67d9229730404"
+      "bytes": 22043,
+      "sha256": "c3890211a6791b68d388f855629939dbb3b33fadb6c09861dd4603ca3f31fea6",
+      "updated_date": "2026-11-17"
     },
     {
       "path": ".native-playlist-workflow/PR-CREATE-REQUEST.json",
@@ -187,14 +195,16 @@
     {
       "path": ".native-playlist-workflow/STATE.md",
       "source": "/workspace/.native-playlist-workflow/STATE.md",
-      "bytes": 1051107,
-      "sha256": "5b14f18c13d30048a3da95fb5e05ef66487531fd281eba1cf544f962adf499e3"
+      "bytes": 1051899,
+      "sha256": "23f26a057e0471fb754d552144a5106c8db1fe8c365271e8f1c6e84a9002db8c",
+      "updated_date": "2026-11-17"
     },
     {
       "path": ".native-playlist-workflow/WORKFLOW.md",
       "source": "/workspace/.native-playlist-workflow/WORKFLOW.md",
-      "bytes": 3647,
-      "sha256": "7631a6b6316e3e8f5406274f6ae4d74d66ab09cd2f9ea2abb08e0e97d2a24f77"
+      "bytes": 3966,
+      "sha256": "a4d77bbe9021e7ab87ab397c13443d68c63ba5af16085681c10c725ffb38d009",
+      "updated_date": "2026-11-17"
     },
     {
       "path": ".native-playlist-workflow/fullscreen-clear-fix.md",
@@ -385,6 +395,13 @@
       "sha256": "febe448964929d42e5a1cbd6edd560812d16791e3547503bb59ffdd4a659c03a"
     },
     {
+      "path": ".native-playlist-workflow/skills/morphe-pr-writing/SKILL.md",
+      "source": "/workspace/.native-playlist-workflow/skills/morphe-pr-writing/SKILL.md",
+      "bytes": 3914,
+      "sha256": "9f13c9ee9f3fe7736746af75aedce113a39fa8473a8367a0b0ed23489cf86a3a",
+      "updated_date": "2026-11-17"
+    },
+    {
       "path": ".native-playlist-workflow/start-queue-callback-poc49.md",
       "source": "/workspace/.native-playlist-workflow/start-queue-callback-poc49.md",
       "bytes": 1400,
@@ -428,9 +445,10 @@
     },
     {
       "path": "AGENTS.md",
-      "source": "/workspace/AGENTS.md",
-      "bytes": 18829,
-      "sha256": "56f7d4b7c583a87d158534a3f064634307f5713bbab062fde5a0e0e4bc32306a"
+      "source": "Prior /workspace/AGENTS.md snapshot plus user boolean naming, pattern-review and PR-writing-skill instructions from 2026-11-17",
+      "bytes": 20041,
+      "sha256": "d8d32faed8993bd7fc1e2426078a111cffe55a0cfae266e761a0cb40c6ce22be",
+      "updated_date": "2026-11-17"
     },
     {
       "path": "LICENSE",
@@ -447,8 +465,9 @@
     {
       "path": "README.md",
       "source": "Backup index and restore notes created for this branch",
-      "bytes": 3143,
-      "sha256": "267a93755dbc9185ae0dd4ae79ca83edc881716b8c3bddad3f01552bd2e0ef59"
+      "bytes": 3670,
+      "sha256": "1ad20e457e043ef7675f846629f6464ff368c9212474b44a26c7093f9c08359f",
+      "updated_date": "2026-11-17"
     },
     {
       "path": "environment/install.sh",
@@ -466,5 +485,6 @@
       "original_sha256": "e5511ff06c2285c314eff18f8269bd232c37f65f061fa89b5357f931e3d7c8c7",
       "normalization": "Removed extra terminal blank lines in backup copy only"
     }
-  ]
+  ],
+  "updated_date": "2026-11-17"
 }

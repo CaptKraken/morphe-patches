@@ -47,8 +47,26 @@ precedence; do not introduce a new permission step for routine authorized work.
 - No PR, publication, or other external action is authorized by this file alone.
   Preserve any authorization already given in the conversation.
 
+## PR titles and descriptions
+
+- Before drafting, reviewing, creating, or updating any Morphe Patches PR title or
+  description (including text-only replies), read and apply the local skill
+  `/workspace/.native-playlist-workflow/skills/morphe-pr-writing/SKILL.md`.
+- Always include the user's early AI-assistance disclosure unless they explicitly
+  ask to omit it. Re-read the current repository PR template and preserve every
+  section and the exact Test results checklist; do not infer device test coverage
+  from builds, unit tests, or APK verification. This is a local user preference,
+  not an additional upstream contribution rule or publication permission step.
+
 ## Establish the actual project conventions
 
+- Use `is...` names for new boolean fields, local variables, and parameters
+  (`isQueue`, `isPressed`, `isEnabled`); use `IS_...` for new boolean constants.
+  This is the user's coding convention. Preserve required external/API names and
+  avoid unrelated mass renames of existing code or settings.
+- Consult `/workspace/.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md` for
+  relevant reusable examples before implementation/review. Record useful reviewed
+  patterns with source links, applicability, and safety limits for future work.
 - Read `/workspace/.native-playlist-workflow/MAINTAINER-CONVENTIONS.md` before
   implementation and review. It records concrete PR #3953 maintainer edits and
   their source examples. Treat these as observed conventions, not invented
