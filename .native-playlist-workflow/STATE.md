@@ -2,13 +2,6 @@
 
 ## Current status
 
-- Playlist toolbar issue [#5020](https://github.com/MorpheApp/morphe-patches/issues/5020)
-  was resolved in [PR #5088](https://github.com/MorpheApp/morphe-patches/pull/5088),
-  merged upstream as `033d4b56de1a`. Local toolbar worktree:
-  `/workspace/morphe-patches-issue-5020`, branch
-  `feat/youtube-native-queue-playlist-toolbar`. The user confirmed Play last
-  on 21.46.522 before the maintainer refactor. Evidence is in
-  `/workspace/scratch/issue-5020-playlist-toolbar/`.
 - [Issue #4812](https://github.com/MorpheApp/morphe-patches/issues/4812) remains
   unreproduced locally. Existing logs can expose the original error from
   `QueueSaveActions.onPickerResponse`. Evidence:
