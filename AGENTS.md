@@ -60,9 +60,6 @@ precedence; do not introduce a new permission step for routine authorized work.
 
 ## Establish the actual project conventions
 
-- Read the target branch's `CONTRIBUTING.md` before editing or reviewing a patch.
-  Use it as the source for upstream rules. The local notes below provide
-  concrete examples and queue-specific checks.
 - Use `is...` names for new boolean fields, local variables, and parameters
   (`isQueue`, `isPressed`, `isEnabled`); use `IS_...` for new boolean constants.
   This is the user's coding convention. Preserve required external/API names and

@@ -4,10 +4,6 @@ Recorded 2026-10-25 from PR #3953. Apply these patterns to future changes and
 reviews, including when porting our tested fixes onto the maintainer's branch.
 Keep this document outside the upstream patch diff.
 
-Use the target branch's `CONTRIBUTING.md` for upstream rules. These notes record
-local preferences and examples from maintainer edits. Recheck the native
-behavior before applying an example to new code.
-
 ## User rule: boolean variable names
 
 Recorded 2026-11-17: use `is...` for new boolean fields, local variables, and
@@ -113,9 +109,6 @@ Queue examples of named protocol values include `SENDER_VIEW_KEY` and
 
 The cleanup annotated the optional load-video callback and queue menu/Mix
 entry points. Check that the guards implement the documented null contract.
-For exception logging and annotations, see the target branch's extension
-code style. Keep localized text for user-visible feedback.
-[Upstream extension code style](https://github.com/MorpheApp/morphe-patches/blob/dev/CONTRIBUTING.md#extension-code-style)
 
 In PR #5088, the maintainer changed "Could not bind playlist page queue action"
 to `preparePlaylistPageMenu failure`, and "Could not run playlist page queue
@@ -124,10 +117,6 @@ already used the convention. The names make each report easy to trace to its
 entry point. [Refactor](https://github.com/MorpheApp/morphe-patches/pull/5088/commits/2f8174e1eb0e50184e2fd87bdc3a1c512e5be98e)
 
 ## Native discovery: use the patcher API deliberately
-
-The maintainer's `7f8a99ea4` cleanup illustrates the guide's approach to
-fingerprint uniqueness. Verify that any programmatic APK harness enables it.
-[Upstream fingerprint guidance](https://github.com/MorpheApp/morphe-patches/blob/dev/CONTRIBUTING.md#finding-code-to-patch)
 
 - Use a fingerprint's direct `.originalMethod`, `.method`, or
   `.instructionMatches` access for straightforward lookups, as the maintained
@@ -259,14 +248,10 @@ Source commits: [cleanup e2e2c7c07](https://github.com/MorpheApp/morphe-patches/
 [matching/validation 7f8a99ea4](https://github.com/MorpheApp/morphe-patches/commit/7f8a99ea4b69438dea3c6af41cd6ce083d75819b).
 
 
-## Local validation and PR evidence
+## Reporting validation results
 
 Record programmatic `Patcher(validate=true)` and Android SDK checks under the
 actual harness name. Record Desktop CLI validation and phone testing separately.
-The pre-commit review cites the testing guidance from the target branch.
-[Upstream testing guide](https://github.com/MorpheApp/morphe-patches/blob/dev/CONTRIBUTING.md#testing)
-
-The early AI-assistance disclosure in `AGENTS.md` is a local PR-writing preference.
 
 
 ## PR #4404: shared discovery and failure cleanup (2026-11-09)
