@@ -7,8 +7,7 @@ is not intended to be merged into `dev`, `main`, or a feature PR.
 
 ## Current instructions and lessons
 
-- `AGENTS.md`: instruction snapshot with the naming, logging and pattern-review rules.
-  Other sections retain their prior snapshot; compare with current local instructions.
+- `AGENTS.md`: the current local development instructions and pre-commit gate.
 - `.native-playlist-workflow/MAINTAINER-CONVENTIONS.md`: observed maintainer
   conventions, concrete examples, and the explicit user boolean naming rule.
 - [.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md](.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md):
@@ -28,8 +27,8 @@ latest user decisions and current instructions rather than replaying old plans.
 ## Environment instructions / skills
 
 `environment/start-instructions.txt` preserves a saved copy of the environment
-startup instructions. Restore the checkpoint journal from
-`.native-playlist-workflow/STATE.md` or keep a newer local copy.
+startup instructions. Restore `AGENTS.md` and the checkpoint journal from
+their standalone files, preserving newer local copies.
 
 `environment/install.sh` preserves the configured setup script. These are backup
 snapshots. The startup instructions and setup commands can predate the current

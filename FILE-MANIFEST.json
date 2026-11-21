@@ -343,9 +343,9 @@
     },
     {
       "path": "AGENTS.md",
-      "source": "Prior /workspace/AGENTS.md snapshot plus user boolean naming, pattern-review and PR-writing-skill instructions from 2026-11-17; upstream injection-point logging rule synchronized 2026-11-21; upstream guide review area synchronized 2026-11-21; upstream guide overlap removed 2026-11-21; upstream guide reference kept only in the gate 2026-11-21; overlapping examples removed 2026-11-21",
-      "bytes": 17992,
-      "sha256": "141ebd1c98775f3c652eeaf09faf47663a640122c4ddc3d60b0ad91a8272d6ec",
+      "source": "/workspace/AGENTS.md",
+      "bytes": 6976,
+      "sha256": "9659757f5ebc90427aca249b70a279366f615a9d740e03e7805522717e0cddc9",
       "updated_date": "2026-11-21"
     },
     {
@@ -363,8 +363,8 @@
     {
       "path": "README.md",
       "source": "Backup index and restore notes created for this branch",
-      "bytes": 3825,
-      "sha256": "24ddd25be7ce39b77c6e4058f0bfe084981b389f52a6fef81a13e8e4b6780e5e",
+      "bytes": 3736,
+      "sha256": "f9708f965f142c8b9186a6840314606aaba661acb39113db2cf653b1f673f157",
       "updated_date": "2026-11-21"
     },
     {
@@ -377,9 +377,9 @@
     },
     {
       "path": "environment/start-instructions.txt",
-      "source": "Cloud environment configuration draft: start_skill, with duplicate checkpoint copies removed",
-      "bytes": 255141,
-      "sha256": "67e3027aaa9c5063b2789eee0bdc75903f238de77f62abfb3b4bd8c222cd6549",
+      "source": "Cloud environment configuration draft: start_skill, with standalone copies of AGENTS.md and STATE.md",
+      "bytes": 237842,
+      "sha256": "7ef1b78835cf1f39e7eb2c831ede41e590d95f567f0ac7ff9625fd33996b35f8",
       "updated_date": "2026-11-21"
     }
   ],
