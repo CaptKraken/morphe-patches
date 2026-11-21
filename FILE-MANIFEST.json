@@ -35,8 +35,8 @@
     {
       "path": ".native-playlist-workflow/IMPLEMENTATION-PATTERNS.md",
       "source": "/workspace/.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md",
-      "bytes": 5430,
-      "sha256": "9f0ebc5750c72a2f8c674bf19246738aaec2e707038451a9d082b3712f889386",
+      "bytes": 6838,
+      "sha256": "02a7b200fccb477597c640893d818c25bdace1c1434a3b0000c18e7d4f177e5a",
       "updated_date": "2026-11-21"
     },
     {
@@ -85,126 +85,18 @@
       "sha256": "1e055faf40119056db8ddb9067754980637db700198907880d6c8f4ce31c5331"
     },
     {
-      "path": ".native-playlist-workflow/STATE-history-before-dev-preparation.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-dev-preparation.md",
-      "bytes": 8179,
-      "sha256": "5339b0f79fa82f3dec997d09f212cb88c8017c2418fedcd594afe17d295eac55"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc42.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc42.md",
-      "bytes": 45710,
-      "sha256": "a2035d9db147d17e6f51638f45dbb227ad98fae6f55081c6072e8be7a62c712e"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc44.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc44.md",
-      "bytes": 4309,
-      "sha256": "3e6451c11d489f8dd807f10ed041eddbb60630b44094704b3dd87ff7cab32456"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc45.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc45.md",
-      "bytes": 5181,
-      "sha256": "8ae436ab03b2b20cb4103bd0265cc3da99c0a0860ed03688c9721f2f23ae4c11"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc46.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc46.md",
-      "bytes": 3928,
-      "sha256": "a5addb0b752a415f64c43bb82cfe36bf35716f0dcbe19f63ece5f6f2c4d07cc9"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc47.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc47.md",
-      "bytes": 4632,
-      "sha256": "67a154c6aaecc8e0c0942d834f6aaf6b804691e8751a1c37178fadae3ecede7a"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc48.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc48.md",
-      "bytes": 9411,
-      "sha256": "b84ec632cce4b032621476481c9fbbf6d5d10ff35369cfe9449d7f2fac01d4a0"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc49.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc49.md",
-      "bytes": 7216,
-      "sha256": "789e60afff113f69fe2465e34415f9deb0f1faaecebd88e69a2b2f45b2838a10"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc50.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc50.md",
-      "bytes": 3844,
-      "sha256": "abf0754dc2e5cdacf976dbf6f7eb449841c8f0063adcb519fb432df1fb01e6da"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc51.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc51.md",
-      "bytes": 4295,
-      "sha256": "cbbf8410a1af4ec1b4cfb5dc7db649c94f815ca9b533fca96d1de29b20c70827"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc52.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc52.md",
-      "bytes": 3756,
-      "sha256": "5fd207c64c31c813579e22a8497652094f067ddc4060128144ad1a215017c824"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc53.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc53.md",
-      "bytes": 7356,
-      "sha256": "60fc2caa5885776f6259ef079bf7581002243445a6c0f491b05335d28125f2a1"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc54.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc54.md",
-      "bytes": 5619,
-      "sha256": "7f726f5684575f1c52b453ad529e0f5562da0736e3fa181f3dbc42010d077068"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc55.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc55.md",
-      "bytes": 6063,
-      "sha256": "0845df6afd197c4583e63d7f5279fe25a6a7e67d16d66cb54923b8ca293906df"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc56.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc56.md",
-      "bytes": 4750,
-      "sha256": "4c0342d05c5c7dd2ecd2d9d867b8916e3c2251d60785de3cca02f394a693fcb2"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-poc57.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-poc57.md",
-      "bytes": 5821,
-      "sha256": "91c1c7c1d62f4558876d11bf1538ced150a00fa19daedfd6170179ccf270686d"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-before-readiness-review.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-before-readiness-review.md",
-      "bytes": 3795,
-      "sha256": "18559d0227294acd72c382e1e9e8909b8a8ceadc40d2f9f644e0f8713bffd094"
-    },
-    {
-      "path": ".native-playlist-workflow/STATE-history-during-feature-split.md",
-      "source": "/workspace/.native-playlist-workflow/STATE-history-during-feature-split.md",
-      "bytes": 8228,
-      "sha256": "afa945e861c69731aabc25221a59c381d8f0001628e78c61612e28cf90bc8c7a"
-    },
-    {
       "path": ".native-playlist-workflow/STATE.md",
       "source": "/workspace/.native-playlist-workflow/STATE.md",
-      "bytes": 1051899,
-      "sha256": "23f26a057e0471fb754d552144a5106c8db1fe8c365271e8f1c6e84a9002db8c",
-      "updated_date": "2026-11-17"
+      "bytes": 1052342,
+      "sha256": "2a3e24f6b7512b86d9ac551adfa41d1b8d8add2c1804f0055c2cb39e163c124d",
+      "updated_date": "2026-11-21"
     },
     {
       "path": ".native-playlist-workflow/WORKFLOW.md",
       "source": "/workspace/.native-playlist-workflow/WORKFLOW.md",
-      "bytes": 3966,
-      "sha256": "a4d77bbe9021e7ab87ab397c13443d68c63ba5af16085681c10c725ffb38d009",
-      "updated_date": "2026-11-17"
+      "bytes": 4019,
+      "sha256": "658d6ef33da4ca5aa929657f302ade247a00c3dbd71ebcdf9c40285d32b3bc22",
+      "updated_date": "2026-11-21"
     },
     {
       "path": ".native-playlist-workflow/fullscreen-clear-fix.md",
@@ -411,8 +303,9 @@
     {
       "path": ".native-playlist-workflow/start-queue-failure-diagnostic-poc50.md",
       "source": "/workspace/.native-playlist-workflow/start-queue-failure-diagnostic-poc50.md",
-      "bytes": 4295,
-      "sha256": "cbbf8410a1af4ec1b4cfb5dc7db649c94f815ca9b533fca96d1de29b20c70827"
+      "bytes": 4393,
+      "sha256": "2b4b4e98d53e2ab0f29f6232388b6902936839fa61cd470367149eb2b328f614",
+      "updated_date": "2026-11-21"
     },
     {
       "path": ".native-playlist-workflow/start-queue-miniplayer-poc48.md",
@@ -423,26 +316,30 @@
     {
       "path": ".native-playlist-workflow/start-queue-null-service-poc51.md",
       "source": "/workspace/.native-playlist-workflow/start-queue-null-service-poc51.md",
-      "bytes": 3931,
-      "sha256": "dbbf0e1a21c23eb118ed3c134f19e1fbf5c0d54c0e49a9c74311e781bc0520c4"
+      "bytes": 4035,
+      "sha256": "c25daaadfa575a63d91dd2a1b228c3e37f151dcad2758a1f41c13c4e7375b056",
+      "updated_date": "2026-11-21"
     },
     {
       "path": ".native-playlist-workflow/undo-dispatch-poc53.md",
       "source": "/workspace/.native-playlist-workflow/undo-dispatch-poc53.md",
-      "bytes": 4862,
-      "sha256": "0859efddb63634b083bdf38a588cc5dd91f11663346ffa59d1c82218f1632111"
+      "bytes": 5028,
+      "sha256": "1fe0c46251075e98a8ceb21ad7e82d219b011ca27a1c1bb2fd7e30195094dacc",
+      "updated_date": "2026-11-21"
     },
     {
       "path": ".native-playlist-workflow/undo-modern-snackbar-poc54.md",
       "source": "/workspace/.native-playlist-workflow/undo-modern-snackbar-poc54.md",
-      "bytes": 6063,
-      "sha256": "0845df6afd197c4583e63d7f5279fe25a6a7e67d16d66cb54923b8ca293906df"
+      "bytes": 6216,
+      "sha256": "6b4efe0b67c714dd7d78d1b1d4cd76cff1497d2dac0742b2eae55115b88282f9",
+      "updated_date": "2026-11-21"
     },
     {
       "path": ".native-playlist-workflow/undo-removal-clear-poc52.md",
       "source": "/workspace/.native-playlist-workflow/undo-removal-clear-poc52.md",
-      "bytes": 5719,
-      "sha256": "92f7ddc595c8181ec1a84b1c31b9f3db403681b0e60efa7e5f6c655b05ea39dc"
+      "bytes": 5829,
+      "sha256": "0482d2bce8ec9e4c25319f2cfc6f49bcdc2a752c9d98bbc51d62ab622c1a10db",
+      "updated_date": "2026-11-21"
     },
     {
       "path": "AGENTS.md",
@@ -466,8 +363,8 @@
     {
       "path": "README.md",
       "source": "Backup index and restore notes created for this branch",
-      "bytes": 3686,
-      "sha256": "c762e223d254becd7f6a4004344df319596b775fe5555c1c6c2dfd6e28e61517",
+      "bytes": 3825,
+      "sha256": "24ddd25be7ce39b77c6e4058f0bfe084981b389f52a6fef81a13e8e4b6780e5e",
       "updated_date": "2026-11-21"
     },
     {
@@ -480,11 +377,10 @@
     },
     {
       "path": "environment/start-instructions.txt",
-      "source": "Cloud environment configuration draft: start_skill",
-      "bytes": 304667,
-      "sha256": "10b78412a334ff341b70f68a424af962ff0908b1c592bff12837fd4e3545ff20",
-      "original_sha256": "e5511ff06c2285c314eff18f8269bd232c37f65f061fa89b5357f931e3d7c8c7",
-      "normalization": "Removed extra terminal blank lines in backup copy only"
+      "source": "Cloud environment configuration draft: start_skill, with duplicate checkpoint copies removed",
+      "bytes": 255141,
+      "sha256": "67e3027aaa9c5063b2789eee0bdc75903f238de77f62abfb3b4bd8c222cd6549",
+      "updated_date": "2026-11-21"
     }
   ],
   "updated_date": "2026-11-17"

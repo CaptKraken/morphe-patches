@@ -15,6 +15,7 @@ explicit user preference; the patterns below are observations from reviewed code
 | Run an action against the current video card | [Read authoritative state at action time](#read-authoritative-state-at-action-time) |
 | Determine which page owns a card | [Use the card's local page context](#use-the-cards-local-page-context) |
 | Several native menu classes dispatch the same feature command | [Use the shared command router for tagged menu actions](#use-the-shared-command-router-for-tagged-menu-actions) |
+| Add a watch-intent transform without shifting existing filters | [Preserve watch-intent filter ordering](#preserve-watch-intent-filter-ordering) |
 
 ## Traversal-local inputs and scratch objects
 
@@ -73,6 +74,23 @@ can skip work before initial binding. After that point, the command marker is
 the ownership check and the shared hook may still parse unrelated commands.
 
 [Toolbar hook](https://github.com/MorpheApp/morphe-patches/blob/2f8174e1eb0e50184e2fd87bdc3a1c512e5be98e/patches/src/main/kotlin/app/morphe/patches/youtube/interaction/nativeplaylistqueue/QueueFlyoutHook.kt#L127-L165) · [Runtime dispatch](https://github.com/MorpheApp/morphe-patches/blob/2f8174e1eb0e50184e2fd87bdc3a1c512e5be98e/extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueFlyoutActions.java#L172-L201)
+
+## Preserve watch-intent filter ordering
+
+The first miniplayer queue-start implementation inserted instructions at the
+watch method's entry. That shifted a cached insertion index and moved the
+Open channel of live avatar filter before YouTube built its playback descriptor.
+SDK verification passed. Comparing the emitted method with a build that
+included the other filters exposed the ordering regression.
+
+The fix registered a context transform with `hookVideoIntentContext`. The
+shared hook inserts transforms at entry in `finalize`, after filtering patches
+have used the cached index. When changing this path, verify that the context
+transform runs before descriptor construction and filters that read the
+descriptor still run afterward. Use a baseline with the same other patches
+selected so their existing changes appear in both builds.
+
+[Deferred entry transforms](https://github.com/MorpheApp/morphe-patches/blob/372eea295ec4521b9ccdb93a3f188f81a6ad1a6c/patches/src/main/kotlin/app/morphe/patches/youtube/shared/OpenVideoIntentPatch.kt#L89-L101) · [Filter insertion](https://github.com/MorpheApp/morphe-patches/blob/372eea295ec4521b9ccdb93a3f188f81a6ad1a6c/patches/src/main/kotlin/app/morphe/patches/youtube/shared/OpenVideoIntentPatch.kt#L159-L175)
 
 ## Record future patterns
 

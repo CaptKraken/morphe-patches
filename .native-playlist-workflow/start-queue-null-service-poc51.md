@@ -15,7 +15,9 @@ Exact staged review/gate passed, normalcommit. :patches:test :patches:buildAndro
 PoC51: firstqueue afterrestart without error; queue/videoMINIMIZED and browsingretained. Thenclose/recreate, notificationNextPrevious/background, Save/New/Undo. Noattacheddevice/newlogcapture; do not claim phonepass until usertests. Iferrorpersists exact newboundary would need investigation; diagnostics removednowcauseidentified. Broadpublish postcommitrollbackconcern deferred, not mixedinto narrowfix.
 
 ## Invariants/recovery
-Read /workspace/AGENTS.md and WORKFLOW.md. No agents/modelrouting/delegation. Onefixpergatedcommit/MPP. Source/builduploads authorized; noPR. No newlogrequests. 21.20.405only/defaulttrue. PrefernativeUI/logic. OrdinaryplayerSave/accountplaylists unaffected. PoC47wholequeueNew/picker USERCONFIRMED; PoC45existingSavetoast+Undo USERCONFIRMED. PoC48mini/browsework. Sharedwatchcontext hook MUST be FINALIZE aftercached-indexfilters; preservenativedescriptor-freeze-before-filter check. Never copyoldbranch. Configdraftsave doesnotPublishsnapshot or verifyrestore. PriorSTATE-history-before-poc51.md and start-queue-null-service-poc51.md.
+Read /workspace/AGENTS.md and WORKFLOW.md. No agents/modelrouting/delegation. Onefixpergatedcommit/MPP. Source/builduploads authorized; noPR. No newlogrequests. 21.20.405only/defaulttrue. PrefernativeUI/logic. OrdinaryplayerSave/accountplaylists unaffected. PoC47wholequeueNew/picker USERCONFIRMED; PoC45existingSavetoast+Undo USERCONFIRMED. PoC48mini/browsework. Sharedwatchcontext hook MUST be FINALIZE aftercached-indexfilters; preservenativedescriptor-freeze-before-filter check. Never copyoldbranch. Configdraftsave doesnotPublishsnapshot or verifyrestore.
+
+[Earlier checkpoint in Git](https://github.com/CaptKraken/morphe-patches/blob/b5a212fd89fc0d67410171aed8a008a54a22b328/.native-playlist-workflow/STATE-history-before-poc51.md).
 
 ## Phone confirmation
 User reports PoC51 works. Initial first-start null service-ID failure resolved. No claim of separate exhaustive regression testing.

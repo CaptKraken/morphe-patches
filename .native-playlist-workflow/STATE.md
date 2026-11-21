@@ -1,3 +1,12 @@
+# Codex workflow: one checkpoint journal
+
+Use this file for workflow checkpoints and the implementation catalog for
+reusable lessons. The catalog records how to preserve filter order when adding
+a watch-intent context transform. The earlier standalone snapshots are in
+[Git history](https://github.com/CaptKraken/morphe-patches/tree/b5a212fd89fc0d67410171aed8a008a54a22b328/.native-playlist-workflow).
+
+The entries below record earlier work.
+
 # CURRENT: reviewed thumbnail implementation patterns recorded 2026-11-17
 
 User adopted is-prefixed names for new boolean fields, local variables and

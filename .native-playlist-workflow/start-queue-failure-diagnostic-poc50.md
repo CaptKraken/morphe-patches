@@ -21,4 +21,6 @@ Await PoC50 short Queue/<stage> exception type, then fix concrete cause with pro
 PoC47 whole-queue New Save/picker USERCONFIRMED; PoC45 existing Save toast+Undo USERCONFIRMED. PoC48 firstqueue/miniplayer works witherror. PoC49 callback post fixes source-confirmed reentry hole but did not fix reported toast.
 
 ## Recovery/workflow
-Read /workspace/AGENTS.md and WORKFLOW.md. No agents/delegation/modelrouting. One step per gated source commit/MPP. Source/build uploads authorized, no PR. No new log requests. Shared watchcontext hook MUST run FINALIZE after cached-index filters; preserve descriptor-freeze-before-filters regression check. No old branch copying. Save draft does not Publish snapshot or verify restore. PreviousSTATE-history-before-poc50.md; start-queue-failure-diagnostic-poc50.md.
+Read /workspace/AGENTS.md and WORKFLOW.md. No agents/delegation/modelrouting. One step per gated source commit/MPP. Source/build uploads authorized, no PR. No new log requests. Shared watchcontext hook MUST run FINALIZE after cached-index filters; preserve descriptor-freeze-before-filters regression check. No old branch copying. Save draft does not Publish snapshot or verify restore.
+
+[Earlier checkpoint in Git](https://github.com/CaptKraken/morphe-patches/blob/b5a212fd89fc0d67410171aed8a008a54a22b328/.native-playlist-workflow/STATE-history-before-poc50.md).

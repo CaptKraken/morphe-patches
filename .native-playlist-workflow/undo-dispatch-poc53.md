@@ -18,7 +18,9 @@ Intermediatefreshcombined2m29s andruntimefinaldelivery31s passed;18stockSave met
 ProductionJava/proto regressioncoversmatchingcapabilitywithoutrowcontext,expired/replacedtokensnoaction,ordinary/nullfallthrough andexistingduplicateidentity/selectionadvance/precedingremoval/repeat/staleedit/newqueue/wrongvideo checks. No Androidplaybackemulation or phonepassclaim.
 
 ## Next
-AwaitfinalPoC53:immediateUndoafter swipe/menu removal ANDClear; restorationandcurrenttimestampcontinuous. Checklatest-only/expiry/newvideo/close/newqueue/Shortsstaleactions andordinarySaveUndo. Ifstillfails needactualcallback/pending-stateboundarydiagnostics,notmoreblindguardchanges; no newlogrequests. PreviousSTATE-history-before-poc53.md;PoC52detailundo-removal-clear-poc52.md.
+AwaitfinalPoC53:immediateUndoafter swipe/menu removal ANDClear; restorationandcurrenttimestampcontinuous. Checklatest-only/expiry/newvideo/close/newqueue/Shortsstaleactions andordinarySaveUndo. Ifstillfails needactualcallback/pending-stateboundarydiagnostics,notmoreblindguardchanges; no newlogrequests.
+
+[Earlier checkpoint in Git](https://github.com/CaptKraken/morphe-patches/blob/b5a212fd89fc0d67410171aed8a008a54a22b328/.native-playlist-workflow/STATE-history-before-poc53.md). See also [PoC52 Undo removal notes](undo-removal-clear-poc52.md).
 
 ## Workflow/recovery
 Read /workspace/AGENTS.md andWORKFLOW.md. Noagents/delegation/modelrouting. Gatedcommits/source+builduploadsauthorized,noPR.21.20.405only/defaulttrue. KeepnativeUI/logic/nullordinarymodelbuilderfallback/sharedwatchcontextFINALIZEaftercached-indexfilters anddescriptor-freezebeforefiltersverification. Broadpublishpostcommitrollbackconcern deferred. ConfigdraftsaveisnotPublishsnapshot/restoreverification. Reviewrecordnaturallystaleaftercommit; freshreviewnextstagedtree.

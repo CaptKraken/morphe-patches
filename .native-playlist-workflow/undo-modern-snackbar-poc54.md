@@ -18,7 +18,11 @@ FinalMPP CRC/currentYouTubeMPE/38queueKotlinclasspayloadsexact undo-modern-integ
 
 ## Pending phone/next action
 PoC54 immediateUndoafter swipe/menu removal andClear; restoreorder/selection/queue andcontinuouscurrenttimestamp. Ifstillfails usercanreport Queue Undo/... exactstatus (or no message); no newlogcapture requests. Use observedstage tofixconcretecause,notloosenallguards. OrdinarySaveUndo/accountplaylists andstale/latest/expiry/newvideo/close/Shorts behaviorpending. Onsuccessremove diagnostic+delivercleanfollowup; notfeaturecompleteuntiltested/cleaned.
-PoC51first-start nullservice fix USERCONFIRMEDWORKS; PoC47wholequeueNew/picker andPoC45existingSavetoastUndo USERCONFIRMED. Preservemini/browse/currentworkingplayback. PriorSTATE-history-before-poc54.md; olderfeaturedetailundo-removal-clear-poc52.md; final53filepoc53-undo-dispatch.mppFAILEDphone, don'ttreatasworking. Intermediate53capabilitycandidate neverdeliveredandremoved.
+PoC51first-start nullservice fix USERCONFIRMEDWORKS; PoC47wholequeueNew/picker andPoC45existingSavetoastUndo USERCONFIRMED. Preservemini/browse/currentworkingplayback.
+
+[Earlier checkpoint in Git](https://github.com/CaptKraken/morphe-patches/blob/b5a212fd89fc0d67410171aed8a008a54a22b328/.native-playlist-workflow/STATE-history-before-poc54.md). See also [PoC52 Undo removal notes](undo-removal-clear-poc52.md).
+
+The final PoC53 build, `poc53-undo-dispatch.mpp`, failed on the phone. The intermediate candidate was never delivered.
 
 ## Workflow/recovery
 Read /workspace/AGENTS.md andWORKFLOW.md. Noagents/delegation/modelrouting. Gatedcommits/source+builduploadsauthorized,noPR.21.20.405only/defaulttrue. NativeUI/logicpreferred; nullordinarymodelbuilderfallback; sharedwatchcontextFINALIZEaftercached-indexfilters anddescriptor-freezebeforefilterscheck. Broadpublishpostcommitrollbackconcern deferred. ConfigdraftsaveisnotPublishsnapshot/restoreverification. Gate recordnaturallystaleaftercommit, generatefreshreviewnextstagedtree.

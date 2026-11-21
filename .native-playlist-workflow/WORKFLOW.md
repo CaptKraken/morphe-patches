@@ -28,6 +28,7 @@ and safety limits; distinguish user rules from observed maintainer choices.
 6. Update STATE.md after meaningful findings and checks and before finishing. Keep
    current feature/status, branch/base/HEAD, changed files, decisions, real outcomes,
    artifact/hash/link, user feedback, limitations and next action concise.
+   Use Git history to find older backup checkpoints.
 
 Reuse valid evidence for unchanged code. Do not rerun expensive checks without a
 source change or concrete concern. Poll existing builds; avoid duplicate builds.

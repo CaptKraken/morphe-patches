@@ -12,10 +12,11 @@ is not intended to be merged into `dev`, `main`, or a feature PR.
 - `.native-playlist-workflow/MAINTAINER-CONVENTIONS.md`: observed maintainer
   conventions, concrete examples, and the explicit user boolean naming rule.
 - [.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md](.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md):
-  reusable examples from PRs #4822 and #5088, indexed by task with source links and safety limits.
+  reusable examples from PRs #3953, #4822, and #5088, indexed by task with source links.
 - `.native-playlist-workflow/WORKFLOW.md`: development and delivery workflow.
-- `.native-playlist-workflow/STATE.md`: checkpoint journal. Read the newest
-  entries at the top; older branch names and decisions are historical.
+- `.native-playlist-workflow/STATE.md`: the current checkpoint journal. Read
+  the newest entries at the top. Earlier standalone checkpoints are available
+  in [Git history](https://github.com/CaptKraken/morphe-patches/tree/b5a212fd89fc0d67410171aed8a008a54a22b328/.native-playlist-workflow).
 - `.native-playlist-workflow/pre-commit`: mandatory staged-tree review gate.
 - `FILE-MANIFEST.json`: source locations, sizes, and SHA-256 hashes.
 
@@ -26,11 +27,13 @@ latest user decisions and current instructions rather than replaying old plans.
 
 ## Environment instructions / skills
 
-`environment/start-instructions.txt` preserves the configured environment start
-skill/instructions, including its older embedded recovery copies.
+`environment/start-instructions.txt` preserves a saved copy of the environment
+startup instructions. Restore the checkpoint journal from
+`.native-playlist-workflow/STATE.md` or keep a newer local copy.
+
 `environment/install.sh` preserves the configured setup script. These are backup
-snapshots, not scripts run by this branch. Review them before reuse: older embedded
-state and setup commands can predate the current workflow and dependency versions.
+snapshots. The startup instructions and setup commands can predate the current
+workflow and dependency versions.
 Prefer the separately saved current files when restoring instructions and lessons.
 
 The local [morphe-pr-writing skill](.native-playlist-workflow/skills/morphe-pr-writing/SKILL.md)
