@@ -60,6 +60,9 @@ precedence; do not introduce a new permission step for routine authorized work.
 
 ## Establish the actual project conventions
 
+- Read the target branch's `CONTRIBUTING.md` before editing or reviewing a patch.
+  Use it as the source for upstream rules. The local notes below provide
+  concrete examples and queue-specific checks.
 - Use `is...` names for new boolean fields, local variables, and parameters
   (`isQueue`, `isPressed`, `isEnabled`); use `IS_...` for new boolean constants.
   This is the user's coding convention. Preserve required external/API names and
@@ -73,13 +76,9 @@ precedence; do not introduce a new permission step for routine authorized work.
   upstream requirements. Apply them to new/touched code without bundling unrelated
   mass formatting or reverting tested behavior fixes.
 - Follow the maintainer's explicit Java blocks (including one-line guards) and
-  expanded Kotlin/Smali call formatting. Prefer shared predicates/operations for
-  repeated real decisions, eligibility checks over throwaway action creation,
-  meaningful protocol constants, accurate nullability, and removal of obsolete
-  state. Preserve ownership checks and disabled-path cleanup when refactoring.
-- In new or edited Java injection points, use the upstream exception log format
-  `Logger.printException(() -> "methodName failure", ex)` with the actual method
-  name and caught exception. Simple setting getters can omit the catch.
+  expanded Kotlin/Smali call formatting. Use eligibility checks where a
+  caller only needs to know whether an action is available. Preserve ownership
+  checks and disabled-path cleanup when refactoring.
 - Read applicable agent instructions, the PR template, nearby maintained patches,
   and relevant shared APIs before implementing. Check the pinned dependency API
   when uncertain. Distinguish explicit rules from observed coding patterns.
@@ -88,8 +87,7 @@ precedence; do not introduce a new permission step for routine authorized work.
   package/file organization. Do not copy unexplained abbreviations or old style
   inconsistencies. Explain non-obvious native assumptions and injection contracts.
 - Keep patch-time discovery/modification in Kotlin patches and runtime behavior in
-  extensions. Use existing settings, resources, logging, threading, events, and
-  lifecycle utilities. Add a helper only when the current feature needs it.
+  extensions.
 - Preserve existing copyright, license, and NOTICE content. Do not invent upstream
   requirements or claim conformance from a formatter that is not configured.
 - Keep APKs, research scripts, logs, generated outputs, and feature design/review
@@ -118,47 +116,27 @@ precedence; do not introduce a new permission step for routine authorized work.
 
 ## Fingerprint and native discovery review
 
-- Use `app.morphe.patcher.Fingerprint` and existing instruction filters. Anchor on
-  stable diagnostics, enum values, named resources, stable framework calls, method
-  signatures, and relationships to already discovered classes/members.
-- Keep reusable declarations in `Fingerprints.kt`. Scope related matches through
-  `classFingerprint` or discovered types/references. Bounded instruction distance
-  may express a verified relationship; arbitrary absolute offsets are not a
-  substitute for discovery.
-- Do not hardcode obfuscated host descriptors, member names, or numeric resource
-  IDs in production discovery. Stable framework/unobfuscated names and references
-  extracted from matches are appropriate. Document unusual stable anchors.
-- Derive injection indexes, registers, and native references from matched
-  instructions. Prefer original read-only methods/classes for inspection and
-  request mutable ones for changes. Re-resolve when mutation invalidates positions.
-- `.method` finds a matching method; it does not establish uniqueness. The
-  maintainer now uses normal fingerprint accessors / `.match()` and relies on
-  patcher `--validate` for uniqueness rather than adding `matchSingle()` everywhere.
-  Verify the pinned API and actually run the relevant validation; do not assume
-  every programmatic APK harness enables it. If ambiguity is a concrete risk,
-  narrow the fingerprint or use an explicit unique/bounded match. Keep semantic
-  owner/operand/control-flow checks: uniqueness does not replace them. Required
-  missing/ambiguous capability must fail clearly; optional paths need a reason.
+- Keep reusable declarations in `Fingerprints.kt`. Document unusual anchors and
+  check the matched owner, operands, and control flow separately from uniqueness.
+  Resolve resource IDs by name and document why a native path can be absent.
+- Inspect original read-only methods/classes before mutating them. Re-resolve
+  instruction positions after edits that shift them. Verify that the pinned
+  programmatic APK harness actually enables fingerprint validation.
 
 ## Injection and coexistence review
 
 - Depend on `sharedExtensionPatch` and relevant shared hook/resource patches.
   Prefer registering callbacks with shared APIs over independently patching their
   methods. Understand `execute`/`finalize` order and callback ordering.
-- Keep injected instructions small. Runtime logic belongs in the extension.
-  Typed interfaces with generated `patch_*` bridge methods are an existing option
-  for calling discovered native methods; do not invent reflection frameworks.
+- Keep injected instructions small.
 - Inspect the original control flow around every hook: validation, stale-response
   rejection, initialization, selection updates, return values, and exception paths.
   A correct method match does not establish that method entry is a safe hook point.
 - Preserve branch targets and original execution with the established instruction
   and label helpers. Check register lifetime/type, parameter width, invoke encoding,
-  move-result adjacency, and constructor initialization. Use `findFreeRegister`,
-  `cloneParameters`, or an established safe register when needed; account for index
-  shifts caused by cloning and previous edits. Do not assume `v0` is free mid-method.
-- A shared fingerprint can cache stale indexes: follow existing `clearMatch()`
-  usage when reusing a fingerprint after its target was modified. Never store an
-  instruction index as though other patches cannot change it.
+  move-result adjacency, and constructor initialization. Account for index shifts
+  caused by parameter cloning and previous edits. Verify that any scratch register
+  is free at the insertion point.
 - List other patches using each changed hook, method, helper, setting, or native
   path. Keep their behavior and settings effective. Only intercept events actually
   owned by the local queue; let ordinary playback/account playlists fall through.
@@ -199,9 +177,8 @@ precedence; do not introduce a new permission step for routine authorized work.
   `VersionCheckPatch` when a verified implementation difference needs branching.
 - Current patch selection uses `default`; runtime setting defaults are separate.
   Newness alone does not determine either. Set policy deliberately for our stage.
-- Do not copy the shared YouTube compatibility list and imply every listed target
-  works. The PR template requests minimum/maximum supported-version testing and
-  makes experimental-version testing optional. Build success alone is not support.
+- Record which targets were actually verified for the queue feature separately
+  from the shared YouTube compatibility list.
 
 ## Proportionate validation
 
@@ -240,7 +217,7 @@ precedence; do not introduce a new permission step for routine authorized work.
    findings; don't merely record them and commit anyway.
    For `upstream_contribution_guide`, read the target branch's `CONTRIBUTING.md`.
    Cite the relevant sections and explain how they apply to the staged change,
-   including the exception log format when Java injection points change. For
+   including extension code style when Java injection points change. For
    workflow-only changes, record why this review area is not applicable.
 3. Run the checks justified by the actual change. Save real command/outcome
    evidence, including failures or limitations. Do not mark a check passed because

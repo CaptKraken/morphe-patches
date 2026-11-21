@@ -4,10 +4,9 @@ Recorded 2026-10-25 from PR #3953. Apply these patterns to future changes and
 reviews, including when porting our tested fixes onto the maintainer's branch.
 Keep this document outside the upstream patch diff.
 
-These are observations from concrete edits, not a newly discovered upstream
-style specification. Existing user instructions and correctness requirements
-still apply. A file can be a good formatting example while containing a runtime
-bug we have since fixed; do not copy its old queue behavior back into our code.
+Use the target branch's `CONTRIBUTING.md` for upstream rules. These notes record
+local preferences and examples from maintainer edits. Recheck the native
+behavior before applying an example to new code.
 
 ## User rule: boolean variable names
 
@@ -97,10 +96,9 @@ Evidence: [eligibility predicate](https://github.com/MorpheApp/morphe-patches/bl
 
 ## Avoid unnecessary work and remove obsolete bookkeeping
 
-Put cheap applicability guards before parsing protobufs, traversing views, or
-scheduling main-thread work. Preserve cleanup when moving a guard: the new title
-guard skips work only if Native queue is disabled **and** no previously widened
-title needs restoring. A blanket disabled-path return would miss that cleanup.
+The title hook still restores a previously widened title when Native queue
+is disabled. The guard checks both queue selection and whether the view
+still needs cleanup.
 
 The maintainer removed the unused `FlyoutUtils.isNativeQueueRowFlyout` flag, its
 assignment/reset, and its import after the old custom-menu path was gone. When a
@@ -108,23 +106,16 @@ feature replaces an implementation, inspect the remaining readers and writers
 and remove bookkeeping that no longer has a consumer. Do not just stop calling
 the old entry point and leave its state behind.
 
-Name repeated protocol values with meaningful constants, as with
-`SENDER_VIEW_KEY` and `MIX_PLAYLIST_ID_PREFIX`. This is not a requirement to make
-a constant for every literal or ordinary test count.
+Queue examples of named protocol values include `SENDER_VIEW_KEY` and
+`MIX_PLAYLIST_ID_PREFIX`.
 
 ## API contracts, nullability, and logging
 
-Annotate genuinely nullable callback/command inputs and results with the existing
-AndroidX `@Nullable` convention. The cleanup added it to the optional load-video
-callback and queue menu/Mix entry points. An annotation documents the contract;
-the appropriate guards are still required.
-
-For caught exceptions in Java injection points, use the upstream format
-`Logger.printException(() -> "methodName failure", ex)` with the actual enclosing
-method name. Passing the exception retains the cause and stack trace. Check new
-and edited entry points during review. Simple injection points such as setting
-getters can omit the try/catch. Keep localized text for user-visible feedback.
-[Upstream contribution guide](https://github.com/MorpheApp/morphe-patches/blob/7c4b581489217f6f957443eafbfe64e4fac591a7/CONTRIBUTING.md#L82-L90)
+The cleanup annotated the optional load-video callback and queue menu/Mix
+entry points. Check that the guards implement the documented null contract.
+For exception logging and annotations, see the target branch's extension
+code style. Keep localized text for user-visible feedback.
+[Upstream extension code style](https://github.com/MorpheApp/morphe-patches/blob/dev/CONTRIBUTING.md#extension-code-style)
 
 In PR #5088, the maintainer changed "Could not bind playlist page queue action"
 to `preparePlaylistPageMenu failure`, and "Could not run playlist page queue
@@ -134,23 +125,17 @@ entry point. [Refactor](https://github.com/MorpheApp/morphe-patches/pull/5088/co
 
 ## Native discovery: use the patcher API deliberately
 
-In `7f8a99ea4`, the maintainer removed widespread `matchSingle()` calls, stating
-that uniqueness is already covered when patching with `--validate`.
+The maintainer's `7f8a99ea4` cleanup illustrates the guide's approach to
+fingerprint uniqueness. Verify that any programmatic APK harness enables it.
+[Upstream fingerprint guidance](https://github.com/MorpheApp/morphe-patches/blob/dev/CONTRIBUTING.md#finding-code-to-patch)
 
 - Use a fingerprint's direct `.originalMethod`, `.method`, or
   `.instructionMatches` access for straightforward lookups, as the maintained
   code now does.
 - Use `.match()` when retaining a resolved match to access several members.
-  Do not mechanically put `matchSingle()` on every fingerprint.
-- If following the maintainer's validation workflow, check the pinned patcher API
-  and actually enable the relevant validation. Do not assume an ordinary lookup
-  or every programmatic APK harness automatically checks uniqueness.
 - Keep semantic relationship checks. Uniqueness does not establish that two
   fields belong to the same owner, that a boolean is the repeat capability,
   that a native backend is active, or that an injection point is safe.
-- When ambiguity is a concrete concern, narrow the fingerprint or use an explicit
-  bounded/unique match appropriate to the case. Missing required capability must
-  still fail clearly.
 
 The title cleanup combined redundant creation/view fingerprints into one target
 fingerprint carrying both layout and title anchors. Prefer one sufficient
@@ -274,33 +259,14 @@ Source commits: [cleanup e2e2c7c07](https://github.com/MorpheApp/morphe-patches/
 [matching/validation 7f8a99ea4](https://github.com/MorpheApp/morphe-patches/commit/7f8a99ea4b69438dea3c6af41cd6ce083d75819b).
 
 
-## Explicit upstream contribution guide (2026-11-03)
+## Local validation and PR evidence
 
-Upstream added CONTRIBUTING.md in f77759c21. Unlike the observations above, these
-are now explicit repository guidelines. Read the current file before preparing a
-new PR or rebasing onto a newer base:
-https://github.com/MorpheApp/morphe-patches/blob/f77759c21/CONTRIBUTING.md
+Record programmatic `Patcher(validate=true)` and Android SDK checks under the
+actual harness name. Record Desktop CLI validation and phone testing separately.
+The pre-commit review cites the testing guidance from the target branch.
+[Upstream testing guide](https://github.com/MorpheApp/morphe-patches/blob/dev/CONTRIBUTING.md#testing)
 
-Relevant rules: disabled patches should do no UI/background/hot-hook work; use
-scoped Fingerprint/instruction filters rather than hand-scanning instructions or
-custom lambdas; use classFingerprint for sibling discovery, known strings where
-available, and justified version branches for actual shape differences. Required
-fingerprints should not fail silently. Use getMethodCalled/getFieldAccessed and
-project register/label helpers. Retain shared fingerprint invalidation when needed.
-Use typed patch_ bridges rather than reflection, reuse real shared operations, and
-keep comments ASCII except quoted literals. Keep settings/nullability/SDK behavior
-accurate. No unrelated formatting or rewriting merely to retrofit every old file.
-
-Testing explicitly names Morphe Desktop CLI --validate for latest non-experimental
-and latest experimental targets, with minimum/maximum recommended app testing.
-Our programmatic Patcher(validate=true)+SDK harness is useful evidence, but must
-not be represented as a Desktop CLI run. Record unavailable APKs and device-only
-checks honestly. Avoid asserting new-guide compliance solely from earlier builds.
-
-The guide treats tool/assistant output as the contributor's own responsibility and
-requires attribution of outside code/resources. It does not add a new approval
-workflow or require posting an AI notice; the user's separate preference for an
-early informational AI-assistance notice in PR descriptions remains applicable.
+The early AI-assistance disclosure in `AGENTS.md` is a local PR-writing preference.
 
 
 ## PR #4404: shared discovery and failure cleanup (2026-11-09)

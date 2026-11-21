@@ -42,8 +42,8 @@
     {
       "path": ".native-playlist-workflow/MAINTAINER-CONVENTIONS.md",
       "source": "/workspace/.native-playlist-workflow/MAINTAINER-CONVENTIONS.md",
-      "bytes": 22673,
-      "sha256": "09d80f49947c7c248be298d824d6aef988fb361c7a01fc1cbe27fc7f855c25fb",
+      "bytes": 20198,
+      "sha256": "d3da0bf1f0eb270cecbe7363d3959f04d508e0257eb0c8adf44e9da3a47a6e4e",
       "updated_date": "2026-11-21"
     },
     {
@@ -446,9 +446,9 @@
     },
     {
       "path": "AGENTS.md",
-      "source": "Prior /workspace/AGENTS.md snapshot plus user boolean naming, pattern-review and PR-writing-skill instructions from 2026-11-17; upstream injection-point logging rule synchronized 2026-11-21; upstream guide review area synchronized 2026-11-21",
-      "bytes": 20585,
-      "sha256": "2ee23ce47e4363e845a842fb20a26d4368c4003be62af0545585a889bbf0db53",
+      "source": "Prior /workspace/AGENTS.md snapshot plus user boolean naming, pattern-review and PR-writing-skill instructions from 2026-11-17; upstream injection-point logging rule synchronized 2026-11-21; upstream guide review area synchronized 2026-11-21; upstream guide overlap removed 2026-11-21",
+      "bytes": 18549,
+      "sha256": "d9bb576377f54b340ffdbb0216bc2ee8561ab9c69091bb8290df2b9851e833b0",
       "updated_date": "2026-11-21"
     },
     {
