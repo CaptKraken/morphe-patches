@@ -34,10 +34,8 @@ Reuse valid evidence for unchanged code. Do not rerun expensive checks without a
 source change or concrete concern. Poll existing builds; avoid duplicate builds.
 No additional debug-log requests: use existing APKs/captures and honest device limits.
 
-The environment start_skill stores recovery copies of AGENTS.md, this workflow,
-STATE.md and the local commit hook. Preserve newer existing copies on recovery.
-Update saved copies when work finishes. Saving configuration is distinct from
-publishing an environment snapshot and does not execute setup or prove restoration.
+The Cloud startup instructions restore missing workflow files from the backup
+branch. Keep STATE.md as a short handoff with the next action and evidence links.
+Search archived journals by issue or symbol when earlier context is relevant.
+Start a fresh chat for an unrelated issue and carry over its short handoff.
 Delivery gate learned from PoC56: APK validation/test tasks can regenerate the JVM jar archive and strip its root classes.dex even after buildAndroid passed. Run :patches:buildAndroid LAST after all Gradle checks, copy to a unique delivery file, then check THAT file. Require root classes.dex (not just generated/extensions/signature.dex), valid DEX SHA1/Adler32, native queue getter, ZIP CRC/current MPE/Kotlin payloads, and actual PatchLoader.Jar inventory. The JVM loader check alone cannot detect missing Android DEX; both checks are required. Use /workspace/scratch/native-playlist-inspection/VerifyQueueBundle.java (read-only external tool), with dependencies from the current Gradle test worker classpath excluding project main/test class dirs. No further archive-producing Gradle calls after finalization without repeating this gate. Verify uploaded download hash/inventory too. AndroidManager execution remains a device check.
-
-CURRENT: History rebuilt into16behavior commits on feature/youtube-native-playlist-queue-dev at bddfcc67f3b643df63363ccb9c759284ffa6982d. FulltreeidenticalPoC58. Historicalmain-basedbranch/PoC57 andarchiveddevbulkbranch preserved. Read STATE.md and FEATURE-HISTORY.md. Awaitphone/userreview; noPR/agents/newfeatures.

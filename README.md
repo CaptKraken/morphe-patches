@@ -13,9 +13,8 @@ is not intended to be merged into `dev`, `main`, or a feature PR.
 - [.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md](.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md):
   reusable examples from PRs #3953, #4822, and #5088, indexed by task with source links.
 - `.native-playlist-workflow/WORKFLOW.md`: development and delivery workflow.
-- `.native-playlist-workflow/STATE.md`: the current checkpoint journal. Read
-  the newest entries at the top. Earlier standalone checkpoints are available
-  in [Git history](https://github.com/CaptKraken/morphe-patches/tree/b5a212fd89fc0d67410171aed8a008a54a22b328/.native-playlist-workflow).
+- `.native-playlist-workflow/STATE.md`: the short current handoff. It points
+  to the full local archive and earlier journal in Git history.
 - `.native-playlist-workflow/pre-commit`: mandatory staged-tree review gate.
 - `FILE-MANIFEST.json`: source locations, sizes, and SHA-256 hashes.
 
@@ -26,9 +25,9 @@ latest user decisions and current instructions rather than replaying old plans.
 
 ## Environment instructions / skills
 
-`environment/start-instructions.txt` preserves a saved copy of the environment
-startup instructions. Restore `AGENTS.md` and the checkpoint journal from
-their standalone files, preserving newer local copies.
+`environment/start-instructions.txt` contains the short Cloud bootstrap.
+It restores missing workflow files from this branch and preserves existing
+local copies.
 
 `environment/install.sh` preserves the configured setup script. These are backup
 snapshots. The startup instructions and setup commands can predate the current

@@ -87,15 +87,15 @@
     {
       "path": ".native-playlist-workflow/STATE.md",
       "source": "/workspace/.native-playlist-workflow/STATE.md",
-      "bytes": 1052342,
-      "sha256": "2a3e24f6b7512b86d9ac551adfa41d1b8d8add2c1804f0055c2cb39e163c124d",
+      "bytes": 1410,
+      "sha256": "851b0f22163dd23789f6b67287b4c2bfb328909a0bc2a82a7555bddd72e26583",
       "updated_date": "2026-11-21"
     },
     {
       "path": ".native-playlist-workflow/WORKFLOW.md",
       "source": "/workspace/.native-playlist-workflow/WORKFLOW.md",
-      "bytes": 4019,
-      "sha256": "658d6ef33da4ca5aa929657f302ade247a00c3dbd71ebcdf9c40285d32b3bc22",
+      "bytes": 3693,
+      "sha256": "7b12ca8dd06161855e4249e1372ed82994c1ee49fe7a351a51e090dd8f159cc5",
       "updated_date": "2026-11-21"
     },
     {
@@ -363,8 +363,8 @@
     {
       "path": "README.md",
       "source": "Backup index and restore notes created for this branch",
-      "bytes": 3736,
-      "sha256": "f9708f965f142c8b9186a6840314606aaba661acb39113db2cf653b1f673f157",
+      "bytes": 3538,
+      "sha256": "c07b7fc82e2f548b07625cf4a8c2d0341c9e292076beabe72be714d95aad5972",
       "updated_date": "2026-11-21"
     },
     {
@@ -377,9 +377,9 @@
     },
     {
       "path": "environment/start-instructions.txt",
-      "source": "Cloud environment configuration draft: start_skill, with standalone copies of AGENTS.md and STATE.md",
-      "bytes": 237842,
-      "sha256": "7ef1b78835cf1f39e7eb2c831ede41e590d95f567f0ac7ff9625fd33996b35f8",
+      "source": "Short startup instructions for the Cloud environment configuration",
+      "bytes": 1635,
+      "sha256": "8c7030691cc354b55b94e0e88014b0f0ac5b9c29ad84a1a28035a134b0c49922",
       "updated_date": "2026-11-21"
     }
   ],
