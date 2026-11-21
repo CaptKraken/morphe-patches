@@ -119,11 +119,18 @@ AndroidX `@Nullable` convention. The cleanup added it to the optional load-video
 callback and queue menu/Mix entry points. An annotation documents the contract;
 the appropriate guards are still required.
 
-For caught unexpected failures, follow the existing
-`Logger.printException(() -> "methodName failure", exception)` pattern used by
-`onPlaylistTitleBound`, `shouldIgnorePlaylistResponse`, and `completeQueueMenu`.
-Keep useful diagnostic context when needed. These are developer logs; do not
-replace localized user-facing feedback with method names.
+For caught exceptions in Java injection points, use the upstream format
+`Logger.printException(() -> "methodName failure", ex)` with the actual enclosing
+method name. Passing the exception retains the cause and stack trace. Check new
+and edited entry points during review. Simple injection points such as setting
+getters can omit the try/catch. Keep localized text for user-visible feedback.
+[Upstream contribution guide](https://github.com/MorpheApp/morphe-patches/blob/7c4b581489217f6f957443eafbfe64e4fac591a7/CONTRIBUTING.md#L82-L90)
+
+In PR #5088, the maintainer changed "Could not bind playlist page queue action"
+to `preparePlaylistPageMenu failure`, and "Could not run playlist page queue
+action" to `onPlaylistPageCommand failure`. The existing `completeQueueMenu`
+already used the convention. The names make each report easy to trace to its
+entry point. [Refactor](https://github.com/MorpheApp/morphe-patches/pull/5088/commits/2f8174e1eb0e50184e2fd87bdc3a1c512e5be98e)
 
 ## Native discovery: use the patcher API deliberately
 

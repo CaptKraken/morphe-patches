@@ -77,6 +77,9 @@ precedence; do not introduce a new permission step for routine authorized work.
   repeated real decisions, eligibility checks over throwaway action creation,
   meaningful protocol constants, accurate nullability, and removal of obsolete
   state. Preserve ownership checks and disabled-path cleanup when refactoring.
+- In new or edited Java injection points, use the upstream exception log format
+  `Logger.printException(() -> "methodName failure", ex)` with the actual method
+  name and caught exception. Simple setting getters can omit the catch.
 - Read applicable agent instructions, the PR template, nearby maintained patches,
   and relevant shared APIs before implementing. Check the pinned dependency API
   when uncertain. Distinguish explicit rules from observed coding patterns.

@@ -35,16 +35,16 @@
     {
       "path": ".native-playlist-workflow/IMPLEMENTATION-PATTERNS.md",
       "source": "/workspace/.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md",
-      "bytes": 7622,
-      "sha256": "1ddb1405365730855a3c6ec3453a114c22625ef1f10fe26ff7cd6cbab802908a",
-      "updated_date": "2026-11-17"
+      "bytes": 9832,
+      "sha256": "051bcb67ba1f251ce616f39d442e1ff0a910f9176455bfa6469460c1d2f98c84",
+      "updated_date": "2026-11-21"
     },
     {
       "path": ".native-playlist-workflow/MAINTAINER-CONVENTIONS.md",
       "source": "/workspace/.native-playlist-workflow/MAINTAINER-CONVENTIONS.md",
-      "bytes": 22043,
-      "sha256": "c3890211a6791b68d388f855629939dbb3b33fadb6c09861dd4603ca3f31fea6",
-      "updated_date": "2026-11-17"
+      "bytes": 22673,
+      "sha256": "09d80f49947c7c248be298d824d6aef988fb361c7a01fc1cbe27fc7f855c25fb",
+      "updated_date": "2026-11-21"
     },
     {
       "path": ".native-playlist-workflow/PR-CREATE-REQUEST.json",
@@ -445,10 +445,10 @@
     },
     {
       "path": "AGENTS.md",
-      "source": "Prior /workspace/AGENTS.md snapshot plus user boolean naming, pattern-review and PR-writing-skill instructions from 2026-11-17",
-      "bytes": 20041,
-      "sha256": "d8d32faed8993bd7fc1e2426078a111cffe55a0cfae266e761a0cb40c6ce22be",
-      "updated_date": "2026-11-17"
+      "source": "Prior /workspace/AGENTS.md snapshot plus user boolean naming, pattern-review and PR-writing-skill instructions from 2026-11-17; upstream injection-point logging rule synchronized 2026-11-21",
+      "bytes": 20274,
+      "sha256": "fc5390de363914703c56ba34c6f04c6b2773e0ef63d9d7c58679610da0182d7f",
+      "updated_date": "2026-11-21"
     },
     {
       "path": "LICENSE",
@@ -465,9 +465,9 @@
     {
       "path": "README.md",
       "source": "Backup index and restore notes created for this branch",
-      "bytes": 3670,
-      "sha256": "1ad20e457e043ef7675f846629f6464ff368c9212474b44a26c7093f9c08359f",
-      "updated_date": "2026-11-17"
+      "bytes": 3686,
+      "sha256": "c762e223d254becd7f6a4004344df319596b775fe5555c1c6c2dfd6e28e61517",
+      "updated_date": "2026-11-21"
     },
     {
       "path": "environment/install.sh",

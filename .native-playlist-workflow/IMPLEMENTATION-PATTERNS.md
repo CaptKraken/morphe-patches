@@ -18,6 +18,7 @@ explicit user preference; the patterns below are observations from reviewed code
 | Run an action against the current video card | [Read authoritative state at action time](#read-authoritative-state-at-action-time) |
 | Add a typed bridge to native code | [Use an explicit local register](#use-an-explicit-local-register) |
 | Determine which page owns a card | [Use the card's local page context](#use-the-cards-local-page-context) |
+| Several native menu classes dispatch the same feature command | [Use the shared command router for tagged menu actions](#use-the-shared-command-router-for-tagged-menu-actions) |
 
 ## Traversal-local inputs and scratch objects
 
@@ -111,6 +112,32 @@ Use when multiple page/view layers coexist. Verify the owner/tag/ID contract on
 target APKs and preserve the specified behavior when context is unavailable.
 
 Source: [isOnPlaylistPage](https://github.com/MorpheApp/morphe-patches/blob/e1928dd9502844e55811894c615dfd410c59e904/extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/FeedVideoActionsPatch.java#L237).
+
+## Use the shared command router for tagged menu actions
+
+In PR #5088, the playlist toolbar still binds the existing Play next and
+new Play last rows to their own playlist commands. The account-scoped router
+now dispatches both row implementations through one hook. The tagged command
+identifies the action and playlist. Ordinary commands fall through to YouTube,
+and the Native queue setting is still checked before obtaining a queue action.
+
+Reuse this pattern when verified native paths converge on the same dispatcher.
+Trace the router context and all relevant callers for each supported target,
+then retain narrow ownership and stock fallthrough. A one-way menu-bound flag
+can skip work before initial binding. After that point, the command marker is
+the ownership check and the shared hook may still parse unrelated commands.
+
+The same change anchors presenter discovery on the allocation following the
+known renderer discriminator. This works when the allocation identifies the
+desired type on the target APKs. Keep a bounded match and verify uniqueness
+and the required paths across native version changes.
+
+Tie the version check to the native method that changed. The inherited menu
+builder is hooked on both paths. On 21.25 and later, the presenter also builds
+the menu itself, so it gets a second hook. The command-router hook serves both
+version paths.
+
+[Toolbar hook](https://github.com/MorpheApp/morphe-patches/blob/2f8174e1eb0e50184e2fd87bdc3a1c512e5be98e/patches/src/main/kotlin/app/morphe/patches/youtube/interaction/nativeplaylistqueue/QueueFlyoutHook.kt#L127-L165) · [Runtime dispatch](https://github.com/MorpheApp/morphe-patches/blob/2f8174e1eb0e50184e2fd87bdc3a1c512e5be98e/extensions/youtube/src/main/java/app/morphe/extension/youtube/patches/queue/QueueFlyoutActions.java#L172-L201) · [Header factory](https://github.com/MorpheApp/morphe-patches/blob/2f8174e1eb0e50184e2fd87bdc3a1c512e5be98e/patches/src/main/kotlin/app/morphe/patches/youtube/interaction/nativeplaylistqueue/Fingerprints.kt#L1745-L1758)
 
 ## Record future patterns
 

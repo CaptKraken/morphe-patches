@@ -1,18 +1,18 @@
 # Codex workflow backup
 
 Standalone backup of the local Morphe development instructions and lessons,
-initially recorded on 2026-11-09, with reviewed patterns updated on 2026-11-17.
+initially recorded on 2026-11-09, with reviewed patterns updated on 2026-11-21.
 This branch contains no application implementation and
 is not intended to be merged into `dev`, `main`, or a feature PR.
 
 ## Current instructions and lessons
 
-- `AGENTS.md`: instruction snapshot with the new naming and pattern-review rules.
+- `AGENTS.md`: instruction snapshot with the naming, logging and pattern-review rules.
   Other sections retain their prior snapshot; compare with current local instructions.
 - `.native-playlist-workflow/MAINTAINER-CONVENTIONS.md`: observed maintainer
   conventions, concrete examples, and the explicit user boolean naming rule.
 - [.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md](.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md):
-  reusable examples from PR #4822, indexed by task with source links and safety limits.
+  reusable examples from PRs #4822 and #5088, indexed by task with source links and safety limits.
 - `.native-playlist-workflow/WORKFLOW.md`: development and delivery workflow.
 - `.native-playlist-workflow/STATE.md`: checkpoint journal. Read the newest
   entries at the top; older branch names and decisions are historical.
