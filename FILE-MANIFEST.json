@@ -253,8 +253,9 @@
     {
       "path": ".native-playlist-workflow/pre-commit",
       "source": "/workspace/.native-playlist-workflow/pre-commit",
-      "bytes": 4605,
-      "sha256": "d39775e141caca5c4899fea1df2af36111c3744dc1b76dfbe061cc353de53112"
+      "bytes": 4640,
+      "sha256": "7d94abd348fac66e0010e127d8e48f277ad950aee31a54614cd1f1f3bd5586fa",
+      "updated_date": "2026-11-21"
     },
     {
       "path": ".native-playlist-workflow/readiness-review.md",
@@ -445,9 +446,9 @@
     },
     {
       "path": "AGENTS.md",
-      "source": "Prior /workspace/AGENTS.md snapshot plus user boolean naming, pattern-review and PR-writing-skill instructions from 2026-11-17; upstream injection-point logging rule synchronized 2026-11-21",
-      "bytes": 20274,
-      "sha256": "fc5390de363914703c56ba34c6f04c6b2773e0ef63d9d7c58679610da0182d7f",
+      "source": "Prior /workspace/AGENTS.md snapshot plus user boolean naming, pattern-review and PR-writing-skill instructions from 2026-11-17; upstream injection-point logging rule synchronized 2026-11-21; upstream guide review area synchronized 2026-11-21",
+      "bytes": 20585,
+      "sha256": "2ee23ce47e4363e845a842fb20a26d4368c4003be62af0545585a889bbf0db53",
       "updated_date": "2026-11-21"
     },
     {

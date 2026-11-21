@@ -238,6 +238,10 @@ precedence; do not introduce a new permission step for routine authorized work.
    patch interactions, versions/resources, and the focused test plan. Cite concrete
    source examples or explain why a category is not applicable. Resolve blocking
    findings; don't merely record them and commit anyway.
+   For `upstream_contribution_guide`, read the target branch's `CONTRIBUTING.md`.
+   Cite the relevant sections and explain how they apply to the staged change,
+   including the exception log format when Java injection points change. For
+   workflow-only changes, record why this review area is not applicable.
 3. Run the checks justified by the actual change. Save real command/outcome
    evidence, including failures or limitations. Do not mark a check passed because
    similar code passed earlier. Evidence must cover the staged implementation;

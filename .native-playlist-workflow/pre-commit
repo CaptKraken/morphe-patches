@@ -11,6 +11,7 @@ REVIEW_AREAS = (
     "scope_and_complete_diff",
     "code_quality",
     "conventions_and_reuse",
+    "upstream_contribution_guide",
     "fingerprints",
     "injection_and_control_flow",
     "patch_interactions_and_lifecycle",
