@@ -245,14 +245,9 @@ precedence; do not introduce a new permission step for routine authorized work.
   `gradle.properties`, `patches/build.gradle.kts`, and `NOTICE`.
 - `youtube/layout/buttons/action/Fingerprints.kt` and
   `QuickActionsMarginPatch.kt`: resource/cast match and extracted view register.
-- `youtube/misc/loadvideo/LoadVideoHookPatch.kt`: typed native interface bridges.
 - `youtube/video/videoid/VideoIdPatch.kt`: shared hooks and prefetch warnings.
 - `youtube/video/playerresponse/PlayerResponseMethodHookPatch.kt`: register handling
   and ordered callback injection in finalize.
-- `youtube/layout/buttons/action/HideVideoActionButtonsPatch.kt`: shared fingerprint
-  invalidation after other patches may modify the target.
-- `youtube/layout/shortsnoresume/DisableShortsResumingOnStartupPatch.kt`: verified
-  version branches with separate fingerprints.
 - `extensions/youtube/.../patches/utils/FlyoutUtils.java`: native layout inflation,
   dimensions, theme, and version fallback; reuse this utility when applicable.
 - `extensions/youtube/.../patches/SaveToWatchLaterPatch.java`: inclusion marker,

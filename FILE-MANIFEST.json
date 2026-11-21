@@ -35,15 +35,15 @@
     {
       "path": ".native-playlist-workflow/IMPLEMENTATION-PATTERNS.md",
       "source": "/workspace/.native-playlist-workflow/IMPLEMENTATION-PATTERNS.md",
-      "bytes": 9832,
-      "sha256": "051bcb67ba1f251ce616f39d442e1ff0a910f9176455bfa6469460c1d2f98c84",
+      "bytes": 5430,
+      "sha256": "9f0ebc5750c72a2f8c674bf19246738aaec2e707038451a9d082b3712f889386",
       "updated_date": "2026-11-21"
     },
     {
       "path": ".native-playlist-workflow/MAINTAINER-CONVENTIONS.md",
       "source": "/workspace/.native-playlist-workflow/MAINTAINER-CONVENTIONS.md",
-      "bytes": 19199,
-      "sha256": "d15fef271006748234651addc4fd11cada62b4f665aec98983fa1e443b5bf8a1",
+      "bytes": 9064,
+      "sha256": "8f30c8310903a79973c15f4ea67c2ae09f973194893c6dcaa0f440565017571b",
       "updated_date": "2026-11-21"
     },
     {
@@ -446,9 +446,9 @@
     },
     {
       "path": "AGENTS.md",
-      "source": "Prior /workspace/AGENTS.md snapshot plus user boolean naming, pattern-review and PR-writing-skill instructions from 2026-11-17; upstream injection-point logging rule synchronized 2026-11-21; upstream guide review area synchronized 2026-11-21; upstream guide overlap removed 2026-11-21; upstream guide reference kept only in the gate 2026-11-21",
-      "bytes": 18347,
-      "sha256": "3da18e1454a23dfbd2ebe160db81c0bac4ef29c6b6d20389fda42c363fa77b1e",
+      "source": "Prior /workspace/AGENTS.md snapshot plus user boolean naming, pattern-review and PR-writing-skill instructions from 2026-11-17; upstream injection-point logging rule synchronized 2026-11-21; upstream guide review area synchronized 2026-11-21; upstream guide overlap removed 2026-11-21; upstream guide reference kept only in the gate 2026-11-21; overlapping examples removed 2026-11-21",
+      "bytes": 17992,
+      "sha256": "141ebd1c98775f3c652eeaf09faf47663a640122c4ddc3d60b0ad91a8272d6ec",
       "updated_date": "2026-11-21"
     },
     {
